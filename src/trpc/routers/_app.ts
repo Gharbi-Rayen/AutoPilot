@@ -1,9 +1,14 @@
-import { baseProcedure, createTRPCRouter } from '../init';
+import { baseProcedure, createTRPCRouter , portectedprocedure} from '../init';
 import prisma from '@/lib/db';
 export const appRouter = createTRPCRouter({
-  getUsers: baseProcedure
-    .query(() => {
-      return prisma.user.findMany();
+  getUsers: portectedprocedure
+    .query(({ ctx }) => {
+
+      return prisma.user.findMany({
+        where : {
+          id: ctx.auth.user.id
+        },
+      });
     }),
 });
 // export type definition of API
