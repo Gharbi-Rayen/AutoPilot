@@ -1,0 +1,8 @@
+procs:
+  next:
+    cwd: .
+    cmd: ["npm", "run", "dev"]
+
+  inngest:
+    cwd: .
+    cmd: ["npm", "run", "inngest:dev"]
