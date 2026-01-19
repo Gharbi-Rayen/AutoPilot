@@ -6,6 +6,7 @@ import { useTRPC } from "@/trpc/client";
 import { caller } from "@/trpc/server";
 import { QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { use } from "react";
+import { toast } from "sonner";
 
 
 const page =  () =>{
@@ -14,9 +15,18 @@ const page =  () =>{
   const queryClient = useQueryClient();
   const  {data} = useQuery(trpc.getWorkflows.queryOptions());
 
+  const testAi = useMutation(trpc.testAi.mutationOptions(
+
+    {onSuccess: () =>{
+      toast.success("AI job queued successfully");
+      
+      }
+    }
+  ));
+
   const create = useMutation(trpc.createWorkflow.mutationOptions({
     onSuccess: () =>{
-    queryClient.invalidateQueries(trpc.getWorkflows.queryOptions());
+    toast.success("Workflow created successfully");
     
     }
   }));
@@ -29,7 +39,10 @@ const page =  () =>{
   
     <Button disabled={create.isPending} onClick={() => create.mutate()}>
       Create Workflow
-    </Button>   
+    </Button> 
+    <Button disabled={testAi.isPending} onClick={() => testAi.mutate()}>
+      Test AI
+    </Button>  
     </div>
   );
 };
