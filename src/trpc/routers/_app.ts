@@ -1,7 +1,21 @@
 import { inngest } from '@/inngest/client';
 import {  createTRPCRouter , portectedprocedure} from '../init';
 import prisma from '@/lib/db';
+import { google } from '@ai-sdk/google';
+import { generateText } from 'ai';
+
+
 export const appRouter = createTRPCRouter({
+  testAi : portectedprocedure.mutation( async ({}) => {
+
+    await inngest.send({
+      name: "execute/ai",
+    });
+
+
+    return  {success: true, message: "AI job queued successfully"};
+  }),
+
   getWorkflows: portectedprocedure
     .query(({ ctx }) => {
       return prisma.workflow.findMany();
