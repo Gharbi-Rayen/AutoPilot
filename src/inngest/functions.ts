@@ -24,6 +24,11 @@ export const execute = inngest.createFunction(
       system: "You are a helpful assistant that generates text based on user prompts.",
       model: google('gemini-2.5-flash'),
       prompt: "what's 4 + 4",
+      experimental_telemetry: {
+      isEnabled: true,
+      recordInputs: true,
+      recordOutputs: true,
+      },
     }
    );  
 
@@ -34,6 +39,11 @@ export const execute = inngest.createFunction(
       system: "You are a helpful assistant that generates text based on user prompts.",
       model: openai('gpt-4o'),
       prompt: "what's 4 + 4",
+      experimental_telemetry: {
+    isEnabled: true,
+    recordInputs: true,
+    recordOutputs: true,
+  },
     }
    );  
 
@@ -43,6 +53,11 @@ export const execute = inngest.createFunction(
       system: "You are a helpful assistant that generates text based on user prompts.",
       model: anthropic('claude-sonnet-4-0'),
       prompt: "what's 4 + 4",
+      experimental_telemetry: {
+    isEnabled: true,
+    recordInputs: true,
+    recordOutputs: true,
+  },
     }
    );  
    return {

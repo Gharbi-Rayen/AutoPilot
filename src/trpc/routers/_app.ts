@@ -3,11 +3,12 @@ import {  createTRPCRouter , portectedprocedure} from '../init';
 import prisma from '@/lib/db';
 import { google } from '@ai-sdk/google';
 import { generateText } from 'ai';
+import { TRPCError } from '@trpc/server';
 
 
 export const appRouter = createTRPCRouter({
   testAi : portectedprocedure.mutation( async ({}) => {
-
+  
     await inngest.send({
       name: "execute/ai",
     });
