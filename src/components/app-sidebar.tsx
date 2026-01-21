@@ -1,8 +1,7 @@
 "use client"; 
 
-
 import { authClient } from "@/lib/auth-client";
-
+import {useHasActiveSubscription} from "@/features/subscriptions/hooks/use-subscription";
 import {
     CreditCardIcon,
     FolderOpenIcon,
@@ -63,6 +62,7 @@ const menuItems = [
 export const AppSidebar = () => {
 const router = useRouter();
 const pathname = usePathname();
+const {hasActiveSubscription , isLoading} = useHasActiveSubscription();
 
     return (
         <Sidebar collapsible="icon">
@@ -131,21 +131,23 @@ const pathname = usePathname();
 
             <SidebarFooter>
                 <SidebarMenu>
+                    {!hasActiveSubscription && !isLoading &&(
                     <SidebarMenuItem>
-                         <SidebarMenuButton
+                        <SidebarMenuButton
                         asChild
                         tooltip="Upgrade to Pro"
                         isActive={false}
                         className="gap-x-4 h-10 px-4"
                         >
-                            <button onClick={()=>{  
-                               
-                            }}>
+                            <button onClick={()=>  authClient.checkout({ slug : "pro"})}>
                                 <StarIcon className="size-4"/>
                                 <span>Upgrade to Pro</span>
                             </button>
                         </SidebarMenuButton>
-
+                        </SidebarMenuItem>
+                    )}
+                   
+                   <SidebarMenuItem>
                            <SidebarMenuButton
                         asChild
                         tooltip="Billing portal"
@@ -153,13 +155,14 @@ const pathname = usePathname();
                         className="gap-x-4 h-10 px-4"
                         >
                             <button onClick={()=>{  
-                               
+                               authClient.customer.portal()
                             }}>
                                 <CreditCardIcon className="size-4"/>
                                 <span>Billing portal</span>
                             </button>
                         </SidebarMenuButton>
-
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
                         <SidebarMenuButton
                         asChild
                         tooltip="Log out"
