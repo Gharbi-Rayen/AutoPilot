@@ -1,36 +1,11 @@
-import { inngest } from '@/inngest/client';
-import {  createTRPCRouter , portectedprocedure, premiumProcedure} from '../init';
-import prisma from '@/lib/db';
-import { google } from '@ai-sdk/google';
-import { generateText } from 'ai';
-import { TRPCError } from '@trpc/server';
-
+import { createTRPCRouter } from '../init';
+import { workflowsRouter } from '@/features/workflows/server/routers';
 
 export const appRouter = createTRPCRouter({
-  testAi : premiumProcedure.mutation( async ({}) => {
   
-    await inngest.send({
-      name: "execute/ai",
-    });
+  workflows:  workflowsRouter,
 
-
-    return  {success: true, message: "AI job queued successfully"};
-  }),
-
-  getWorkflows: portectedprocedure
-    .query(({ ctx }) => {
-      return prisma.workflow.findMany();
-    }),
-        createWorkflow: portectedprocedure.mutation(async () => {
-          // Implementation for creating a workflow
-         await inngest.send({
-            name: "test/hello.world",
-            data: { email: "rayen@gmail.com"},
-         }) 
-
-         return { success: true, message : "Job queued successfully" };
-        }),
-      });
+ });
     
 
 // export type definition of API
