@@ -3,7 +3,12 @@ import { requireAuth } from "@/lib/auth-utils";
 import { HydrateClient } from "@/trpc/server";
 import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
-import { WorkflowsContainer, WorkflowsList } from "@/features/workflows/components/workflows";
+import { WorkflowsContainer, 
+        WorkflowsList,
+        WorkflowsLoading,
+        WorkflowsError } 
+        from "@/features/workflows/components/workflows";
+
 import { SearchParams } from "nuqs/server";
 import { workflowsParamsLoader } from "@/features/workflows/server/params-loader";
 
@@ -21,8 +26,8 @@ const page = async ({searchParams} : Props) => {
     return (
       <WorkflowsContainer>
            <HydrateClient>
-              <ErrorBoundary fallback={<p>Something went wrong.</p>}>
-                  <Suspense fallback={<p>Loading workflows...</p>}>
+              <ErrorBoundary fallback={<WorkflowsError />}>
+                  <Suspense fallback={<WorkflowsLoading />}>
                         <WorkflowsList />
                   </Suspense>
               </ErrorBoundary>
