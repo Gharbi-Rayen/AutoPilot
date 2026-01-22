@@ -1,9 +1,10 @@
 import 'server-only'; // <-- ensure this file cannot be imported from the client
-import { createTRPCOptionsProxy } from '@trpc/tanstack-react-query';
+import { createTRPCOptionsProxy, TRPCQueryOptions } from '@trpc/tanstack-react-query';
 import { cache } from 'react';
 import { createTRPCContext } from './init';
 import { makeQueryClient } from './query-client';
 import { appRouter } from './routers/_app';
+import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
 // IMPORTANT: Create a stable getter for the query client that
 //            will return the same client during the same request.
 export const getQueryClient = cache(makeQueryClient);
@@ -13,3 +14,37 @@ export const trpc = createTRPCOptionsProxy({
   queryClient: getQueryClient,
 });
 export const caller =appRouter.createCaller(createTRPCContext); 
+
+
+
+/**
+ * Prefetches a TRPC query into the stable per-request QueryClient to prepare server-side hydration.
+ *
+ * @param queryOptions - TRPC query options (from `TRPCQueryOptions`) whose `queryKey` determines the prefetch method; if `queryKey[1]?.type === 'infinite'` an infinite prefetch is performed, otherwise a regular prefetch is used.
+ */
+export function prefetch<T extends ReturnType<TRPCQueryOptions<any>>>(
+  queryOptions: T,
+){
+
+  const queryClient = getQueryClient();
+  if(queryOptions.queryKey[1]?.type === 'infinite' ){
+    void queryClient.prefetchInfiniteQuery(queryOptions as any);
+  } else {
+    void queryClient.prefetchQuery(queryOptions);
+  }
+}
+
+/**
+ * Provides React Query hydration state to its children using the server's query client.
+ *
+ * @param props.children - React nodes that will receive the hydrated query state
+ * @returns A React element that wraps `children` with a HydrationBoundary populated from the server query client
+ */
+export function HydrateClient(props : { children : React.ReactNode}) {
+  const queryClient = getQueryClient();
+  return (
+    < HydrationBoundary state={dehydrate(queryClient)}>
+      {props.children}
+    </ HydrationBoundary>
+  );
+}

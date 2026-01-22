@@ -24,7 +24,7 @@ const t = initTRPC.create({
 export const createTRPCRouter = t.router;
 export const createCallerFactory = t.createCallerFactory;
 export const baseProcedure = t.procedure;
-export const portectedprocedure = baseProcedure.use(async ({ ctx, next }) => {
+export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
   
   const session = await auth.api.getSession({
     headers: await  headers(),
@@ -40,7 +40,7 @@ export const portectedprocedure = baseProcedure.use(async ({ ctx, next }) => {
   return next({ctx: {...ctx,auth: session} });
 });
 
-export const premiumProcedure = portectedprocedure.use(
+export const premiumProcedure =  protectedProcedure.use(
   async ({ ctx , next}) => {
     const customer = await polarClient.customers.getStateExternal( {
        externalId : ctx.auth.user.id,
