@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { authClient } from "@/lib/auth-client";
 
-import { AuthClient } from "better-auth/client";
 
 interface upgradeModalProps {
     open: boolean;

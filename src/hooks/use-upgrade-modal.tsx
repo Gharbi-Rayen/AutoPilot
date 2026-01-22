@@ -1,7 +1,6 @@
 import {TRPCClientError} from '@trpc/client';
 import { useState } from 'react';
 import { UpgradeModal } from '@/components/upgrade-modal';
-import { tr } from 'date-fns/locale';
 
 
 export const useUpgradeModal = () => {
