@@ -116,6 +116,7 @@ export const EntitySearch = ({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
+            aria-label={`Search ${placeholder || 'entities'}`}
             className="max-w-[200px] bg-background shadow-none pl-8 pr-4 py-2 border border-border rounded-md 
             focus:outline-none focus:ring-2 focus:ring-primary 
             focus:border-transparent w-full md:w-64"
