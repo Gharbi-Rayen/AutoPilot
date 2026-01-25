@@ -1,6 +1,6 @@
 "use client";
 
-import { useState , useCallback}from "react";
+import { useState , useCallback, useEffect }from "react";
 import { ErrorView, LoadingView } from "@/components/entity-components";
 import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
 import {ReactFlow , applyNodeChanges,
@@ -38,6 +38,12 @@ export const Editor = ({workflowId} : {workflowId: string}) => {
 
     const [nodes, setNodes] = useState<Node[]>(workflow.nodes);
     const [edges, setEdges] = useState<Edge[]>(workflow.edges);
+
+    // Reset nodes and edges when workflow changes
+    useEffect(() => {
+        setNodes(workflow.nodes);
+        setEdges(workflow.edges);
+    }, [workflow.id, workflow.nodes, workflow.edges]);
 
     const onNodesChange = useCallback(
     (changes : NodeChange[]) => setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),

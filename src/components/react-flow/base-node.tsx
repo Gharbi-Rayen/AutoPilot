@@ -55,7 +55,7 @@ export function BaseNodeHeaderTitle({
   return (
     <h3
       data-slot="base-node-title"
-      className={cn("user-select-none flex-1 font-semibold", className)}
+      className={cn("select-none flex-1 font-semibold", className)}
       {...props}
     />
   );

@@ -9,14 +9,11 @@ import { WorkflowNode } from "./workflow-node";
 export const InitialNode = memo((props: NodeProps) => {
     return (
         <WorkflowNode name="initial_node" description="This is the initial node of the workflow.">
-            <PlaceholderNode {...props}
-            
-            >
-                <div className="cursor-pointer flex items-center justify-center">
+            <PlaceholderNode {...props}>
+                <div className="flex items-center justify-center" aria-label="Initial workflow node">
                   <PlusIcon className="size-4" />
-
-               </div>
-          </PlaceholderNode>
+                </div>
+            </PlaceholderNode>
         </WorkflowNode>
     );
 });
