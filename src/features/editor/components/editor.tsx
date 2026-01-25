@@ -39,11 +39,12 @@ export const Editor = ({workflowId} : {workflowId: string}) => {
     const [nodes, setNodes] = useState<Node[]>(workflow.nodes);
     const [edges, setEdges] = useState<Edge[]>(workflow.edges);
 
-    // Reset nodes and edges when workflow changes
+    // Reset nodes and edges only when switching workflows, not on background refetches
     useEffect(() => {
         setNodes(workflow.nodes);
         setEdges(workflow.edges);
-    }, [workflow.id, workflow.nodes, workflow.edges]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [workflow.id]);
 
     const onNodesChange = useCallback(
     (changes : NodeChange[]) => setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),
