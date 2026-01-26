@@ -1,32 +1,29 @@
 "use client";
-import {createId} from "@paralleldrive/cuid2";
 
-import { useReactFlow } from "@xyflow/react";
-
+import type { ComponentType, ReactNode } from "react";
 import { useCallback } from "react";
 
-import { NodeType } from "@/generated/prisma";
-
-import{GlobeIcon , MousePointerIcon}from "lucide-react";
-
+import { createId } from "@paralleldrive/cuid2";
+import { useReactFlow } from "@xyflow/react";
+import { GlobeIcon, MousePointerIcon } from "lucide-react";
+import Image from "next/image";
 import { toast } from "sonner";
 
 import {
     Sheet,
     SheetContent,
+    SheetDescription,
     SheetHeader,
     SheetTitle,
     SheetTrigger,
-    SheetDescription
-}from "@/components/ui/sheet";
+} from "@/components/ui/sheet";
+import { NodeType } from "@/generated/prisma";
 
-import { Separator } from "./ui/separator";
-
-export type NodeTypeOption ={
-    type : NodeType;
-    label : string;
-    description : string;
-    icon : React.ComponentType<{className ?: string}> | string;
+export type NodeTypeOption = {
+    type: NodeType;
+    label: string;
+    description: string;
+    icon: ComponentType<{ className?: string }> | string;
 };
 
 
@@ -55,7 +52,7 @@ const executionNodes : NodeTypeOption []=[
 interface NodeSelectorProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    children?: React.ReactNode;
+    children?: ReactNode;
 }
 
 
@@ -74,10 +71,12 @@ export function NodeSelector({open, onOpenChange, children} : NodeSelectorProps)
         
     }
     setNodes((nodes) => {
-            const hasInitialTrigger = nodes.some((node) => node.type === NodeType.INITIAL,);
             const centerX = window.innerWidth / 2;
             const centerY = window.innerHeight / 2;
-            const flowPosition = screenToFlowPosition({x: centerX + (Math.random()-0.5 * 200), y: centerY + (Math.random()-0.5 * 200)});
+            const flowPosition = screenToFlowPosition({
+                x: centerX + (Math.random() - 0.5) * 200,
+                y: centerY + (Math.random() - 0.5) * 200,
+            });
             const newNode = {
                 id: createId(),
                 data: {},
@@ -85,11 +84,14 @@ export function NodeSelector({open, onOpenChange, children} : NodeSelectorProps)
                 type: selection.type,
             };
 
+            const hasInitialTrigger = nodes.some((node) => node.type === NodeType.INITIAL);
             if (hasInitialTrigger) {
-                return [newNode];
+                // Replace only the INITIAL node(s) while preserving other nodes
+                const remainingNodes = nodes.filter((node) => node.type !== NodeType.INITIAL);
+                return [...remainingNodes, newNode];
             }
 
-            return  [...nodes, newNode];
+            return [...nodes, newNode];
         });
 
         onOpenChange(false);
@@ -115,68 +117,64 @@ export function NodeSelector({open, onOpenChange, children} : NodeSelectorProps)
                 <div>
                     {triggerNodes.map((nodeType) => {
                         const Icon = nodeType.icon;
-                       return(
-                        <div
-                        key={nodeType.type}
-                        className="w-full justify-start h-auto py-5 px-4 rounded-none cursor-pointer
-                        border-l-2 border-transparent hover:border-l-primary"
-                        onClick={()=>{handleNodeSelect(nodeType)}}
-                        >
-
-                            <div className="flex items-center gap-6 w-full overflow-hidden">
-                                {typeof nodeType.icon === "string" ? (
-                                    <img src={nodeType.icon} alt={nodeType.label} className="size-5 object-contain rounded-sm"/>
-                                ) : (
-                                    <Icon className="size-5 text-muted-foreground"/>
-                                )}
-                                <div className="flex flex-col overflow-hidden">
-                                    <span className="font-medium text-sm text-foreground leading-tight">
-                                        {nodeType.label}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground leading-tight
-                                    overflow-hidden text-ellipsis">
-                                        {nodeType.description}
-                                    </span>
+                        return (
+                            <button
+                                type="button"
+                                key={nodeType.type}
+                                className="w-full justify-start h-auto py-5 px-4 rounded-none cursor-pointer
+                                    border-l-2 border-transparent hover:border-l-primary text-left bg-transparent"
+                                onClick={() => handleNodeSelect(nodeType)}
+                            >
+                                <div className="flex items-center gap-6 w-full overflow-hidden">
+                                    {typeof nodeType.icon === "string" ? (
+                                        <Image src={nodeType.icon} alt={nodeType.label} className="size-5 object-contain rounded-sm" width={20} height={20} />
+                                    ) : (
+                                        <Icon className="size-5 text-muted-foreground" />
+                                    )}
+                                    <div className="flex flex-col overflow-hidden">
+                                        <span className="font-medium text-sm text-foreground leading-tight">
+                                            {nodeType.label}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground leading-tight overflow-hidden text-ellipsis">
+                                            {nodeType.description}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-
-                        </div>
-                       )
+                            </button>
+                        );
                     })}
                 </div>
-                 <div>
+                <div>
                     {executionNodes.map((nodeType) => {
                         const Icon = nodeType.icon;
-                       return(
-                        <div
-                        key={nodeType.type}
-                        className="w-full justify-start h-auto py-5 px-4 rounded-none cursor-pointer
-                        border-l-2 border-transparent hover:border-l-primary"
-                        onClick={()=>{handleNodeSelect(nodeType)}}
-                        >
-
-                            <div className="flex items-center gap-6 w-full overflow-hidden">
-                                {typeof nodeType.icon === "string" ? (
-                                    <img src={nodeType.icon} alt={nodeType.label} className="size-5 object-contain rounded-sm"/>
-                                ) : (
-                                    <Icon className="size-5 text-muted-foreground"/>
-                                )}
-                                <div className="flex flex-col overflow-hidden">
-                                    <span className="font-medium text-sm text-foreground leading-tight">
-                                        {nodeType.label}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground leading-tight
-                                    overflow-hidden text-ellipsis">
-                                        {nodeType.description}
-                                    </span>
+                        return (
+                            <button
+                                type="button"
+                                key={nodeType.type}
+                                className="w-full justify-start h-auto py-5 px-4 rounded-none cursor-pointer
+                                    border-l-2 border-transparent hover:border-l-primary text-left bg-transparent"
+                                onClick={() => handleNodeSelect(nodeType)}
+                            >
+                                <div className="flex items-center gap-6 w-full overflow-hidden">
+                                    {typeof nodeType.icon === "string" ? (
+                                        <Image src={nodeType.icon} alt={nodeType.label} className="size-5 object-contain rounded-sm" width={20} height={20} />
+                                    ) : (
+                                        <Icon className="size-5 text-muted-foreground" />
+                                    )}
+                                    <div className="flex flex-col overflow-hidden">
+                                        <span className="font-medium text-sm text-foreground leading-tight">
+                                            {nodeType.label}
+                                        </span>
+                                        <span className="text-xs text-muted-foreground leading-tight overflow-hidden text-ellipsis">
+                                            {nodeType.description}
+                                        </span>
+                                    </div>
                                 </div>
-                            </div>
-
-                        </div>
-                       )
+                            </button>
+                        );
                     })}
                 </div>
             </SheetContent>
         </Sheet>
     );
-};
+}

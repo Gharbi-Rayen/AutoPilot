@@ -49,7 +49,7 @@ export const Editor = ({workflowId} : {workflowId: string}) => {
     useEffect(() => {
         setNodes(workflow.nodes);
         setEdges(workflow.edges);
-    }, [workflow.id, workflow.nodes, workflow.edges]);
+    }, [workflow.id]);
 
     const onNodesChange = useCallback(
     (changes : NodeChange[]) => setNodes((nodesSnapshot) => applyNodeChanges(changes, nodesSnapshot)),

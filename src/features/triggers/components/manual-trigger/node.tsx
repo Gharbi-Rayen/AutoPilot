@@ -1,5 +1,5 @@
 
-import type {Node , NodeProps } from "@xyflow/react";
+import type { NodeProps } from "@xyflow/react";
 
 import { memo } from "react";
 import { BaseTriggerNode } from "../base-trigger-node";

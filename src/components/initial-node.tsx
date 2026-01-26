@@ -14,7 +14,7 @@ export const InitialNode = memo((props: NodeProps) => {
         <NodeSelector open={selectorOpen} onOpenChange={setSelectorOpen}>
         <WorkflowNode name="initial_node" description="This is the initial node of the workflow.">
             <PlaceholderNode {...props} onClick={()=> setSelectorOpen(true)}>
-                <div className="flex items-center justify-center" aria-label="Initial workflow node">
+                <div className="flex items-center justify-center">
                   <PlusIcon className="size-4" />
                 </div>
             </PlaceholderNode>
