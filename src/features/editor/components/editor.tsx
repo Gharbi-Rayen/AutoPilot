@@ -1,23 +1,28 @@
 "use client";
 
-import { useState , useCallback, useEffect }from "react";
-import { ErrorView, LoadingView } from "@/components/entity-components";
-import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
-import {ReactFlow , applyNodeChanges,
-    applyEdgeChanges,addEdge,
-   type Node,
-   type Edge,
-   type NodeChange,
-   type EdgeChange,
-   type Connection,
-   Background,
-   Controls,
-   MiniMap,
-   Panel
- }from "@xyflow/react";
+import { useCallback, useEffect, useState } from "react";
 
-import '@xyflow/react/dist/style.css';
+import {
+  type Connection,
+  type Edge,
+  type EdgeChange,
+  type Node,
+  type NodeChange,
+  Background,
+  Controls,
+  MiniMap,
+  Panel,
+  ReactFlow,
+  addEdge,
+  applyEdgeChanges,
+  applyNodeChanges,
+} from "@xyflow/react";
+
+import "@xyflow/react/dist/style.css";
+
+import { ErrorView, LoadingView } from "@/components/entity-components";
 import { nodeComponents } from "@/config/node-components";
+import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
 import { AddNodeButton } from "./add-node-button";
 
 export const EditorLoading = () => {
@@ -40,10 +45,10 @@ export const Editor = ({workflowId} : {workflowId: string}) => {
     const [edges, setEdges] = useState<Edge[]>(workflow.edges);
 
     // Reset nodes and edges only when switching workflows, not on background refetches
+    // biome-ignore lint/correctness/useExhaustiveDependencies: Intentionally only sync when workflow ID changes to prevent overwriting local changes on refetch
     useEffect(() => {
         setNodes(workflow.nodes);
         setEdges(workflow.edges);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workflow.id]);
 
     const onNodesChange = useCallback(

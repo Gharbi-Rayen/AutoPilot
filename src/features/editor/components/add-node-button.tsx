@@ -1,8 +1,9 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NodeSelector } from "@/components/node-selector";
 
 interface AddNodeButtonProps {
   onClick: () => void;
@@ -10,7 +11,10 @@ interface AddNodeButtonProps {
 }
 
 export const AddNodeButton = memo(({ onClick, ariaLabel = "Add node" }: AddNodeButtonProps) => {
+const [selectorOpen, setSelectorOpen] = useState(false);
+ 
   return (
+    <NodeSelector open={selectorOpen} onOpenChange={setSelectorOpen}>
     <Button
       onClick={onClick}
       size="icon"
@@ -20,6 +24,7 @@ export const AddNodeButton = memo(({ onClick, ariaLabel = "Add node" }: AddNodeB
     >
       <PlusIcon aria-hidden="true" />
     </Button>
+    </NodeSelector>
   );
 });
 
