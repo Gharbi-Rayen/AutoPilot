@@ -6,6 +6,9 @@ import type { Node  , Edge } from "@xyflow/react";
 import { generateSlug } from "random-word-slugs";
 import z from "zod";
 
+// Zod enum for NodeType validation
+const nodeTypeEnum = z.enum(["INITIAL", "MANUAL_TRIGGER", "HTTP_REQUEST"]);
+
 
 
 export const workflowsRouter = createTRPCRouter({
@@ -44,7 +47,7 @@ export const workflowsRouter = createTRPCRouter({
             nodes : z.array(
                 z.object({
                     id: z.string(),
-                    type: z.string().nullish(),
+                    type: nodeTypeEnum,
                     position: z.object({
                         x: z.number(),
                         y: z.number(),
@@ -69,7 +72,8 @@ export const workflowsRouter = createTRPCRouter({
     .mutation(async ({ ctx , input}) => {
         const { id , nodes , edges} = input;
         
-        const workflow = await prisma.workflow.findUniqueOrThrow({
+        // Verify the workflow exists and belongs to the user
+        await prisma.workflow.findUniqueOrThrow({
             where: {
                 id,
                 userId: ctx.auth.user.id,
@@ -90,8 +94,8 @@ export const workflowsRouter = createTRPCRouter({
                 data: nodes.map((node) => ({
                     id: node.id,
                     workflowId: id,
-                    name : node.type || "unknown",
-                    type: node.type as NodeType ,
+                    name: node.type,
+                    type: node.type,
                     position: node.position,
                     data: node.data || {},
                 })),
@@ -117,8 +121,12 @@ export const workflowsRouter = createTRPCRouter({
                 },
             });
 
-            return workflow;
-
+            // Re-query the workflow to get fresh data with updated timestamp
+            return tsx.workflow.findUniqueOrThrow({
+                where: {
+                    id,
+                },
+            });
         });
     }),
     updateName: protectedProcedure.input(z.object({id: z.string(), name: z.string().min(1)})).mutation(({ ctx , input}) => {
