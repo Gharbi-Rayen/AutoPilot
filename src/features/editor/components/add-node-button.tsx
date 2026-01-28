@@ -5,22 +5,17 @@ import { PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NodeSelector } from "@/components/node-selector";
 
-interface AddNodeButtonProps {
-  onClick: () => void;
-  ariaLabel?: string;
-}
 
-export const AddNodeButton = memo(({ onClick, ariaLabel = "Add node" }: AddNodeButtonProps) => {
+export const AddNodeButton = memo(() => {
 const [selectorOpen, setSelectorOpen] = useState(false);
  
   return (
     <NodeSelector open={selectorOpen} onOpenChange={setSelectorOpen}>
     <Button
-      onClick={onClick}
       size="icon"
       variant="outline"
       className="bg-background"
-      aria-label={ariaLabel}
+      
     >
       <PlusIcon aria-hidden="true" />
     </Button>

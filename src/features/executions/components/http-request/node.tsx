@@ -1,11 +1,12 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useState } from "react";
 
-import type { NodeProps } from "@xyflow/react";
+import { useReactFlow, type NodeProps } from "@xyflow/react";
 import { GlobeIcon } from "lucide-react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
+import { FormType, HttpRequestDialog } from "./dialog";
 
 interface HttpRequestNodeData extends Record<string, unknown> {
     endpoint?: string;
@@ -14,20 +15,60 @@ interface HttpRequestNodeData extends Record<string, unknown> {
 }
 
 export const HttpRequestNode = memo((props: NodeProps) => {
+    
+    const [dialogOpen , setDialogOpen] =  useState(false);
+    const {setNodes} = useReactFlow();
+
+    const handleSubmit = (values:FormType)=>{
+        setNodes((nds) => 
+            nds.map((node) => {
+                
+                if(node.id === props.id){
+                    return {
+                        ...node,
+                        data : {
+                            ...node.data,
+                            endpoint: values.endpoint,
+                            method: values.method,
+                            body: values.body
+                        }
+                }   
+
+            }
+            return node;
+        }))
+    };
+
+    const handleOpenSettings = () => setDialogOpen(true);
+    
     const data = props.data as HttpRequestNodeData;
     const description = data?.endpoint
         ? `${data?.method || "GET"} : ${data.endpoint}`
         : "Not configured";
 
+        const nodeStatus = "initial";
+
     return (
+        <>
+        <HttpRequestDialog 
+        open={dialogOpen} 
+        onOpenChange={setDialogOpen} 
+        onSubmit={handleSubmit}
+        defaultEndpoint={data.endpoint}
+        defaultMethod={data.method}
+        defaultBody={data.body}
+        />
         <BaseExecutionNode
             {...props}
+            id={props.id}
             name="HTTP Request"
             description={description}
             icon={GlobeIcon}
-            onSettings={() => {}}
-            onDoubleClick={() => {}}
+            status={nodeStatus}
+            onSettings={handleOpenSettings}
+            onDoubleClick={handleOpenSettings}
         />
+        </>
     );
 });
 
