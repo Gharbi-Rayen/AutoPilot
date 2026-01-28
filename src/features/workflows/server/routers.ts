@@ -55,7 +55,7 @@ export const workflowsRouter = createTRPCRouter({
                     data: z.record(z.string() , z.any()).optional(),
                     
                 }),
-            ),
+            ).min(1, "Workflow must have at least one node"),
             
             edges: z.array(
                 z.object({
