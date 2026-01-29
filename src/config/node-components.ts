@@ -6,9 +6,9 @@ import { ManualTriggerNode } from "@/features/triggers/components/manual-trigger
 import { NodeType } from "@/generated/prisma";
 
 export const nodeComponents: NodeTypes = {
-    [NodeType.INITIAL]: InitialNode,
-    [NodeType.MANUAL_TRIGGER]: ManualTriggerNode,
-    [NodeType.HTTP_REQUEST]: HttpRequestNode,
+  [NodeType.INITIAL]: InitialNode,
+  [NodeType.MANUAL_TRIGGER]: ManualTriggerNode,
+  [NodeType.HTTP_REQUEST]: HttpRequestNode,
 };
 
 export type RegisteredNodeType = keyof typeof nodeComponents;
