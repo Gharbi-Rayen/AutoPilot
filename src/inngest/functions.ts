@@ -1,15 +1,23 @@
+
 import { NonRetriableError } from "inngest";
 import prisma from "@/lib/db";
 import { inngest } from "./client";
 import { topologicalSort } from "./utils";
-import { NodeType } from "@/generated/prisma";
+import type { NodeType } from "@/generated/prisma";
 import { getExecutor } from "@/features/executions/components/lib/executor-registry";
-import { no } from "zod/v4/locales";
+import { HttpRequestChannel } from "./channels/http-request";
+import { ManualTriggerChannel } from "./channels/manual-triggers";
+
 
 export const executeWorkflow = inngest.createFunction(
-  { id: "execute/workflow" },
-  { event: "workflows/execute.workflow" },
-  async ({ event, step }) => {
+  { 
+    id: "execute/workflow",
+    retries: 0,// remove in production
+  },
+  { event: "workflows/execute.workflow" ,
+    channels: [HttpRequestChannel() , ManualTriggerChannel()],
+  },
+  async ({ event, step , publish }) => {
     const workflowId = event.data.workflowId;
  
     if (!workflowId) {
@@ -42,6 +50,7 @@ export const executeWorkflow = inngest.createFunction(
           nodeId: node.id,
           context,
           step,
+          publish,
         }
       );
 

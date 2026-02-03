@@ -2,6 +2,7 @@ import type {NodeExecutor} from "@/features/executions/components/types";
 import { NonRetriableError } from "inngest";
 import ky , {type Options as KyOptions} from "ky"
 import Handlebars from "handlebars"; 
+import { HttpRequestChannel } from "@/inngest/channels/http-request";
 
 Handlebars.registerHelper('json', (context) => {
     const jsonString = JSON.stringify(context , null, 2);
@@ -20,27 +21,48 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
     data,
     nodeId,
     context,
-    step }) => {
-    //TODO : publish "loading" state for http request node
+    step,
+    publish,
+ }) => {
+    //publish "loading" state for http request node
+   
+   const updateStatePublish = async (state : "loading" | "error" | "success" ) => {
+           return await publish(
+            HttpRequestChannel().status({
+                nodeId,
+                status: state  ,
+            }),
+        );
+    }
+    await updateStatePublish("loading");
+
+    //validate data
+
 
     if(!data.endpoint){
-        //TODO : publish "error" state for http request node
+        // publish "error" state for http request node
+        await updateStatePublish("error");
+        
         throw new NonRetriableError("HTTP Request node is not configured with an endpoint");
+    
+        
     }
 
     if(!data.variableName){
-        //TODO : publish "error" state for http request node
+        // publish "error" state for http request node
+        await updateStatePublish("error");
         throw new NonRetriableError("HTTP Request node is not configured with a variable name");
     }
 
     if(!data.method){
-        //TODO : publish "error" state for http request node
+        // publish "error" state for http request node
+        await updateStatePublish("error");
         throw new NonRetriableError("HTTP Request node is not configured with a method");
     }
 
     //const result = await step.fetch(data.endpoint);
-
-    const result = await step.run("http-request",async() => {
+    try{
+        const result = await step.run("http-request",async() => {
         //compile endpoint and body with handlebars
         const endpoint = Handlebars.compile(data.endpoint)(context);
         const method = data.method || "GET";
@@ -90,7 +112,13 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
 
 });
 
-    //TODO : publish "completed" in success state for http request node
+    // publish "completed" in success state for http request node
+    await updateStatePublish("success");
     return result;
+    } catch (error){
+        // publish "error" state for http request node
+        await updateStatePublish("error");
+        throw error;
+    }
 };
 
