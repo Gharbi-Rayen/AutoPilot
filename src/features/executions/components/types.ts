@@ -1,3 +1,4 @@
+import type { Realtime } from "@inngest/realtime";
 import type { GetStepTools, Inngest} from "inngest";
 
 
@@ -11,7 +12,7 @@ export interface NodeExecutorParams<TData = Record<string, unknown>> {
     nodeId: string;
     context: workflowContext;
     step: StepTools;
-    // publish : TODO add realtime publish later
+    publish : Realtime.PublishFn;
 
 }
 
