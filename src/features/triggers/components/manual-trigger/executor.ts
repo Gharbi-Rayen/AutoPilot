@@ -12,22 +12,33 @@ export const manualTriggerExecutor: NodeExecutor<ManualTriggerData> = async ({
  }) => {
 
     const updateStatePublish = async (state : "loading" | "error" | "success" ) => {
-               return await publish(
-                ManualTriggerChannel().status({
-                    nodeId,
-                    status: state  ,
-                }),
-            );
-        }
+        console.log("[ManualTriggerExecutor] Publishing status:", { nodeId, state });
+        const result = await publish(
+            ManualTriggerChannel().status({
+                nodeId,
+                status: state,
+            }),
+        );
+        console.log("[ManualTriggerExecutor] Status published:", { nodeId, state, result });
+        return result;
+    }
 
      // publish "loading" state for manual trigger node
     await updateStatePublish("loading");
    
+    try {
+        const result = await step.run("manual-trigger", async () => {
+            console.log("[ManualTriggerExecutor] Processing context:", { nodeId, contextKeys: Object.keys(context) });
+            return context;
+        });
 
-    const result = await step.run("manual-trigger",async() => context);
-
-    // publish "completed" in success state for manual trigger node
-    await updateStatePublish("success");
-    return result;
+        // publish "completed" in success state for manual trigger node
+        await updateStatePublish("success");
+        return result;
+    } catch (error) {
+        console.error("[ManualTriggerExecutor] Error:", { nodeId, error });
+        await updateStatePublish("error");
+        throw error;
+    }
 };
 

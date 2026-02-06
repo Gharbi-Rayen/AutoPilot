@@ -2,6 +2,7 @@ import {NodeType} from "@/generated/prisma";
 import { NodeExecutor } from "../types";
 import { manualTriggerExecutor } from "@/features/triggers/components/manual-trigger/executor";
 import { HttpRequestExecutor } from "../http-request/executor";
+import { GoogleFormExecutor } from "@/features/triggers/components/googleForm-trigger/executor";
 
 
 export const executorRegistry: Record<NodeType, NodeExecutor> = {
@@ -9,6 +10,7 @@ export const executorRegistry: Record<NodeType, NodeExecutor> = {
     [NodeType.MANUAL_TRIGGER]: manualTriggerExecutor,
     [NodeType.HTTP_REQUEST]: HttpRequestExecutor,// fix types
     [NodeType.INITIAL]: manualTriggerExecutor,
+    [NodeType.GOOGLE_FORM_TRIGGER]: GoogleFormExecutor,
 
    
 };
