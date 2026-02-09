@@ -11,9 +11,9 @@ Handlebars.registerHelper('json', (context) => {
 });
 
 type HttpRequestData={
-    variableName:string;
-    endpoint:string;
-    method:"GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+    variableName?:string;
+    endpoint?:string;
+    method?:"GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?:string;
 };
 
@@ -27,21 +27,26 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
     //publish "loading" state for http request node
    
    const updateStatePublish = async (state : "loading" | "error" | "success" ) => {
-        console.log("[HttpRequestExecutor] Publishing status:", { nodeId, state });
-        const result = await publish(
+            const result = await publish(
             HttpRequestChannel().status({
                 nodeId,
                 status: state,
             }),
         );
-        console.log("[HttpRequestExecutor] Status published:", { nodeId, state, result });
-        return result;
+         return result;
     }
     await updateStatePublish("loading");
 
-    //validate data
+   
 
 
+
+try{
+    
+        
+        const result = await step.run("http-request",async() => {
+
+      //validate data       
     if(!data.endpoint){
         // publish "error" state for http request node
         await updateStatePublish("error");
@@ -63,16 +68,7 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
         throw new NonRetriableError("HTTP Request node is not configured with a method");
     }
 
-    //const result = await step.fetch(data.endpoint);
-    try{
-        console.log("[HttpRequestExecutor] Starting HTTP request:", { 
-            nodeId, 
-            endpointTemplate: data.endpoint, 
-            method: data.method,
-            contextKeys: Object.keys(context)
-        });
-        
-        const result = await step.run("http-request",async() => {
+
         //compile endpoint and body with handlebars
         const endpoint = Handlebars.compile(data.endpoint)(context);
         
@@ -146,8 +142,7 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
 
         // publish "completed" in success state for http request node
         await updateStatePublish("success");
-        console.log("[HttpRequestExecutor] Request completed:", { nodeId, variableName: data.variableName });
-        return result;
+               return result;
     } catch (error){
         console.error("[HttpRequestExecutor] Request failed:", { nodeId, error: error instanceof Error ? error.message : String(error) });
         throw error;

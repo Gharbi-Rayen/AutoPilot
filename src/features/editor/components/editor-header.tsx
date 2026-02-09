@@ -18,6 +18,7 @@ import {
   useUpdateWorkflow,
   useUpdateWorkflowName,
 } from "@/features/workflows/hooks/use-workflows";
+import type { NodeType } from "@/generated/prisma";
 import { editorAtom } from "../store/atoms";
 
 export const EditorHeaderNameInput = ({
@@ -129,9 +130,9 @@ export const EditorSaveButtons = ({ workflowId }: { workflowId: string }) => {
 
     const nodes = editor.getNodes().map((node) => ({
       id: node.id,
-      type: node.type as "INITIAL" | "MANUAL_TRIGGER" | "HTTP_REQUEST",
+      type: node.type as NodeType,
       position: node.position,
-      data: node.data as Record<string, any> | undefined,
+      data: node.data as Record<string, unknown> | undefined,
     }));
     const edges = editor.getEdges().map((edge) => ({
       source: edge.source,

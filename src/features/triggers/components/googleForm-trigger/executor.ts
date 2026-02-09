@@ -34,14 +34,6 @@ export const GoogleFormExecutor: NodeExecutor<GoogleFormTriggerData> = async ({
                 contextStructure: JSON.stringify(context, null, 2)
             });
             
-            // Log the available variable paths for debugging
-            if (context.googleFormData) {
-                console.log("[GoogleFormExecutor] Available variable paths:");
-                console.log("  - {{googleFormData.formId}}:", context.googleFormData.formId);
-                console.log("  - {{googleFormData.formTitle}}:", context.googleFormData.formTitle);
-                console.log("  - {{googleFormData.responses}}:", JSON.stringify(context.googleFormData.responses));
-                console.log("  - To access response fields, use: {{googleFormData.responses.fieldName}}");
-            }
             
             return context;
         });
