@@ -1,24 +1,29 @@
-
 import { NonRetriableError } from "inngest";
-import prisma from "@/lib/db";
-import { inngest } from "./client";
-import { topologicalSort } from "./utils";
-import type { NodeType } from "@/generated/prisma";
 import { getExecutor } from "@/features/executions/components/lib/executor-registry";
+import type { NodeType } from "@/generated/prisma";
+import prisma from "@/lib/db";
+import { GoogleFormTriggerChannel } from "./channels/google-form-trigger";
 import { HttpRequestChannel } from "./channels/http-request";
 import { ManualTriggerChannel } from "./channels/manual-triggers";
-import { GoogleFormTriggerChannel } from "./channels/google-form-trigger";
-
+import { StripeTriggerChannel } from "./channels/stripe-trigger";
+import { inngest } from "./client";
+import { topologicalSort } from "./utils";
 
 export const executeWorkflow = inngest.createFunction(
-  { 
+  {
     id: "execute/workflow",
-    retries: 0,// remove in production
+    retries: 0, // remove in production
   },
-  { event: "workflows/execute.workflow" ,
-    channels: [HttpRequestChannel() , ManualTriggerChannel(), GoogleFormTriggerChannel()],
+  {
+    event: "workflows/execute.workflow",
+    channels: [
+      HttpRequestChannel(),
+      ManualTriggerChannel(),
+      GoogleFormTriggerChannel(),
+      StripeTriggerChannel(),
+    ],
   },
-  async ({ event, step , publish }) => {
+  async ({ event, step, publish }) => {
     console.log("[Inngest] executeWorkflow triggered with event:", {
       name: event.name,
       workflowId: event.data.workflowId,
@@ -26,14 +31,14 @@ export const executeWorkflow = inngest.createFunction(
     });
 
     const workflowId = event.data.workflowId;
- 
+
     if (!workflowId) {
       throw new NonRetriableError("No workflow ID provided");
     }
 
     const sortedNodes = await step.run("prepare-workflow", async () => {
       console.log("[Inngest] Fetching workflow:", workflowId);
-      
+
       const workflow = await prisma.workflow.findUnique({
         where: { id: workflowId },
         include: {
@@ -67,34 +72,36 @@ export const executeWorkflow = inngest.createFunction(
     console.log("[Inngest] Executing", sortedNodes.length, "nodes");
 
     for (const node of sortedNodes) {
-      console.log("[Inngest] Executing node:", { id: node.id, type: node.type, name: node.name });
-      
+      console.log("[Inngest] Executing node:", {
+        id: node.id,
+        type: node.type,
+        name: node.name,
+      });
+
       try {
         const executor = getExecutor(node.type as NodeType);
-        context = await executor(
-          {
-            data: node.data as Record<string, unknown>,
-            nodeId: node.id,
-            context,
-            step,
-            publish,
-          }
-        );
-        
+        context = await executor({
+          data: node.data as Record<string, unknown>,
+          nodeId: node.id,
+          context,
+          step,
+          publish,
+        });
+
         console.log("[Inngest] Node completed:", node.id);
       } catch (error) {
-        console.error("[Inngest] Node execution failed:", { 
-          nodeId: node.id, 
+        console.error("[Inngest] Node execution failed:", {
+          nodeId: node.id,
           nodeType: node.type,
-          error: error instanceof Error ? error.message : String(error)
+          error: error instanceof Error ? error.message : String(error),
         });
         throw error;
       }
-    };
+    }
 
     return {
-       workflowId ,
-       result : context, 
-      };
+      workflowId,
+      result: context,
+    };
   },
 );

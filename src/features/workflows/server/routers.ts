@@ -10,10 +10,15 @@ import {
   premiumProcedure,
   protectedProcedure,
 } from "@/trpc/init";
-import { init } from "@sentry/nextjs";
 
 // Zod enum for NodeType validation
-const nodeTypeEnum = z.enum(["INITIAL", "MANUAL_TRIGGER", "HTTP_REQUEST", "GOOGLE_FORM_TRIGGER"]);
+const nodeTypeEnum = z.enum([
+  "INITIAL",
+  "MANUAL_TRIGGER",
+  "HTTP_REQUEST",
+  "GOOGLE_FORM_TRIGGER",
+  "STRIPE_TRIGGER",
+]);
 
 export const workflowsRouter = createTRPCRouter({
   execute: protectedProcedure
