@@ -12,6 +12,11 @@ export const auth = betterAuth({
     enabled: true,
     autoSignIn: true,
   },
+  trustedOrigins: [
+    "http://localhost:3000",
+    "https://nonpedigreed-virilocally-candie.ngrok-free.dev",  // Allow all ngrok URLs
+
+  ],
   plugins: [
     polar({
       client: polarClient,

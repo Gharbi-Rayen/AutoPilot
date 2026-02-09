@@ -13,7 +13,7 @@ import {
 import { init } from "@sentry/nextjs";
 
 // Zod enum for NodeType validation
-const nodeTypeEnum = z.enum(["INITIAL", "MANUAL_TRIGGER", "HTTP_REQUEST"]);
+const nodeTypeEnum = z.enum(["INITIAL", "MANUAL_TRIGGER", "HTTP_REQUEST", "GOOGLE_FORM_TRIGGER"]);
 
 export const workflowsRouter = createTRPCRouter({
   execute: protectedProcedure

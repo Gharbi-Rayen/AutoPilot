@@ -37,7 +37,7 @@ const formSchema = z.object({
   .min(1, { message: "Variable name is required" })
   .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 
     { message: "Invalid variable name variableName must only start with a letter, underscore and contain only alphanumeric characters, underscores, or dollar signs" }),
-  endpoint: z.url({ message: "Please enter a valid URL" }),
+  endpoint: z.string().min(1, { message: "Please enter a valid URL" }),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   body: z.string().optional(),
   //.refine() JSON 5,
@@ -96,8 +96,7 @@ export const HttpRequestDialog = ({
         <DialogHeader>
           <DialogTitle>HTTP Request</DialogTitle>
           <DialogDescription>
-            This trigger starts the workflow manually. You can test your
-            workflow by triggering it from here.
+            Make an HTTP request and store the response. Use {"{{"} and {"}}"} to reference variables from previous steps.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -181,14 +180,18 @@ export const HttpRequestDialog = ({
 
                   <FormControl>
                     <Input
-                      placeholder="https://api.example.com/users/{{httpResponse.data.id}}"
+                      placeholder="https://api.example.com/users"
                       {...field}
                     />
                   </FormControl>
 
-                  <FormDescription>
-                    Static URL or use {"{{variables}}"} for simple values or use{" "}
-                    {"{{json variable}}"} to stringify objects.
+                  <FormDescription className="space-y-1">
+                    <div>Enter a URL or use variables from previous steps:</div>
+                    <div className="text-xs font-mono bg-muted p-2 rounded mt-1 space-y-1">
+                      <div>• Google Form: {"{{googleFormData.responses.fieldName}}"}</div>
+                      <div>• Previous API: {"{{myApiCall.httpResponse.data.id}}"}</div>
+                      <div>• JSON stringify: {"{{json myObject}}"}</div>
+                    </div>
                   </FormDescription>
 
                   <FormMessage />
@@ -207,14 +210,14 @@ export const HttpRequestDialog = ({
                       <Textarea
                         className="min-h-[120px] font-mono text-sm"
                         placeholder={
-                          '{\n  "name": "John Doe",\n  "email": "john.doe@example.com"\n}'
+                          '{\n  "name": "{{googleFormData.responses.name}}",\n  "email": "user@example.com"\n}'
                         }
                         {...field}
                       />
                     </FormControl>
 
                     <FormDescription>
-                      JSON body for POST, PUT, PATCH, DELETE requests.
+                      JSON body. You can use {"{{variables}}"} to insert data from previous steps.
                     </FormDescription>
 
                     <FormMessage />

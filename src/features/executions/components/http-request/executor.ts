@@ -27,12 +27,15 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
     //publish "loading" state for http request node
    
    const updateStatePublish = async (state : "loading" | "error" | "success" ) => {
-           return await publish(
+        console.log("[HttpRequestExecutor] Publishing status:", { nodeId, state });
+        const result = await publish(
             HttpRequestChannel().status({
                 nodeId,
-                status: state  ,
+                status: state,
             }),
         );
+        console.log("[HttpRequestExecutor] Status published:", { nodeId, state, result });
+        return result;
     }
     await updateStatePublish("loading");
 
@@ -62,9 +65,38 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
 
     //const result = await step.fetch(data.endpoint);
     try{
+        console.log("[HttpRequestExecutor] Starting HTTP request:", { 
+            nodeId, 
+            endpointTemplate: data.endpoint, 
+            method: data.method,
+            contextKeys: Object.keys(context)
+        });
+        
         const result = await step.run("http-request",async() => {
         //compile endpoint and body with handlebars
         const endpoint = Handlebars.compile(data.endpoint)(context);
+        
+        // Validate the compiled endpoint
+        if (!endpoint || endpoint.trim() === '') {
+            console.error("[HttpRequestExecutor] Endpoint compilation failed:", {
+                template: data.endpoint,
+                compiledResult: endpoint,
+                contextKeys: Object.keys(context),
+                contextSample: JSON.stringify(context).substring(0, 500)
+            });
+            throw new NonRetriableError(
+                `Endpoint URL is empty after variable interpolation. ` +
+                `Template: "${data.endpoint}". ` +
+                `Available context keys: ${Object.keys(context).join(', ')}. ` +
+                `Check that your variable names match exactly (case-sensitive).`
+            );
+        }
+        
+        console.log("[HttpRequestExecutor] Endpoint compiled:", { 
+            template: data.endpoint, 
+            compiled: endpoint 
+        });
+        
         const method = data.method || "GET";
 
 
@@ -112,12 +144,12 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
 
 });
 
-    // publish "completed" in success state for http request node
-    await updateStatePublish("success");
-    return result;
+        // publish "completed" in success state for http request node
+        await updateStatePublish("success");
+        console.log("[HttpRequestExecutor] Request completed:", { nodeId, variableName: data.variableName });
+        return result;
     } catch (error){
-        // publish "error" state for http request node
-        await updateStatePublish("error");
+        console.error("[HttpRequestExecutor] Request failed:", { nodeId, error: error instanceof Error ? error.message : String(error) });
         throw error;
     }
 };
