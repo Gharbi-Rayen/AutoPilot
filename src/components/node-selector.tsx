@@ -32,7 +32,7 @@ const triggerNodes: NodeTypeOption[] = [
     description: "Start the workflow manually.",
     icon: MousePointerIcon,
   },
-   {
+  {
     type: NodeType.GOOGLE_FORM_TRIGGER,
     label: "Google Form Trigger",
     description: "Runs when a form is submitted.",
@@ -52,6 +52,24 @@ const executionNodes: NodeTypeOption[] = [
     label: "HTTP Request",
     description: "Make an HTTP request to an external API.",
     icon: GlobeIcon,
+  },
+  {
+    type: NodeType.GEMINI,
+    label: "Gemini",
+    description: "Generate text with Google Gemini.",
+    icon: "/logos/gemini.svg",
+  },
+  {
+    type: NodeType.OPENAI,
+    label: "OpenAI",
+    description: "Generate text with OpenAI GPT models.",
+    icon: "/logos/openai.svg",
+  },
+  {
+    type: NodeType.ANTHROPIC,
+    label: "Anthropic",
+    description: "Generate text with Anthropic Claude.",
+    icon: "/logos/anthropic.svg",
   },
 ];
 
