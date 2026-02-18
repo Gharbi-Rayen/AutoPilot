@@ -1,8 +1,8 @@
 import { channel, topic } from "@inngest/realtime";
 
-export const HTTP_REQUEST_CHANNEL_NAME = "http-request-execution";
+export const OPENAI_CHANNEL_NAME = "openai-execution";
 
-export const HttpRequestChannel = channel(HTTP_REQUEST_CHANNEL_NAME).addTopic(
+export const OpenAIChannel = channel(OPENAI_CHANNEL_NAME).addTopic(
   topic("status").type<{
     nodeId: string;
     status: "loading" | "error" | "success";

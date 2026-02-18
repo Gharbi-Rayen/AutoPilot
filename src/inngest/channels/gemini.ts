@@ -1,8 +1,8 @@
 import { channel, topic } from "@inngest/realtime";
 
-export const HTTP_REQUEST_CHANNEL_NAME = "http-request-execution";
+export const GEMINI_CHANNEL_NAME = "gemini-execution";
 
-export const HttpRequestChannel = channel(HTTP_REQUEST_CHANNEL_NAME).addTopic(
+export const GeminiChannel = channel(GEMINI_CHANNEL_NAME).addTopic(
   topic("status").type<{
     nodeId: string;
     status: "loading" | "error" | "success";

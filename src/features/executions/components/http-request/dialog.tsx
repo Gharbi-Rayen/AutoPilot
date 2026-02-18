@@ -33,16 +33,18 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 const formSchema = z.object({
-  variableName: z.string()
-  .min(1, { message: "Variable name is required" })
-  .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, 
-    { message: "Invalid variable name variableName must only start with a letter, underscore and contain only alphanumeric characters, underscores, or dollar signs" }),
+  variableName: z
+    .string()
+    .min(1, { message: "Variable name is required" })
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, {
+      message:
+        "Invalid variable name variableName must only start with a letter, underscore and contain only alphanumeric characters, underscores, or dollar signs",
+    }),
   endpoint: z.string().min(1, { message: "Please enter a valid URL" }),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
   body: z.string().optional(),
   //.refine() JSON 5,
 });
-
 
 export type HttpRequestFormValues = z.infer<typeof formSchema>;
 
@@ -62,7 +64,7 @@ export const HttpRequestDialog = ({
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      variableName :  defaultValues.variableName || "",
+      variableName: defaultValues.variableName || "",
       endpoint: defaultValues.endpoint || "",
       method: defaultValues.method || "GET",
       body: defaultValues.body || "",
@@ -82,7 +84,7 @@ export const HttpRequestDialog = ({
   useEffect(() => {
     if (open) {
       form.reset({
-        variableName :  defaultValues.variableName || "",
+        variableName: defaultValues.variableName || "",
         endpoint: defaultValues.endpoint || "",
         method: defaultValues.method || "GET",
         body: defaultValues.body || "",
@@ -96,7 +98,8 @@ export const HttpRequestDialog = ({
         <DialogHeader>
           <DialogTitle>HTTP Request</DialogTitle>
           <DialogDescription>
-            Make an HTTP request and store the response. Use {"{{"} and {"}}"} to reference variables from previous steps.
+            Make an HTTP request and store the response. Use {"{{"} and {"}}"}{" "}
+            to reference variables from previous steps.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -104,7 +107,7 @@ export const HttpRequestDialog = ({
             onSubmit={form.handleSubmit(handleSubmit)}
             className="space-y-8 mt-4"
           >
- <FormField
+            <FormField
               control={form.control}
               name="variableName"
               render={({ field }) => (
@@ -112,14 +115,12 @@ export const HttpRequestDialog = ({
                   <FormLabel>Variable Name</FormLabel>
 
                   <FormControl>
-                    <Input
-                      placeholder="myApiCall"
-                      {...field}
-                    />
+                    <Input placeholder="myApiCall" {...field} />
                   </FormControl>
 
                   <FormDescription>
-                   this references the variable name to store the response of this HTTP request node : {" "}
+                    this references the variable name to store the response of
+                    this HTTP request node :{" "}
                     {`{{${watchVariableName}.httpResponse.data}}`}
                   </FormDescription>
 
@@ -127,7 +128,6 @@ export const HttpRequestDialog = ({
                 </FormItem>
               )}
             />
-
 
             <FormField
               control={form.control}
@@ -188,8 +188,13 @@ export const HttpRequestDialog = ({
                   <FormDescription className="space-y-1">
                     <div>Enter a URL or use variables from previous steps:</div>
                     <div className="text-xs font-mono bg-muted p-2 rounded mt-1 space-y-1">
-                      <div>• Google Form: {"{{googleFormData.responses.fieldName}}"}</div>
-                      <div>• Previous API: {"{{myApiCall.httpResponse.data.id}}"}</div>
+                      <div>
+                        • Google Form:{" "}
+                        {"{{googleFormData.responses.fieldName}}"}
+                      </div>
+                      <div>
+                        • Previous API: {"{{myApiCall.httpResponse.data.id}}"}
+                      </div>
                       <div>• JSON stringify: {"{{json myObject}}"}</div>
                     </div>
                   </FormDescription>
@@ -217,7 +222,8 @@ export const HttpRequestDialog = ({
                     </FormControl>
 
                     <FormDescription>
-                      JSON body. You can use {"{{variables}}"} to insert data from previous steps.
+                      JSON body. You can use {"{{variables}}"} to insert data
+                      from previous steps.
                     </FormDescription>
 
                     <FormMessage />
