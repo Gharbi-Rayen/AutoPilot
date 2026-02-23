@@ -8,7 +8,7 @@ import { OPENAI_CHANNEL_NAME } from "@/inngest/channels/openai";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchOpenAIRealTimeToken } from "./actions";
 import {
-  AVAILABLE_MODELS,
+  DEFAULT_MODEL,
   OpenAIDialog,
   type OpenAIFormValues,
 } from "./dialog";
@@ -38,7 +38,7 @@ export const OpenAINode = memo((props: NodeProps) => {
 
   const data = props.data as Record<string, unknown>;
   const description = data?.userPrompt
-    ? `${(data?.model as string) || AVAILABLE_MODELS[0]} : ${(data.userPrompt as string).slice(0, 50)}...`
+    ? `${(data?.model as string) || DEFAULT_MODEL} : ${(data.userPrompt as string).slice(0, 50)}...`
     : "Not configured";
 
   const nodeStatus = useNodeStatus({

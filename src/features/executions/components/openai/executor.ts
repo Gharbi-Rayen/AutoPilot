@@ -58,7 +58,7 @@ export const OpenAIExecutor: NodeExecutor<OpenAIData> = async ({
 
   try {
     const { text } = await step.ai.wrap("openai-generate-text", generateText, {
-      model: openai(data.model || "gpt-4o-mini"),
+      model: openai(data.model || "gpt-4.1-mini"),
       system: systemPrompt,
       prompt: userPrompt,
       experimental_telemetry: {

@@ -1,11 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,49 +35,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { useAIModels } from "@/features/executions/hooks/use-ai-models";
 
-export const AVAILABLE_MODELS = [
-  "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-8b",
-  "gemini-1.5-pro",
-] as const;
-
-const MODEL_INFO: Record<
-  (typeof AVAILABLE_MODELS)[number],
-  {
-    label: string;
-    badge: string;
-    badgeVariant: "default" | "secondary" | "outline";
-  }
-> = {
-  "gemini-2.0-flash": {
-    label: "Gemini 2.0 Flash",
-    badge: "Recommended",
-    badgeVariant: "default",
-  },
-  "gemini-2.0-flash-lite": {
-    label: "Gemini 2.0 Flash Lite",
-    badge: "Fast",
-    badgeVariant: "secondary",
-  },
-  "gemini-1.5-flash": {
-    label: "Gemini 1.5 Flash",
-    badge: "Stable",
-    badgeVariant: "secondary",
-  },
-  "gemini-1.5-flash-8b": {
-    label: "Gemini 1.5 Flash 8B",
-    badge: "Light",
-    badgeVariant: "outline",
-  },
-  "gemini-1.5-pro": {
-    label: "Gemini 1.5 Pro",
-    badge: "Advanced",
-    badgeVariant: "default",
-  },
-};
+export const DEFAULT_MODEL = "gemini-2.5-flash";
 
 const formSchema = z.object({
   variableName: z
@@ -87,7 +47,7 @@ const formSchema = z.object({
       message:
         "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
     }),
-  model: z.enum(AVAILABLE_MODELS),
+  model: z.string().min(1, { message: "Model is required" }),
   systemPrompt: z.string().optional(),
   userPrompt: z.string().min(1, { message: "User prompt is required" }),
 });
@@ -107,11 +67,13 @@ export const GeminiDialog = ({
   onSubmit,
   defaultValues = {},
 }: GeminiDialogProps) => {
+  const { data: models, isLoading: modelsLoading } = useAIModels("google");
+
   const form = useForm<GeminiFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       variableName: defaultValues.variableName || "",
-      model: defaultValues.model || AVAILABLE_MODELS[0],
+      model: defaultValues.model || DEFAULT_MODEL,
       systemPrompt: defaultValues.systemPrompt || "",
       userPrompt: defaultValues.userPrompt || "",
     },
@@ -128,7 +90,7 @@ export const GeminiDialog = ({
     if (open) {
       form.reset({
         variableName: defaultValues.variableName || "",
-        model: defaultValues.model || AVAILABLE_MODELS[0],
+        model: defaultValues.model || DEFAULT_MODEL,
         systemPrompt: defaultValues.systemPrompt || "",
         userPrompt: defaultValues.userPrompt || "",
       });
@@ -185,22 +147,18 @@ export const GeminiDialog = ({
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Available Models</SelectLabel>
-                            {AVAILABLE_MODELS.map((model) => {
-                              const info = MODEL_INFO[model];
-                              return (
-                                <SelectItem key={model} value={model}>
-                                  <span className="flex items-center gap-2">
-                                    {info.label}
-                                    <Badge
-                                      variant={info.badgeVariant}
-                                      className="text-[10px] px-1.5 py-0"
-                                    >
-                                      {info.badge}
-                                    </Badge>
-                                  </span>
+                            {modelsLoading ? (
+                              <div className="flex items-center justify-center py-2 text-xs text-muted-foreground">
+                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                Loading models...
+                              </div>
+                            ) : (
+                              models?.map((model) => (
+                                <SelectItem key={model.id} value={model.id}>
+                                  {model.name}
                                 </SelectItem>
-                              );
-                            })}
+                              ))
+                            )}
                           </SelectGroup>
                         </SelectContent>
                       </Select>

@@ -10,7 +10,7 @@ import { fetchAnthropicRealTimeToken } from "./actions";
 import {
   AnthropicDialog,
   type AnthropicFormValues,
-  AVAILABLE_MODELS,
+  DEFAULT_MODEL,
 } from "./dialog";
 
 export const AnthropicNode = memo((props: NodeProps) => {
@@ -38,7 +38,7 @@ export const AnthropicNode = memo((props: NodeProps) => {
 
   const data = props.data as Record<string, unknown>;
   const description = data?.userPrompt
-    ? `${(data?.model as string) || AVAILABLE_MODELS[0]} : ${(data.userPrompt as string).slice(0, 50)}...`
+    ? `${(data?.model as string) || DEFAULT_MODEL} : ${(data.userPrompt as string).slice(0, 50)}...`
     : "Not configured";
 
   const nodeStatus = useNodeStatus({

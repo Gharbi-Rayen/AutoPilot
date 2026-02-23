@@ -18,6 +18,9 @@ const nodeTypeEnum = z.enum([
   "HTTP_REQUEST",
   "GOOGLE_FORM_TRIGGER",
   "STRIPE_TRIGGER",
+  "ANTHROPIC",
+  "GEMINI",
+  "OPENAI",
 ]);
 
 export const workflowsRouter = createTRPCRouter({
