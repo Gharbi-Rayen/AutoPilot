@@ -65,9 +65,9 @@ export const BaseExecutionNode = memo(
                 <Image
                   src={Icon}
                   alt={`${name} icon`}
-                  className="size-6"
-                  width={24}
-                  height={24}
+                  className="size-4"
+                  width={16}
+                  height={16}
                 />
               ) : (
                 <Icon className="size-4 text-muted-foreground" />

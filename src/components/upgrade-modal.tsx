@@ -1,5 +1,7 @@
 "use client";
 
+import { Loader2Icon } from "lucide-react";
+import { useState } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +20,8 @@ interface upgradeModalProps {
 }
 
 export const UpgradeModal = ({ open, onOpenChange }: upgradeModalProps) => {
+  const [isLoading, setIsLoading] = useState(false);
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -28,11 +32,20 @@ export const UpgradeModal = ({ open, onOpenChange }: upgradeModalProps) => {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            onClick={() => authClient.checkout({ slug: "pro" })}
+            disabled={isLoading}
+            onClick={async () => {
+              setIsLoading(true);
+              try {
+                await authClient.checkout({ slug: "pro" });
+              } finally {
+                setIsLoading(false);
+              }
+            }}
           >
-            Upgrade
+            {isLoading && <Loader2Icon className="size-4 animate-spin" />}
+            {isLoading ? "Redirecting..." : "Upgrade"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

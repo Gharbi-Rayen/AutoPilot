@@ -4,12 +4,14 @@ import Handlebars from "handlebars";
 import { NonRetriableError } from "inngest";
 import type { NodeExecutor } from "@/features/executions/components/types";
 import { GeminiChannel } from "@/inngest/channels/gemini";
+import prisma from "@/lib/db";
 
 Handlebars.registerHelper("json", (context: unknown) => {
   return new Handlebars.SafeString(JSON.stringify(context, null, 2));
 });
 
 type GeminiData = {
+  credentialId?: string;
   variableName?: string;
   model?: string;
   systemPrompt?: string;
@@ -44,16 +46,29 @@ export const GeminiExecutor: NodeExecutor<GeminiData> = async ({
     throw new NonRetriableError("User prompt is required");
   }
 
+  if (!data.credentialId) {
+    await updateStatePublish("error");
+    throw new NonRetriableError("Gemini API key is required. Please configure an API key in the node settings.");
+  }
+
+  const credential = await step.run("fetch-gemini-credential", async () => {
+    const cred = await prisma.credentials.findUnique({
+      where: { id: data.credentialId },
+    });
+    if (!cred) {
+      throw new NonRetriableError("API key not found. It may have been deleted.");
+    }
+    return cred;
+  });
+
   const systemPrompt = data.systemPrompt
     ? Handlebars.compile(data.systemPrompt)(context)
     : "You are a helpful assistant.";
 
   const userPrompt = Handlebars.compile(data.userPrompt)(context);
 
-  const credentialValue = process.env.GOOGLE_GENERATIVE_AI_API_KEY || "";
-
   const google = createGoogleGenerativeAI({
-    apiKey: credentialValue,
+    apiKey: credential.value,
   });
 
   try {

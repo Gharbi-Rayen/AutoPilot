@@ -43,6 +43,14 @@ export const premiumProcedure = protectedProcedure.use(
   async ({ ctx, next }) => {
     const customer = await polarClient.customers.getStateExternal({
       externalId: ctx.auth.user.id,
+    }).catch((error) => {
+      // If the Polar API token is invalid/expired, or the customer doesn't exist yet,
+      // treat it as a non-subscriber rather than crashing with a raw 401 error
+      console.error("Polar API error:", error);
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Active subscription required to access this resource.",
+      });
     });
 
     if (

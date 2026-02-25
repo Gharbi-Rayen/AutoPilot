@@ -1,8 +1,8 @@
 "use client";
 
 import { CredentialType } from "@/generated/prisma";
-import { useRouter  } from "next/router";
-import { useCreateCredential, useUpdateCredential , useSuspenseCredential } from "../hooks/use-credentials";
+import { useRouter  } from "next/navigation";
+import { useCreateCredential, useSuspenseCredential, useUpdateCredential } from "../hooks/use-credentials";
 import { useUpgradeModal } from "@/hooks/use-upgrade-modal";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -26,6 +26,7 @@ import {
 from "@/components/ui/select";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
+import { ArrowLeftIcon, Loader2Icon } from "lucide-react";
 import {
     Card,
     CardContent,
@@ -49,17 +50,17 @@ const credentialTypeOptions = [
     {
         value : CredentialType.OPENAI,
         label : "OpenAI",
-        logo : "logos/openai.svg",
+        logo : "/logos/openai.svg",
     } ,
     {
         value : CredentialType.ANTHROPIC,
         label : "Anthropic",
-        logo : "logos/anthropic.svg",
+        logo : "/logos/anthropic.svg",
     },
     {
         value : CredentialType.GEMINI,
         label : "Gemini",
-        logo : "logos/gemini.svg",
+        logo : "/logos/gemini.svg",
     }
 ]
 
@@ -73,9 +74,10 @@ interface CredentialFormProps {
         value : string;
 
     };
+    redirectTo?: string;
 };
 
-export const CredentialForm = ({initialData}:CredentialFormProps) => {
+export const CredentialForm = ({initialData, redirectTo}:CredentialFormProps) => {
 
     const router = useRouter();
     const createCredential = useCreateCredential();
@@ -94,120 +96,169 @@ export const CredentialForm = ({initialData}:CredentialFormProps) => {
     })
 
     const onSubmit = async (values: FormValues) => {
-        if (isEdit && initialData?.id ){
-
-            await updateCredential.mutateAsync({
-                id : initialData.id,
-                ...values,
-            })
-        }else {
-            await createCredential.mutateAsync(values , {
-                onError : (error) => {handleError(error);}
-            });
+        try {
+            if (isEdit && initialData?.id) {
+                await updateCredential.mutateAsync({
+                    id: initialData.id,
+                    ...values,
+                });
+                router.push("/credentials");
+            } else {
+                await createCredential.mutateAsync(values);
+                if (redirectTo) {
+                    router.push(redirectTo);
+                } else {
+                    router.push("/credentials");
+                }
+            }
+        } catch (error) {
+            // Show upgrade modal if the error is a FORBIDDEN (subscription required)
+            handleError(error);
         }
-
     }
 
 
     return (
         <>
          {modal}
-        <Card className="shadow-none">
-            <CardHeader>
-                <CardTitle>
-                    {isEdit ? "Edit Credential" : "Create Credential"}
-                </CardTitle>
-                <CardDescription>
-                    {isEdit ? "Update your API key or credential information" 
-                    : "Add a new API key to your account"}
-                </CardDescription>
-                <CardContent>
-                    <Form {...form}> 
-
-                        <form onSubmit={form.handleSubmit(onSubmit)} 
-                        className = "space-y-6"
-                        >
-                        <FormField 
-                        control={form.control}
-                        name = "name"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Name</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="My API Key" {...field} />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                        />
-                        <FormField 
-                         control={form.control}
-                         name = "type"
-                         render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Type</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select a credential type" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {credentialTypeOptions.map((option) => (
-                                            <SelectItem key={option.value} value={option.value}>
-                                                <div className="flex items-center gap-2">
-                                                    <Image src={option.logo} alt={option.label}
-                                                     width={16} 
-                                                     height={16} 
-                                                     className="mr-2" />
-                                                    {option.label}
-                                                </div>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                        />
-
-                <FormField
+         {(isEdit || redirectTo) && (
+            <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2 text-muted-foreground hover:text-foreground w-fit -ml-2 mb-2"
+                asChild
+            >
+                <Link href={redirectTo || "/credentials"}>
+                    <ArrowLeftIcon className="size-4" />
+                    {redirectTo ? "Back to Workflow" : "Back to Credentials"}
+                </Link>
+            </Button>
+         )}
+        <Card className="shadow-none border-border/40">
+            <CardHeader className="space-y-4">
+                <div className="space-y-2">
+                    <CardTitle className="text-2xl font-semibold">
+                        {isEdit ? "Edit Credential" : "Create Credential"}
+                    </CardTitle>
+                    <CardDescription className="text-muted-foreground">
+                        {isEdit ? "Update your API key or credential details" 
+                        : "Add a new API key to your account"}
+                    </CardDescription>
+                </div>
+            </CardHeader>
+            <CardContent className="space-y-8">
+                <Form {...form}> 
+                    <form onSubmit={form.handleSubmit(onSubmit)} 
+                    className="space-y-6"
+                    >
+                    <FormField 
                     control={form.control}
-                    name = "value"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>API Key</FormLabel>
+                    name="name"
+                    render={({ field }) => (
+                        <FormItem className="space-y-2">
+                            <FormLabel className="text-sm font-medium">Name</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    placeholder="My API Key" 
+                                    className="h-10"
+                                    {...field} 
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                    />
+                    
+                    <FormField 
+                     control={form.control}
+                     name="type"
+                     render={({ field }) => (
+                        <FormItem className="space-y-2">
+                            <FormLabel className="text-sm font-medium">Type</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
                                 <FormControl>
-                                    <Input placeholder="sk-..." {...field} />
+                                    <SelectTrigger className="h-10">
+                                        <SelectValue placeholder="Select a credential type" />
+                                    </SelectTrigger>
                                 </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
+                                <SelectContent>
+                                    {credentialTypeOptions.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            <div className="flex items-center gap-3">
+                                                <Image 
+                                                    src={option.logo} 
+                                                    alt={option.label}
+                                                    width={20} 
+                                                    height={20} 
+                                                    className="rounded-sm" 
+                                                />
+                                                <span className="font-medium">{option.label}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <FormMessage />
+                        </FormItem>
+                    )}
                     />
 
-                   <div className = "flex gap-4">
-                        <Button type="submit" disabled={createCredential.isPending || updateCredential.isPending}>
-                          {isEdit ? "Update Credential" : "Create Credential"}
-                        </Button>
-                        <Button type="button" 
-                        variant="outline"
-                        asChild
-                        >
-                          <Link href="/credentials">Cancel</Link>  
-                        </Button>
-                    </div>
+            <FormField
+                control={form.control}
+                name="value"
+                render={({ field }) => (
+                    <FormItem className="space-y-2">
+                        <FormLabel className="text-sm font-medium">API Key</FormLabel>
+                        <FormControl>
+                            <Input 
+                                placeholder="sk-..." 
+                                type="password"
+                                className="h-10"
+                                {...field} 
+                            />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
+                )}
+            />
 
+            <div className="flex gap-3 pt-4">
+                <Button 
+                    type="submit" 
+                    disabled={createCredential.isPending || updateCredential.isPending}
+                    className="flex-1 h-10"
+                >
+                  {(createCredential.isPending || updateCredential.isPending) && (
+                    <Loader2Icon className="size-4 animate-spin" />
+                  )}
+                  {isEdit 
+                    ? (updateCredential.isPending ? "Updating..." : "Update") 
+                    : (createCredential.isPending ? "Creating..." : "Create Credential")}
+                </Button>
+                <Button 
+                    type="button" 
+                    variant="outline"
+                    className="px-8 h-10"
+                    asChild
+                >
+                  <Link href={redirectTo || "/credentials"}>Cancel</Link>  
+                </Button>
+            </div>
 
-                        </form>
-
-
-                    </Form>
-
-                </CardContent>
-
-            </CardHeader>
+                    </form>
+                </Form>
+            </CardContent>
         </Card>
         </>
     )
 
+};
+
+
+export const CredentialView = ({ credentialId }: { credentialId: string }) => {
+
+    const { data: credential } = useSuspenseCredential(credentialId);
+
+
+    return <CredentialForm initialData={credential} />
 };

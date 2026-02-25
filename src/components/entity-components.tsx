@@ -8,6 +8,8 @@ import {
   TrashIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -54,6 +56,9 @@ export const EntityHeader = ({
   onNew,
   newButtonHref,
 }: EntityHeaderProps) => {
+  const router = useRouter();
+  const [isNavigating, setIsNavigating] = useState(false);
+
   return (
     <div className="flex flex-row items-center justify-between gap-x-4">
       {" "}
@@ -67,19 +72,31 @@ export const EntityHeader = ({
       </div>
       {(onNew || !newButtonHref) && (
         <Button disabled={disabled || isCreating} onClick={onNew} size="sm">
-          <PlusIcon className="size-4" />
-          {newButtonLabel}
+          {isCreating ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : (
+            <PlusIcon className="size-4" />
+          )}
+          {isCreating ? "Creating..." : newButtonLabel}
         </Button>
       )}
-      {!onNew ||
-        (newButtonHref && (
-          <Button size="sm" asChild>
-            <Link href={newButtonHref} prefetch>
+      {!onNew && newButtonHref && (
+          <Button 
+            size="sm" 
+            disabled={isNavigating}
+            onClick={() => {
+              setIsNavigating(true);
+              router.push(newButtonHref);
+            }}
+          >
+            {isNavigating ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
               <PlusIcon className="size-4" />
-              {newButtonLabel}
-            </Link>
+            )}
+            {isNavigating ? "Loading..." : newButtonLabel}
           </Button>
-        ))}
+        )}
     </div>
   );
 };
@@ -216,6 +233,18 @@ interface EmptyViewProps extends StateViewProps {
 }
 
 export const EmptyView = ({ message, onNew }: EmptyViewProps) => {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleClick = async () => {
+    if (!onNew) return;
+    setIsLoading(true);
+    try {
+      await onNew();
+    } catch {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <Empty className="border border-dashed bg-white">
       <EmptyHeader>
@@ -228,7 +257,14 @@ export const EmptyView = ({ message, onNew }: EmptyViewProps) => {
       {message && <EmptyDescription>{message}</EmptyDescription>}
       {!!onNew && (
         <EmptyContent>
-          <Button onClick={onNew}>Add item</Button>
+          <Button onClick={handleClick} disabled={isLoading}>
+            {isLoading ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <PlusIcon className="size-4" />
+            )}
+            {isLoading ? "Loading..." : "Add item"}
+          </Button>
         </EmptyContent>
       )}
     </Empty>
@@ -290,31 +326,46 @@ export const EntityItem = ({
   isRemoving,
   className,
 }: EntityItemProps) => {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
+
   const handleRemove = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (isRemoving) {
+    if (isRemoving || isDeleting) {
       return;
     }
 
     if (onRemove) {
-      await onRemove();
+      setIsDeleting(true);
+      try {
+        await onRemove();
+      } finally {
+        setIsDeleting(false);
+      }
     }
   };
 
   return (
-    <Link href={href} prefetch>
+    <Link href={href} prefetch onClick={() => setIsNavigating(true)}>
       <Card
         className={cn(
-          "p-4 shadow-none hover:shadow cursor-pointer",
-          isRemoving && "opacity-50 cursor-not-allowed",
+          "p-4 shadow-none hover:shadow cursor-pointer transition-all duration-150",
+          (isRemoving || isDeleting) && "opacity-50 cursor-not-allowed",
+          isNavigating && "opacity-70 ring-1 ring-ring/30",
           className,
         )}
       >
         <CardContent className="flex flex-row item-center justify-between p-0">
           <div className="flex items-center gap-3">
-            {image}
+            {isNavigating ? (
+              <div className="flex items-center justify-center size-10">
+                <Loader2Icon className="size-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              image
+            )}
             <div>
               <CardTitle className="text-base font-medium">{title}</CardTitle>
               {!!subtitle && (
@@ -334,12 +385,16 @@ export const EntityItem = ({
                     <Button
                       variant="ghost"
                       size="icon"
-                      disabled={isRemoving}
+                      disabled={isRemoving || isDeleting}
                       onClick={(e) => {
                         e.stopPropagation();
                       }}
                     >
-                      <MoreVerticalIcon className="size-4" />
+                      {(isRemoving || isDeleting) ? (
+                        <Loader2Icon className="size-4 animate-spin" />
+                      ) : (
+                        <MoreVerticalIcon className="size-4" />
+                      )}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent

@@ -7,7 +7,7 @@ import {
 import { toast } from "sonner";
 import { useTRPC } from "@/trpc/client";
 import { useCredentialsParams } from "./use-credentials-params";
-import { CredentialType } from "@/generated/prisma";
+import type { CredentialType } from "@/generated/prisma";
 
 /**
  *
@@ -34,6 +34,8 @@ export const useCreateCredential = () => {
         queryClient.invalidateQueries(trpc.credentials.getMany.queryOptions({}));
       },
       onError: (error) => {
+        // Don't show a toast for FORBIDDEN — it's handled by the upgrade modal
+        if (error.data?.code === "FORBIDDEN") return;
         toast.error(`Failed to create credential: ${error.message}`);
       },
     }),
@@ -92,6 +94,8 @@ export const useUpdateCredential = () => {
         );
       },
       onError: (error) => {
+        // Don't show a toast for FORBIDDEN — it's handled by the upgrade modal
+        if (error.data?.code === "FORBIDDEN") return;
         toast.error(`Failed to save credential: ${error.message}`);
       },
     }),

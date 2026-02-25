@@ -36,10 +36,13 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useAIModels } from "@/features/executions/hooks/use-ai-models";
+import { CredentialPicker } from "@/features/credentials/components/credential-picker";
+import { CredentialType } from "@/generated/prisma";
 
 export const DEFAULT_MODEL = "gemini-2.5-flash";
 
 const formSchema = z.object({
+  credentialId: z.string().min(1, { message: "API key is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -72,6 +75,7 @@ export const GeminiDialog = ({
   const form = useForm<GeminiFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      credentialId: defaultValues.credentialId || "",
       variableName: defaultValues.variableName || "",
       model: defaultValues.model || DEFAULT_MODEL,
       systemPrompt: defaultValues.systemPrompt || "",
@@ -89,6 +93,7 @@ export const GeminiDialog = ({
   useEffect(() => {
     if (open) {
       form.reset({
+        credentialId: defaultValues.credentialId || "",
         variableName: defaultValues.variableName || "",
         model: defaultValues.model || DEFAULT_MODEL,
         systemPrompt: defaultValues.systemPrompt || "",
@@ -128,6 +133,24 @@ export const GeminiDialog = ({
               onSubmit={form.handleSubmit(handleSubmit)}
               className="space-y-5"
             >
+              <FormField
+                control={form.control}
+                name="credentialId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>API Key</FormLabel>
+                    <FormControl>
+                      <CredentialPicker
+                        type={CredentialType.GEMINI}
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -258,9 +281,10 @@ export const GeminiDialog = ({
                 </Button>
                 <Button
                   type="submit"
+                  disabled={form.formState.isSubmitting}
                   className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
                 >
-                  Save Configuration
+                  {form.formState.isSubmitting ? "Saving..." : "Save Configuration"}
                 </Button>
               </DialogFooter>
             </form>

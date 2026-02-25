@@ -1,7 +1,6 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { WorkflowIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   EmptyView,
@@ -14,7 +13,9 @@ import {
   ErrorView,
   LoadingView,
 } from "@/components/entity-components";
-import type { Workflow } from "@/generated/prisma";
+import { CredentialType } from "@/generated/prisma";
+import type { Credentials  }   from "@/generated/prisma";
+
 import { useEntitySearch } from "@/hooks/use-entity-search";
 import {
  
@@ -22,6 +23,7 @@ import {
   useSuspenseCredentials,
 } from "../hooks/use-credentials";
 import { useCredentialsParams } from "../hooks/use-credentials-params";
+import Image from "next/image";
 
 export const CredentialsSearch = () => {
   const [params, setParams] = useCredentialsParams();
@@ -120,14 +122,20 @@ export const CredentialsEmpty = () => {
   );
 };
 
+const credentialLogos: Record<CredentialType, string> = {
+[CredentialType.OPENAI]: "/logos/openai.svg",
+[CredentialType.ANTHROPIC]: "/logos/anthropic.svg",
+[CredentialType.GEMINI]: "/logos/gemini.svg",
+};
 
-
-export const CredentialItem = ({ data }: { data: Workflow }) => {
+export const CredentialItem = ({ data }: { data: Credentials }) => {
   const removeCredential = useRemoveCredential();
 
   const handleRemove = () => {
     removeCredential.mutate({ id: data.id });
   };
+
+  const logo = credentialLogos[data.type] || "/logos/openai.svg";
 
   return (
     <EntityItem
@@ -142,7 +150,7 @@ export const CredentialItem = ({ data }: { data: Workflow }) => {
       }
       image={
         <div className="size-8 flex items-center justify-center">
-          <WorkflowIcon className="size-5 text-muted-foreground" />
+          <Image src={logo} alt={data.type} width={20} height={20} />
         </div>
       }
       onRemove={handleRemove}
