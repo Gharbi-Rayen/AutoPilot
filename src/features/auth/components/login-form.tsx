@@ -1,5 +1,6 @@
 "use client";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2Icon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -84,12 +85,16 @@ export function LoginForm() {
                     disabled={isPending}
                     type="button"
                   >
-                    <Image
-                      src="/logos/github.svg"
-                      alt="GitHub"
-                      width={20}
-                      height={20}
-                    />
+                    {isPending ? (
+                      <Loader2Icon className="size-5 animate-spin" />
+                    ) : (
+                      <Image
+                        src="/logos/github.svg"
+                        alt="GitHub"
+                        width={20}
+                        height={20}
+                      />
+                    )}
                     Continue with Github
                   </Button>
                   <Button
@@ -98,12 +103,16 @@ export function LoginForm() {
                     disabled={isPending}
                     type="button"
                   >
-                    <Image
-                      src="/logos/google.svg"
-                      alt="Google"
-                      width={20}
-                      height={20}
-                    />
+                    {isPending ? (
+                      <Loader2Icon className="size-5 animate-spin" />
+                    ) : (
+                      <Image
+                        src="/logos/google.svg"
+                        alt="Google"
+                        width={20}
+                        height={20}
+                      />
+                    )}
                     Continue with Google
                   </Button>
                 </div>
@@ -144,7 +153,8 @@ export function LoginForm() {
                   />
 
                   <Button type="submit" className="w-full" disabled={isPending}>
-                    Login
+                    {isPending && <Loader2Icon className="size-4 animate-spin" />}
+                    {isPending ? "Signing in..." : "Login"}
                   </Button>
                 </div>
 

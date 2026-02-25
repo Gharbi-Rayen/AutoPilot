@@ -1,11 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,51 +35,14 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { useAIModels } from "@/features/executions/hooks/use-ai-models";
+import { CredentialPicker } from "@/features/credentials/components/credential-picker";
+import { CredentialType } from "@/generated/prisma";
 
-export const AVAILABLE_MODELS = [
-  "claude-sonnet-4-20250514",
-  "claude-haiku-4-20250514",
-  "claude-3-5-sonnet-20241022",
-  "claude-3-5-haiku-20241022",
-  "claude-3-opus-20240229",
-] as const;
-
-const MODEL_INFO: Record<
-  (typeof AVAILABLE_MODELS)[number],
-  {
-    label: string;
-    badge: string;
-    badgeVariant: "default" | "secondary" | "outline";
-  }
-> = {
-  "claude-sonnet-4-20250514": {
-    label: "Claude Sonnet 4",
-    badge: "Recommended",
-    badgeVariant: "default",
-  },
-  "claude-haiku-4-20250514": {
-    label: "Claude Haiku 4",
-    badge: "Fast",
-    badgeVariant: "secondary",
-  },
-  "claude-3-5-sonnet-20241022": {
-    label: "Claude 3.5 Sonnet",
-    badge: "Stable",
-    badgeVariant: "secondary",
-  },
-  "claude-3-5-haiku-20241022": {
-    label: "Claude 3.5 Haiku",
-    badge: "Light",
-    badgeVariant: "outline",
-  },
-  "claude-3-opus-20240229": {
-    label: "Claude 3 Opus",
-    badge: "Advanced",
-    badgeVariant: "default",
-  },
-};
+export const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 const formSchema = z.object({
+  credentialId: z.string().min(1, { message: "API key is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -87,7 +50,7 @@ const formSchema = z.object({
       message:
         "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
     }),
-  model: z.enum(AVAILABLE_MODELS),
+  model: z.string().min(1, { message: "Model is required" }),
   systemPrompt: z.string().optional(),
   userPrompt: z.string().min(1, { message: "User prompt is required" }),
 });
@@ -107,11 +70,14 @@ export const AnthropicDialog = ({
   onSubmit,
   defaultValues = {},
 }: AnthropicDialogProps) => {
+  const { data: models, isLoading: modelsLoading } = useAIModels("anthropic");
+
   const form = useForm<AnthropicFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      credentialId: defaultValues.credentialId || "",
       variableName: defaultValues.variableName || "",
-      model: defaultValues.model || AVAILABLE_MODELS[0],
+      model: defaultValues.model || DEFAULT_MODEL,
       systemPrompt: defaultValues.systemPrompt || "",
       userPrompt: defaultValues.userPrompt || "",
     },
@@ -127,8 +93,9 @@ export const AnthropicDialog = ({
   useEffect(() => {
     if (open) {
       form.reset({
+        credentialId: defaultValues.credentialId || "",
         variableName: defaultValues.variableName || "",
-        model: defaultValues.model || AVAILABLE_MODELS[0],
+        model: defaultValues.model || DEFAULT_MODEL,
         systemPrompt: defaultValues.systemPrompt || "",
         userPrompt: defaultValues.userPrompt || "",
       });
@@ -166,6 +133,24 @@ export const AnthropicDialog = ({
               onSubmit={form.handleSubmit(handleSubmit)}
               className="space-y-5"
             >
+              <FormField
+                control={form.control}
+                name="credentialId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>API Key</FormLabel>
+                    <FormControl>
+                      <CredentialPicker
+                        type={CredentialType.ANTHROPIC}
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -185,22 +170,18 @@ export const AnthropicDialog = ({
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Available Models</SelectLabel>
-                            {AVAILABLE_MODELS.map((model) => {
-                              const info = MODEL_INFO[model];
-                              return (
-                                <SelectItem key={model} value={model}>
-                                  <span className="flex items-center gap-2">
-                                    {info.label}
-                                    <Badge
-                                      variant={info.badgeVariant}
-                                      className="text-[10px] px-1.5 py-0"
-                                    >
-                                      {info.badge}
-                                    </Badge>
-                                  </span>
+                            {modelsLoading ? (
+                              <div className="flex items-center justify-center py-2 text-xs text-muted-foreground">
+                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                Loading models...
+                              </div>
+                            ) : (
+                              models?.map((model) => (
+                                <SelectItem key={model.id} value={model.id}>
+                                  {model.name}
                                 </SelectItem>
-                              );
-                            })}
+                              ))
+                            )}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -300,9 +281,10 @@ export const AnthropicDialog = ({
                 </Button>
                 <Button
                   type="submit"
+                  disabled={form.formState.isSubmitting}
                   className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white"
                 >
-                  Save Configuration
+                  {form.formState.isSubmitting ? "Saving..." : "Save Configuration"}
                 </Button>
               </DialogFooter>
             </form>

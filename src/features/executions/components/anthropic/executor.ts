@@ -4,12 +4,14 @@ import Handlebars from "handlebars";
 import { NonRetriableError } from "inngest";
 import type { NodeExecutor } from "@/features/executions/components/types";
 import { AnthropicChannel } from "@/inngest/channels/anthropic";
+import prisma from "@/lib/db";
 
 Handlebars.registerHelper("json", (context: unknown) => {
   return new Handlebars.SafeString(JSON.stringify(context, null, 2));
 });
 
 type AnthropicData = {
+  credentialId?: string;
   variableName?: string;
   model?: string;
   systemPrompt?: string;
@@ -44,16 +46,29 @@ export const AnthropicExecutor: NodeExecutor<AnthropicData> = async ({
     throw new NonRetriableError("User prompt is required");
   }
 
+  if (!data.credentialId) {
+    await updateStatePublish("error");
+    throw new NonRetriableError("Anthropic API key is required. Please configure an API key in the node settings.");
+  }
+
+  const credential = await step.run("fetch-anthropic-credential", async () => {
+    const cred = await prisma.credentials.findUnique({
+      where: { id: data.credentialId },
+    });
+    if (!cred) {
+      throw new NonRetriableError("API key not found. It may have been deleted.");
+    }
+    return cred;
+  });
+
   const systemPrompt = data.systemPrompt
     ? Handlebars.compile(data.systemPrompt)(context)
     : "You are a helpful assistant.";
 
   const userPrompt = Handlebars.compile(data.userPrompt)(context);
 
-  const credentialValue = process.env.ANTHROPIC_API_KEY || "";
-
   const anthropic = createAnthropic({
-    apiKey: credentialValue,
+    apiKey: credential.value,
   });
 
   try {
@@ -61,7 +76,7 @@ export const AnthropicExecutor: NodeExecutor<AnthropicData> = async ({
       "anthropic-generate-text",
       generateText,
       {
-        model: anthropic(data.model || "claude-sonnet-4-20250514"),
+        model: anthropic(data.model || "claude-sonnet-4-6"),
         system: systemPrompt,
         prompt: userPrompt,
         experimental_telemetry: {

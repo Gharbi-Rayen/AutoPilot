@@ -232,7 +232,9 @@ export const HttpRequestDialog = ({
               />
             )}
             <DialogFooter className="mt-4">
-              <Button type="submit">Save</Button>
+              <Button type="submit" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? "Saving..." : "Save"}
+              </Button>
             </DialogFooter>
           </form>
         </Form>

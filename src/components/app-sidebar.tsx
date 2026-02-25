@@ -5,12 +5,14 @@ import {
   FolderOpenIcon,
   HistoryIcon,
   KeyIcon,
+  Loader2Icon,
   LogOutIcon,
   StarIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import React, { useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +23,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useHasActiveSubscription } from "@/features/subscriptions/hooks/use-subscription";
 import { authClient } from "@/lib/auth-client";
@@ -52,6 +55,19 @@ export const AppSidebar = () => {
   const router = useRouter();
   const pathname = usePathname();
   const { hasActiveSubscription, isLoading } = useHasActiveSubscription();
+  const { setOpenMobile } = useSidebar();
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [isBilling, setIsBilling] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
+
+  // Clear the loading state and close mobile sidebar when navigation completes
+  React.useEffect(() => {
+    if (pathname) {
+      setNavigatingTo(null);
+      setOpenMobile(false);
+    }
+  }, [pathname, setOpenMobile]);
 
   return (
     <Sidebar collapsible="icon">
@@ -81,25 +97,39 @@ export const AppSidebar = () => {
           <SidebarGroup key={group.title}>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      tooltip={item.title}
-                      isActive={
-                        item.url === "/"
-                          ? pathname === "/"
-                          : pathname.startsWith(item.url)
-                      }
-                      asChild
-                      className="gap-x-4 h-10 px-4"
-                    >
-                      <Link href={item.url}>
-                        <item.icon className="size-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                {group.items.map((item) => {
+                  const isActive = item.url === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.url);
+                  const isNavigating = navigatingTo === item.url && !isActive;
+
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        tooltip={item.title}
+                        isActive={isActive}
+                        asChild
+                        className="gap-x-4 h-10 px-4"
+                      >
+                        <Link 
+                          href={item.url}
+                          onClick={() => {
+                            if (!isActive) {
+                              setNavigatingTo(item.url);
+                            }
+                          }}
+                        >
+                          {isNavigating ? (
+                            <Loader2Icon className="size-4 animate-spin" />
+                          ) : (
+                            <item.icon className="size-4" />
+                          )}
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -116,9 +146,24 @@ export const AppSidebar = () => {
                 isActive={false}
                 className="gap-x-4 h-10 px-4"
               >
-                <button onClick={() => authClient.checkout({ slug: "pro" })}>
-                  <StarIcon className="size-4" />
-                  <span>Upgrade to Pro</span>
+                <button 
+                  type="button"
+                  disabled={isUpgrading}
+                  onClick={async () => {
+                    setIsUpgrading(true);
+                    try {
+                      await authClient.checkout({ slug: "pro" });
+                    } finally {
+                      setIsUpgrading(false);
+                    }
+                  }}
+                >
+                  {isUpgrading ? (
+                    <Loader2Icon className="size-4 animate-spin" />
+                  ) : (
+                    <StarIcon className="size-4" />
+                  )}
+                  <span>{isUpgrading ? "Loading..." : "Upgrade to Pro"}</span>
                 </button>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -132,12 +177,23 @@ export const AppSidebar = () => {
               className="gap-x-4 h-10 px-4"
             >
               <button
-                onClick={() => {
-                  authClient.customer.portal();
+                type="button"
+                disabled={isBilling}
+                onClick={async () => {
+                  setIsBilling(true);
+                  try {
+                    await authClient.customer.portal();
+                  } finally {
+                    setIsBilling(false);
+                  }
                 }}
               >
-                <CreditCardIcon className="size-4" />
-                <span>Billing portal</span>
+                {isBilling ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <CreditCardIcon className="size-4" />
+                )}
+                <span>{isBilling ? "Loading..." : "Billing portal"}</span>
               </button>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -149,7 +205,10 @@ export const AppSidebar = () => {
               className="gap-x-4 h-10 px-4"
             >
               <button
+                type="button"
+                disabled={isLoggingOut}
                 onClick={() => {
+                  setIsLoggingOut(true);
                   authClient.signOut({
                     fetchOptions: {
                       onSuccess: () => {
@@ -159,8 +218,12 @@ export const AppSidebar = () => {
                   });
                 }}
               >
-                <LogOutIcon className="size-4" />
-                <span>Log out</span>
+                {isLoggingOut ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <LogOutIcon className="size-4" />
+                )}
+                <span>{isLoggingOut ? "Signing out..." : "Log out"}</span>
               </button>
             </SidebarMenuButton>
           </SidebarMenuItem>

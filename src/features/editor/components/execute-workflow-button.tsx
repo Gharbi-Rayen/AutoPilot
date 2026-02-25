@@ -1,4 +1,4 @@
-import { FlaskConicalIcon } from "lucide-react";
+import { FlaskConicalIcon, Loader2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useExecuteWorkflow } from "@/features/workflows/hooks/use-workflows";
 
@@ -19,8 +19,12 @@ export const ExecuteWorkflowButton = ({
       onClick={handleExecute}
       disabled={executeWorkflow.isPending}
     >
-      <FlaskConicalIcon className="size-4" />
-      Execute Workflow
+      {executeWorkflow.isPending ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <FlaskConicalIcon className="size-4" />
+      )}
+      {executeWorkflow.isPending ? "Executing..." : "Execute Workflow"}
     </Button>
   );
 };

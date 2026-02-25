@@ -1,11 +1,11 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,51 +35,14 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { useAIModels } from "@/features/executions/hooks/use-ai-models";
+import { CredentialPicker } from "@/features/credentials/components/credential-picker";
+import { CredentialType } from "@/generated/prisma";
 
-export const AVAILABLE_MODELS = [
-  "gpt-4o",
-  "gpt-4o-mini",
-  "gpt-4-turbo",
-  "gpt-3.5-turbo",
-  "o3-mini",
-] as const;
-
-const MODEL_INFO: Record<
-  (typeof AVAILABLE_MODELS)[number],
-  {
-    label: string;
-    badge: string;
-    badgeVariant: "default" | "secondary" | "outline";
-  }
-> = {
-  "gpt-4o": {
-    label: "GPT-4o",
-    badge: "Recommended",
-    badgeVariant: "default",
-  },
-  "gpt-4o-mini": {
-    label: "GPT-4o Mini",
-    badge: "Fast",
-    badgeVariant: "secondary",
-  },
-  "gpt-4-turbo": {
-    label: "GPT-4 Turbo",
-    badge: "Advanced",
-    badgeVariant: "default",
-  },
-  "gpt-3.5-turbo": {
-    label: "GPT-3.5 Turbo",
-    badge: "Budget",
-    badgeVariant: "outline",
-  },
-  "o3-mini": {
-    label: "O3 Mini",
-    badge: "Reasoning",
-    badgeVariant: "secondary",
-  },
-};
+export const DEFAULT_MODEL = "gpt-4.1-mini";
 
 const formSchema = z.object({
+  credentialId: z.string().min(1, { message: "API key is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -87,7 +50,7 @@ const formSchema = z.object({
       message:
         "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
     }),
-  model: z.enum(AVAILABLE_MODELS),
+  model: z.string().min(1, { message: "Model is required" }),
   systemPrompt: z.string().optional(),
   userPrompt: z.string().min(1, { message: "User prompt is required" }),
 });
@@ -107,11 +70,14 @@ export const OpenAIDialog = ({
   onSubmit,
   defaultValues = {},
 }: OpenAIDialogProps) => {
+  const { data: models, isLoading: modelsLoading } = useAIModels("openai");
+
   const form = useForm<OpenAIFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      credentialId: defaultValues.credentialId || "",
       variableName: defaultValues.variableName || "",
-      model: defaultValues.model || AVAILABLE_MODELS[0],
+      model: defaultValues.model || DEFAULT_MODEL,
       systemPrompt: defaultValues.systemPrompt || "",
       userPrompt: defaultValues.userPrompt || "",
     },
@@ -127,8 +93,9 @@ export const OpenAIDialog = ({
   useEffect(() => {
     if (open) {
       form.reset({
+        credentialId: defaultValues.credentialId || "",
         variableName: defaultValues.variableName || "",
-        model: defaultValues.model || AVAILABLE_MODELS[0],
+        model: defaultValues.model || DEFAULT_MODEL,
         systemPrompt: defaultValues.systemPrompt || "",
         userPrompt: defaultValues.userPrompt || "",
       });
@@ -166,6 +133,24 @@ export const OpenAIDialog = ({
               onSubmit={form.handleSubmit(handleSubmit)}
               className="space-y-5"
             >
+              <FormField
+                control={form.control}
+                name="credentialId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>API Key</FormLabel>
+                    <FormControl>
+                      <CredentialPicker
+                        type={CredentialType.OPENAI}
+                        value={field.value}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -185,22 +170,18 @@ export const OpenAIDialog = ({
                         <SelectContent>
                           <SelectGroup>
                             <SelectLabel>Available Models</SelectLabel>
-                            {AVAILABLE_MODELS.map((model) => {
-                              const info = MODEL_INFO[model];
-                              return (
-                                <SelectItem key={model} value={model}>
-                                  <span className="flex items-center gap-2">
-                                    {info.label}
-                                    <Badge
-                                      variant={info.badgeVariant}
-                                      className="text-[10px] px-1.5 py-0"
-                                    >
-                                      {info.badge}
-                                    </Badge>
-                                  </span>
+                            {modelsLoading ? (
+                              <div className="flex items-center justify-center py-2 text-xs text-muted-foreground">
+                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                Loading models...
+                              </div>
+                            ) : (
+                              models?.map((model) => (
+                                <SelectItem key={model.id} value={model.id}>
+                                  {model.name}
                                 </SelectItem>
-                              );
-                            })}
+                              ))
+                            )}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -300,9 +281,10 @@ export const OpenAIDialog = ({
                 </Button>
                 <Button
                   type="submit"
+                  disabled={form.formState.isSubmitting}
                   className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white"
                 >
-                  Save Configuration
+                  {form.formState.isSubmitting ? "Saving..." : "Save Configuration"}
                 </Button>
               </DialogFooter>
             </form>
