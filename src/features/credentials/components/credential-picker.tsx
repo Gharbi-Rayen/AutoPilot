@@ -1,12 +1,10 @@
 "use client";
 
-import { CredentialType } from "@/generated/prisma";
-import { useCredentialsByType } from "../hooks/use-credentials";
-import Image from "next/image";
-import Link from "next/link";
 import { AlertCircleIcon, KeyIcon, Loader2Icon, PlusIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { usePathname } from "next/navigation";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
+import { useTransition } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -14,7 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
+import { CredentialType } from "@/generated/prisma";
+import { cn } from "@/lib/utils";
+import { useCredentialsByType } from "../hooks/use-credentials";
 
 const credentialConfig: Record<
   string,
@@ -50,24 +50,45 @@ export const CredentialPicker = ({
   onChange,
   disabled,
 }: CredentialPickerProps) => {
-  const { data: credentials, isLoading, isError, refetch } = useCredentialsByType(type);
+  const {
+    data: credentials,
+    isLoading,
+    isError,
+    refetch,
+  } = useCredentialsByType(type);
   const config = credentialConfig[type];
   const pathname = usePathname();
+  const router = useRouter();
+  const [isNavigating, startNavigation] = useTransition();
 
   const hasCredentials = credentials && credentials.length > 0;
-  const selectedCredential = hasCredentials ? credentials.find((c) => c.id === value) : null;
+  const selectedCredential = hasCredentials
+    ? credentials.find((c) => c.id === value)
+    : null;
 
   // Build the "Add API Key" link with redirect back to current page
   const addKeyHref = `/credentials/new?redirect=${encodeURIComponent(pathname)}`;
 
+  const handleAddKeyClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    startNavigation(() => {
+      router.push(addKeyHref);
+    });
+  };
+
   return (
-    <Select value={value || ""} onValueChange={onChange} disabled={disabled || isLoading}>
+    <Select
+      value={value || ""}
+      onValueChange={onChange}
+      disabled={disabled || isLoading}
+    >
       <SelectTrigger
         className={cn(
           "w-full h-10 transition-all duration-150",
           "hover:border-foreground/20 hover:bg-accent/50",
           "focus:ring-1 focus:ring-ring",
-          value && "border-foreground/15"
+          value && "border-foreground/15",
         )}
       >
         <SelectValue placeholder="Select an API key">
@@ -107,13 +128,18 @@ export const CredentialPicker = ({
         {isError && (
           <div className="flex flex-col items-center gap-2 py-3 px-2">
             <AlertCircleIcon className="size-4 text-destructive" />
-            <span className="text-xs text-destructive">Failed to load keys</span>
+            <span className="text-xs text-destructive">
+              Failed to load keys
+            </span>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               className="h-6 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={(e) => { e.stopPropagation(); refetch(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                refetch();
+              }}
             >
               Retry
             </Button>
@@ -132,37 +158,41 @@ export const CredentialPicker = ({
               variant="outline"
               size="sm"
               className="h-7 gap-1.5 text-xs mt-1"
-              asChild
+              disabled={isNavigating}
+              onClick={handleAddKeyClick}
             >
-              <Link href={addKeyHref}>
+              {isNavigating ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : (
                 <PlusIcon className="size-3" />
-                Add API Key
-              </Link>
+              )}
+              {isNavigating ? "Redirecting..." : "Add API Key"}
             </Button>
           </div>
         )}
 
         {/* Credential items */}
-        {hasCredentials && credentials.map((credential) => (
-          <SelectItem
-            key={credential.id}
-            value={credential.id}
-            className="cursor-pointer transition-colors duration-100"
-          >
-            <div className="flex items-center gap-2.5 py-0.5">
-              <Image
-                src={config.logo}
-                alt={config.label}
-                width={16}
-                height={16}
-                className="rounded-sm shrink-0"
-              />
-              <span className="text-sm font-medium truncate">
-                {credential.name}
-              </span>
-            </div>
-          </SelectItem>
-        ))}
+        {hasCredentials &&
+          credentials.map((credential) => (
+            <SelectItem
+              key={credential.id}
+              value={credential.id}
+              className="cursor-pointer transition-colors duration-100"
+            >
+              <div className="flex items-center gap-2.5 py-0.5">
+                <Image
+                  src={config.logo}
+                  alt={config.label}
+                  width={16}
+                  height={16}
+                  className="rounded-sm shrink-0"
+                />
+                <span className="text-sm font-medium truncate">
+                  {credential.name}
+                </span>
+              </div>
+            </SelectItem>
+          ))}
 
         {/* Add new key link at bottom when credentials exist */}
         {hasCredentials && (
@@ -172,12 +202,15 @@ export const CredentialPicker = ({
               variant="ghost"
               size="sm"
               className="w-full h-8 justify-start gap-2 text-xs text-muted-foreground hover:text-foreground"
-              asChild
+              disabled={isNavigating}
+              onClick={handleAddKeyClick}
             >
-              <Link href={addKeyHref}>
+              {isNavigating ? (
+                <Loader2Icon className="size-3 animate-spin" />
+              ) : (
                 <PlusIcon className="size-3" />
-                Add new API key
-              </Link>
+              )}
+              {isNavigating ? "Redirecting..." : "Add new API key"}
             </Button>
           </div>
         )}

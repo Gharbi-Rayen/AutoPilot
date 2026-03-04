@@ -24,6 +24,7 @@ export const GeminiExecutor: NodeExecutor<GeminiData> = async ({
   context,
   step,
   publish,
+  userId,
 }) => {
   const updateStatePublish = async (state: "loading" | "error" | "success") => {
     return await publish(
@@ -48,15 +49,19 @@ export const GeminiExecutor: NodeExecutor<GeminiData> = async ({
 
   if (!data.credentialId) {
     await updateStatePublish("error");
-    throw new NonRetriableError("Gemini API key is required. Please configure an API key in the node settings.");
+    throw new NonRetriableError(
+      "Gemini API key is required. Please configure an API key in the node settings.",
+    );
   }
 
   const credential = await step.run("fetch-gemini-credential", async () => {
     const cred = await prisma.credentials.findUnique({
-      where: { id: data.credentialId },
+      where: { id: data.credentialId, userId },
     });
     if (!cred) {
-      throw new NonRetriableError("API key not found. It may have been deleted.");
+      throw new NonRetriableError(
+        "API key not found or access denied. It may have been deleted.",
+      );
     }
     return cred;
   });

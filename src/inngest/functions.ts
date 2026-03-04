@@ -42,7 +42,7 @@ export const executeWorkflow = inngest.createFunction(
       throw new NonRetriableError("No workflow ID provided");
     }
 
-    const sortedNodes = await step.run("prepare-workflow", async () => {
+    const workflowData = await step.run("prepare-workflow", async () => {
       console.log("[Inngest] Fetching workflow:", workflowId);
 
       const workflow = await prisma.workflow.findUnique({
@@ -65,7 +65,21 @@ export const executeWorkflow = inngest.createFunction(
         connectionCount: workflow.connections.length,
       });
 
-      return topologicalSort(workflow.nodes, workflow.connections);
+      return {
+        userId: workflow.userId,
+        sortedNodes: topologicalSort(workflow.nodes, workflow.connections),
+      };
+    });
+
+    const { sortedNodes } = workflowData;
+
+    // Resolve the workflow owner for credential ownership checks
+    const ownerId = await step.run("find-user-id", async () => {
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { id: workflowData.userId },
+        select: { id: true },
+      });
+      return user.id;
     });
 
     //intialize context with any initial data from the trigger
@@ -92,6 +106,7 @@ export const executeWorkflow = inngest.createFunction(
           context,
           step,
           publish,
+          userId: ownerId,
         });
 
         console.log("[Inngest] Node completed:", node.id);
