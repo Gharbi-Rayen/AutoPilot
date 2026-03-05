@@ -91,7 +91,10 @@ enum CredentialType {
   OPENAI
   ANTHROPIC
   GEMINI
-
+  DISCORD_WEBHOOK
+  SLACK_WEBHOOK
+  TELEGRAM_BOT
+  EMAIL_SMTP
 }
 
 model Workflow {
@@ -118,6 +121,7 @@ enum NodeType {
   DISCORD
   SLACK
   TELEGRAM
+  EMAIL_SMTP
 }
 
 model Node {

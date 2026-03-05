@@ -2,23 +2,20 @@ import { CredentialForm } from "@/features/credentials/components/credential";
 import { requireAuth } from "@/lib/auth-utils";
 
 interface PageProps {
-  searchParams: Promise<{ redirect?: string }>;
+  searchParams: Promise<{ redirect?: string; type?: string }>;
 }
 
 const Page = async ({ searchParams }: PageProps) => {
-    await requireAuth();
-    const { redirect } = await searchParams;
+  await requireAuth();
+  const { redirect, type } = await searchParams;
 
- return (
+  return (
     <div className="p-4 md:px-10 md:py-6 h-full">
-        <div className="mx-auto max-w-screen-md w-full flex flex-col gap-y-8 h-full">
-          <CredentialForm redirectTo={redirect} />
-        </div>
-            
+      <div className="mx-auto max-w-screen-md w-full flex flex-col gap-y-8 h-full">
+        <CredentialForm redirectTo={redirect} defaultType={type} />
+      </div>
     </div>
- );
-
-
-}
+  );
+};
 
 export default Page;

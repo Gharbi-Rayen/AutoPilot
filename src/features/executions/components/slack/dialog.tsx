@@ -29,9 +29,7 @@ import { CredentialPicker } from "@/features/credentials/components/credential-p
 import { CredentialType } from "@/generated/prisma";
 
 const formSchema = z.object({
-  credentialId: z
-    .string()
-    .min(1, { message: "Discord Webhook URL is required" }),
+  credentialId: z.string().min(1, { message: "Slack Webhook URL is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -39,44 +37,36 @@ const formSchema = z.object({
       message:
         "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
     }),
-  content: z
-    .string()
-    .min(1, { message: "Message content is required" })
-    .max(2000, { message: "Message must be 2000 characters or less" }),
-  username: z.string().optional(),
-  avatarUrl: z.string().optional(),
+  text: z.string().min(1, { message: "Message text is required" }),
 });
 
-export type DiscordFormValues = z.infer<typeof formSchema>;
+export type SlackFormValues = z.infer<typeof formSchema>;
 
-interface DiscordDialogProps {
+interface SlackDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (values: DiscordFormValues) => void;
-  defaultValues?: Partial<DiscordFormValues>;
+  onSubmit: (values: SlackFormValues) => void;
+  defaultValues?: Partial<SlackFormValues>;
 }
 
-export const DiscordDialog = ({
+export const SlackDialog = ({
   open,
   onOpenChange,
   onSubmit,
   defaultValues = {},
-}: DiscordDialogProps) => {
-  const form = useForm<DiscordFormValues>({
+}: SlackDialogProps) => {
+  const form = useForm<SlackFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       credentialId: defaultValues.credentialId || "",
       variableName: defaultValues.variableName || "",
-      content: defaultValues.content || "",
-      username: defaultValues.username || "",
-      avatarUrl: defaultValues.avatarUrl || "",
+      text: defaultValues.text || "",
     },
   });
 
-  const watchVariableName = form.watch("variableName") || "discordResult";
-  const watchContent = form.watch("content") || "";
+  const watchVariableName = form.watch("variableName") || "slackResult";
 
-  const handleSubmit = (values: DiscordFormValues) => {
+  const handleSubmit = (values: SlackFormValues) => {
     onSubmit(values);
     onOpenChange(false);
   };
@@ -86,9 +76,7 @@ export const DiscordDialog = ({
       form.reset({
         credentialId: defaultValues.credentialId || "",
         variableName: defaultValues.variableName || "",
-        content: defaultValues.content || "",
-        username: defaultValues.username || "",
-        avatarUrl: defaultValues.avatarUrl || "",
+        text: defaultValues.text || "",
       });
     }
   }, [open, defaultValues, form]);
@@ -96,22 +84,22 @@ export const DiscordDialog = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg p-0 overflow-hidden max-h-[85vh] flex flex-col">
-        <div className="bg-gradient-to-r from-indigo-500/10 via-violet-500/10 to-purple-500/10 px-6 pt-6 pb-4 shrink-0">
+        <div className="bg-gradient-to-r from-purple-600/10 via-fuchsia-500/10 to-pink-500/10 px-6 pt-6 pb-4 shrink-0">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
-              <div className="flex items-center justify-center size-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 shadow-sm">
+              <div className="flex items-center justify-center size-8 rounded-lg bg-gradient-to-br from-purple-700 to-fuchsia-600 shadow-sm">
                 <Image
-                  src="/logos/discord.svg"
-                  alt="Discord"
+                  src="/logos/slack.svg"
+                  alt="Slack"
                   width={18}
                   height={18}
                   className="brightness-0 invert"
                 />
               </div>
               <div>
-                <span className="text-base font-semibold">Discord</span>
+                <span className="text-base font-semibold">Slack</span>
                 <p className="text-xs font-normal text-muted-foreground mt-0.5">
-                  Send messages via webhook
+                  Send messages via incoming webhook
                 </p>
               </div>
             </DialogTitle>
@@ -132,14 +120,14 @@ export const DiscordDialog = ({
                     <FormLabel>Webhook URL</FormLabel>
                     <FormControl>
                       <CredentialPicker
-                        type={CredentialType.DISCORD_WEBHOOK}
+                        type={CredentialType.SLACK_WEBHOOK}
                         value={field.value}
                         onChange={field.onChange}
                       />
                     </FormControl>
                     <FormDescription>
-                      Get it from Discord → Server Settings → Integrations →
-                      Webhooks
+                      Get it from your Slack App → Incoming Webhooks → Add New
+                      Webhook to Workspace
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -153,21 +141,21 @@ export const DiscordDialog = ({
                   <FormItem>
                     <FormLabel>Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="discordResult" {...field} />
+                      <Input placeholder="slackResult" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <div className="rounded-md bg-indigo-500/5 border border-indigo-500/10 px-3 py-2 text-xs text-muted-foreground font-mono">
+              <div className="rounded-md bg-purple-500/5 border border-purple-500/10 px-3 py-2 text-xs text-muted-foreground font-mono">
                 Access result:{" "}
-                <span className="text-indigo-600 dark:text-indigo-400">
+                <span className="text-purple-600 dark:text-purple-400">
                   {`{{${watchVariableName}.success}}`}
                 </span>
                 {" · "}
-                <span className="text-indigo-600 dark:text-indigo-400">
-                  {`{{${watchVariableName}.messageId}}`}
+                <span className="text-purple-600 dark:text-purple-400">
+                  {`{{${watchVariableName}.timestamp}}`}
                 </span>
               </div>
 
@@ -175,79 +163,33 @@ export const DiscordDialog = ({
 
               <FormField
                 control={form.control}
-                name="content"
+                name="text"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="flex items-center justify-between">
-                      <span>Message Content</span>
-                      <span
-                        className={`text-xs font-normal ${watchContent.length > 2000 ? "text-destructive" : "text-muted-foreground"}`}
-                      >
-                        {watchContent.length}/2000
-                      </span>
-                    </FormLabel>
+                    <FormLabel>Message Text</FormLabel>
                     <FormControl>
                       <Textarea
-                        className="min-h-[100px] font-mono text-sm resize-none"
+                        className="min-h-[120px] font-mono text-sm resize-none"
                         placeholder="Hello from AutoPilot! {{previousStep.data}}"
                         {...field}
                       />
                     </FormControl>
                     <FormDescription>
-                      Use{" "}
+                      Supports Slack{" "}
+                      <code className="text-[10px] bg-muted px-1 rounded">
+                        mrkdwn
+                      </code>{" "}
+                      formatting. Use{" "}
                       <code className="text-[10px] bg-muted px-1 rounded">
                         {"{{variable}}"}
                       </code>{" "}
-                      to insert data from previous steps. Rate limit: 5
-                      requests/5 seconds.
+                      for data from previous steps. Free plan: 10 integrations
+                      max.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Username Override{" "}
-                        <span className="text-muted-foreground font-normal">
-                          (optional)
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="AutoPilot Bot" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="avatarUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Avatar URL{" "}
-                        <span className="text-muted-foreground font-normal">
-                          (optional)
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="https://example.com/avatar.png"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
 
               <DialogFooter>
                 <Button
@@ -260,7 +202,7 @@ export const DiscordDialog = ({
                 <Button
                   type="submit"
                   disabled={form.formState.isSubmitting}
-                  className="bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white"
+                  className="bg-gradient-to-r from-purple-700 to-fuchsia-600 hover:from-purple-800 hover:to-fuchsia-700 text-white"
                 >
                   {form.formState.isSubmitting
                     ? "Saving..."

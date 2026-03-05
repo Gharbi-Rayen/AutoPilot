@@ -2,24 +2,22 @@ import Handlebars from "handlebars";
 import { NonRetriableError } from "inngest";
 import ky from "ky";
 import type { NodeExecutor } from "@/features/executions/components/types";
-import { DiscordChannel } from "@/inngest/channels/discord";
+import { SlackChannel } from "@/inngest/channels/slack";
 import prisma from "@/lib/db";
 
 Handlebars.registerHelper("json", (context: unknown) => {
   return new Handlebars.SafeString(JSON.stringify(context, null, 2));
 });
 
-const DISCORD_MAX_CONTENT_LENGTH = 2000;
+const SLACK_MAX_TEXT_LENGTH = 40000;
 
-type DiscordData = {
+type SlackData = {
   credentialId?: string;
   variableName?: string;
-  content?: string;
-  username?: string;
-  avatarUrl?: string;
+  text?: string;
 };
 
-export const DiscordExecutor: NodeExecutor<DiscordData> = async ({
+export const SlackExecutor: NodeExecutor<SlackData> = async ({
   data,
   nodeId,
   context,
@@ -29,7 +27,7 @@ export const DiscordExecutor: NodeExecutor<DiscordData> = async ({
 }) => {
   const updateStatePublish = async (state: "loading" | "error" | "success") => {
     return await publish(
-      DiscordChannel().status({
+      SlackChannel().status({
         nodeId,
         status: state,
       }),
@@ -43,19 +41,19 @@ export const DiscordExecutor: NodeExecutor<DiscordData> = async ({
     throw new NonRetriableError("Variable name is required");
   }
 
-  if (!data.content) {
+  if (!data.text) {
     await updateStatePublish("error");
-    throw new NonRetriableError("Message content is required");
+    throw new NonRetriableError("Message text is required");
   }
 
   if (!data.credentialId) {
     await updateStatePublish("error");
     throw new NonRetriableError(
-      "Discord Webhook URL is required. Please configure a webhook credential in the node settings.",
+      "Slack Webhook URL is required. Please configure a webhook credential in the node settings.",
     );
   }
 
-  const credential = await step.run("fetch-discord-credential", async () => {
+  const credential = await step.run("fetch-slack-credential", async () => {
     const cred = await prisma.credentials.findUnique({
       where: { id: data.credentialId, userId },
     });
@@ -68,59 +66,39 @@ export const DiscordExecutor: NodeExecutor<DiscordData> = async ({
   });
 
   const webhookUrl = credential.value;
-  let messageContent = Handlebars.compile(data.content)(context);
+  let messageText = Handlebars.compile(data.text)(context);
 
-  // Truncate if exceeding Discord's 2000 char limit
-  if (messageContent.length > DISCORD_MAX_CONTENT_LENGTH) {
-    messageContent = `${messageContent.substring(0, DISCORD_MAX_CONTENT_LENGTH - 14)} [truncated]`;
+  // Truncate if exceeding Slack's 40,000 char limit
+  if (messageText.length > SLACK_MAX_TEXT_LENGTH) {
+    messageText = `${messageText.substring(0, SLACK_MAX_TEXT_LENGTH - 14)} [truncated]`;
   }
 
   try {
-    const result = await step.run("discord-send-message", async () => {
-      const payload: Record<string, unknown> = {
-        content: messageContent,
+    const result = await step.run("slack-send-message", async () => {
+      const payload = {
+        text: messageText,
       };
-
-      if (data.username) {
-        payload.username = Handlebars.compile(data.username)(context);
-      }
-
-      if (data.avatarUrl) {
-        payload.avatar_url = Handlebars.compile(data.avatarUrl)(context);
-      }
 
       const response = await ky.post(webhookUrl, {
         json: payload,
-        searchParams: { wait: "true" },
       });
 
       const timestamp = new Date().toISOString();
+      const responseText = await response.text();
 
-      // Discord returns 200 with message body when wait=true
-      if (response.ok) {
-        let messageId: string | undefined;
-        try {
-          const responseData = (await response.json()) as {
-            id?: string;
-          };
-          messageId = responseData.id;
-        } catch {
-          // Response might be empty for 204
-        }
-
+      if (response.ok && responseText === "ok") {
         return {
           success: true,
-          messageId,
           timestamp,
-          provider: "discord",
+          provider: "slack",
         };
       }
 
       return {
         success: false,
         timestamp,
-        provider: "discord",
-        error: `Discord API returned ${response.status}: ${response.statusText}`,
+        provider: "slack",
+        error: `Slack API returned ${response.status}: ${responseText}`,
       };
     });
 
@@ -134,7 +112,7 @@ export const DiscordExecutor: NodeExecutor<DiscordData> = async ({
     await updateStatePublish("error");
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new NonRetriableError(
-      `Failed to send Discord message: ${errorMessage}`,
+      `Failed to send Slack message: ${errorMessage}`,
     );
   }
 };

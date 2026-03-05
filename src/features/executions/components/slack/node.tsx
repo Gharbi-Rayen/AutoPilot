@@ -4,24 +4,22 @@ import { type NodeProps, useReactFlow } from "@xyflow/react";
 import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
-import { DISCORD_CHANNEL_NAME } from "@/inngest/channels/discord";
+import { SLACK_CHANNEL_NAME } from "@/inngest/channels/slack";
 import { useNodeStatus } from "../../hooks/use-node-status";
-import { fetchDiscordRealTimeToken } from "./actions";
-import { DiscordDialog, type DiscordFormValues } from "./dialog";
+import { fetchSlackRealTimeToken } from "./actions";
+import { SlackDialog, type SlackFormValues } from "./dialog";
 
-interface DiscordNodeData extends Record<string, unknown> {
+interface SlackNodeData extends Record<string, unknown> {
   credentialId?: string;
   variableName?: string;
-  content?: string;
-  username?: string;
-  avatarUrl?: string;
+  text?: string;
 }
 
-export const DiscordNode = memo((props: NodeProps) => {
+export const SlackNode = memo((props: NodeProps) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { setNodes } = useReactFlow();
 
-  const handleSubmit = (values: DiscordFormValues) => {
+  const handleSubmit = (values: SlackFormValues) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === props.id) {
@@ -40,21 +38,21 @@ export const DiscordNode = memo((props: NodeProps) => {
 
   const handleOpenSettings = () => setDialogOpen(true);
 
-  const data = props.data as DiscordNodeData;
-  const description = data?.content
-    ? `Send: ${data.content.slice(0, 50)}${data.content.length > 50 ? "..." : ""}`
+  const data = props.data as SlackNodeData;
+  const description = data?.text
+    ? `Send: ${data.text.slice(0, 50)}${data.text.length > 50 ? "..." : ""}`
     : "Not configured";
 
   const nodeStatus = useNodeStatus({
     nodeId: props.id,
-    channel: DISCORD_CHANNEL_NAME,
+    channel: SLACK_CHANNEL_NAME,
     topic: "status",
-    refreshToken: fetchDiscordRealTimeToken,
+    refreshToken: fetchSlackRealTimeToken,
   });
 
   return (
     <>
-      <DiscordDialog
+      <SlackDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSubmit={handleSubmit}
@@ -63,9 +61,9 @@ export const DiscordNode = memo((props: NodeProps) => {
       <BaseExecutionNode
         {...props}
         id={props.id}
-        name="Discord"
+        name="Slack"
         description={description}
-        icon="/logos/discord.svg"
+        icon="/logos/slack.svg"
         status={nodeStatus}
         onSettings={handleOpenSettings}
         onDoubleClick={handleOpenSettings}
@@ -74,4 +72,4 @@ export const DiscordNode = memo((props: NodeProps) => {
   );
 });
 
-DiscordNode.displayName = "DiscordNode";
+SlackNode.displayName = "SlackNode";

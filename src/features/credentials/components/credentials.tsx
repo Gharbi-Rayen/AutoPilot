@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   EmptyView,
@@ -13,17 +14,14 @@ import {
   ErrorView,
   LoadingView,
 } from "@/components/entity-components";
+import type { Credentials } from "@/generated/prisma";
 import { CredentialType } from "@/generated/prisma";
-import type { Credentials  }   from "@/generated/prisma";
-
 import { useEntitySearch } from "@/hooks/use-entity-search";
 import {
- 
   useRemoveCredential,
   useSuspenseCredentials,
 } from "../hooks/use-credentials";
 import { useCredentialsParams } from "../hooks/use-credentials-params";
-import Image from "next/image";
 
 export const CredentialsSearch = () => {
   const [params, setParams] = useCredentialsParams();
@@ -53,17 +51,14 @@ export const CredentialsList = () => {
 };
 
 export const CredentialsHeader = ({ disabled }: { disabled?: boolean }) => {
-
   return (
-    
-      <EntityHeader
-        title="credentials"
-        description="create and manage your credentials"
-        newButtonLabel="New Credential"
-        disabled={disabled}
-        newButtonHref="/credentials/new"
-      />
-    
+    <EntityHeader
+      title="credentials"
+      description="create and manage your credentials"
+      newButtonLabel="New Credential"
+      disabled={disabled}
+      newButtonHref="/credentials/new"
+    />
   );
 };
 
@@ -106,26 +101,27 @@ export const CredentialsError = () => {
 };
 
 export const CredentialsEmpty = () => {
-  
-    const router = useRouter();
-    const handleCreate = () => {
-        router.push(`/credentials/new`);
-    };
+  const router = useRouter();
+  const handleCreate = () => {
+    router.push(`/credentials/new`);
+  };
 
   return (
-    
-      <EmptyView
-        onNew={handleCreate}
-        message="you haven't created any credentials yet. get started by creating your first credential."
-      />
-    
+    <EmptyView
+      onNew={handleCreate}
+      message="you haven't created any credentials yet. get started by creating your first credential."
+    />
   );
 };
 
 const credentialLogos: Record<CredentialType, string> = {
-[CredentialType.OPENAI]: "/logos/openai.svg",
-[CredentialType.ANTHROPIC]: "/logos/anthropic.svg",
-[CredentialType.GEMINI]: "/logos/gemini.svg",
+  [CredentialType.OPENAI]: "/logos/openai.svg",
+  [CredentialType.ANTHROPIC]: "/logos/anthropic.svg",
+  [CredentialType.GEMINI]: "/logos/gemini.svg",
+  [CredentialType.DISCORD_WEBHOOK]: "/logos/discord.svg",
+  [CredentialType.SLACK_WEBHOOK]: "/logos/slack.svg",
+  [CredentialType.TELEGRAM_BOT]: "/logos/telegram.svg",
+  [CredentialType.EMAIL_SMTP]: "/logos/gmail.svg",
 };
 
 export const CredentialItem = ({ data }: { data: Credentials }) => {
