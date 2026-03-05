@@ -3,12 +3,16 @@ import { getExecutor } from "@/features/executions/components/lib/executor-regis
 import type { NodeType } from "@/generated/prisma";
 import prisma from "@/lib/db";
 import { AnthropicChannel } from "./channels/anthropic";
+import { DiscordChannel } from "./channels/discord";
+import { EmailChannel } from "./channels/email";
 import { GeminiChannel } from "./channels/gemini";
 import { GoogleFormTriggerChannel } from "./channels/google-form-trigger";
 import { HttpRequestChannel } from "./channels/http-request";
 import { ManualTriggerChannel } from "./channels/manual-triggers";
 import { OpenAIChannel } from "./channels/openai";
+import { SlackChannel } from "./channels/slack";
 import { StripeTriggerChannel } from "./channels/stripe-trigger";
+import { TelegramChannel } from "./channels/telegram";
 import { inngest } from "./client";
 import { topologicalSort } from "./utils";
 
@@ -27,6 +31,10 @@ export const executeWorkflow = inngest.createFunction(
       GeminiChannel(),
       OpenAIChannel(),
       AnthropicChannel(),
+      DiscordChannel(),
+      SlackChannel(),
+      TelegramChannel(),
+      EmailChannel(),
     ],
   },
   async ({ event, step, publish }) => {
@@ -42,7 +50,7 @@ export const executeWorkflow = inngest.createFunction(
       throw new NonRetriableError("No workflow ID provided");
     }
 
-    const sortedNodes = await step.run("prepare-workflow", async () => {
+    const workflowData = await step.run("prepare-workflow", async () => {
       console.log("[Inngest] Fetching workflow:", workflowId);
 
       const workflow = await prisma.workflow.findUnique({
@@ -65,7 +73,21 @@ export const executeWorkflow = inngest.createFunction(
         connectionCount: workflow.connections.length,
       });
 
-      return topologicalSort(workflow.nodes, workflow.connections);
+      return {
+        userId: workflow.userId,
+        sortedNodes: topologicalSort(workflow.nodes, workflow.connections),
+      };
+    });
+
+    const { sortedNodes } = workflowData;
+
+    // Resolve the workflow owner for credential ownership checks
+    const ownerId = await step.run("find-user-id", async () => {
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { id: workflowData.userId },
+        select: { id: true },
+      });
+      return user.id;
     });
 
     //intialize context with any initial data from the trigger
@@ -92,6 +114,7 @@ export const executeWorkflow = inngest.createFunction(
           context,
           step,
           publish,
+          userId: ownerId,
         });
 
         console.log("[Inngest] Node completed:", node.id);

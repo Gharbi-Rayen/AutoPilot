@@ -89,13 +89,13 @@ export const EditorHeaderNameInput = ({
   }
 
   return (
-    <BreadcrumbItem
+    <button
+      type="button"
       onClick={() => setIsEditing(true)}
-      className="cursor-pointer 
-        hover:text-foreground transition-colors"
+      className="cursor-pointer hover:text-foreground transition-colors inline-flex items-center bg-transparent border-none p-0 font-inherit text-inherit"
     >
       {workflow.name}
-    </BreadcrumbItem>
+    </button>
   );
 };
 
