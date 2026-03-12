@@ -3,6 +3,7 @@ import { manualTriggerExecutor } from "@/features/triggers/components/manual-tri
 import { StripeExecutor } from "@/features/triggers/components/stripe-trigger/executor";
 import { NodeType } from "@/generated/prisma";
 import { AnthropicExecutor } from "../anthropic/executor";
+import { CodeExecutor } from "../code/executor";
 import { DiscordExecutor } from "../discord/executor";
 import { EmailExecutor } from "../email/executor";
 import { GeminiExecutor } from "../gemini/executor";
@@ -11,6 +12,7 @@ import { OpenAIExecutor } from "../openai/executor";
 import { SlackExecutor } from "../slack/executor";
 import { TelegramExecutor } from "../telegram/executor";
 import type { NodeExecutor } from "../types";
+import { WhatsAppExecutor } from "../whatsapp/executor";
 
 export const executorRegistry: Record<NodeType, NodeExecutor> = {
   [NodeType.MANUAL_TRIGGER]: manualTriggerExecutor,
@@ -25,6 +27,8 @@ export const executorRegistry: Record<NodeType, NodeExecutor> = {
   [NodeType.SLACK]: SlackExecutor,
   [NodeType.TELEGRAM]: TelegramExecutor,
   [NodeType.EMAIL_SMTP]: EmailExecutor,
+  [NodeType.WHATSAPP]: WhatsAppExecutor,
+  [NodeType.CODE]: CodeExecutor,
 };
 
 export const getExecutor = (type: NodeType): NodeExecutor => {

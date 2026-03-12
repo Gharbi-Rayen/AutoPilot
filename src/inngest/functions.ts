@@ -3,6 +3,7 @@ import { getExecutor } from "@/features/executions/components/lib/executor-regis
 import type { NodeType } from "@/generated/prisma";
 import prisma from "@/lib/db";
 import { AnthropicChannel } from "./channels/anthropic";
+import { CodeChannel } from "./channels/code";
 import { DiscordChannel } from "./channels/discord";
 import { EmailChannel } from "./channels/email";
 import { GeminiChannel } from "./channels/gemini";
@@ -13,6 +14,7 @@ import { OpenAIChannel } from "./channels/openai";
 import { SlackChannel } from "./channels/slack";
 import { StripeTriggerChannel } from "./channels/stripe-trigger";
 import { TelegramChannel } from "./channels/telegram";
+import { WhatsAppChannel } from "./channels/whatsapp";
 import { inngest } from "./client";
 import { topologicalSort } from "./utils";
 
@@ -35,6 +37,8 @@ export const executeWorkflow = inngest.createFunction(
       SlackChannel(),
       TelegramChannel(),
       EmailChannel(),
+      WhatsAppChannel(),
+      CodeChannel(),
     ],
   },
   async ({ event, step, publish }) => {

@@ -96,6 +96,18 @@ const executionNodes: NodeTypeOption[] = [
     description: "Send emails via SMTP (Gmail, Outlook, etc).",
     icon: "/logos/gmail.svg",
   },
+  {
+    type: NodeType.WHATSAPP,
+    label: "WhatsApp",
+    description: "Send messages via WhatsApp Cloud API.",
+    icon: "/logos/whatsapp.svg",
+  },
+  {
+    type: NodeType.CODE,
+    label: "Code",
+    description: "Run custom JavaScript code.",
+    icon: "/logos/code.svg",
+  },
 ];
 
 interface NodeSelectorProps {

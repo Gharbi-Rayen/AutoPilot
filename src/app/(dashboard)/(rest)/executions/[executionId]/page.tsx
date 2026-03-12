@@ -1,4 +1,13 @@
+import { Suspense } from "react";
+import { ErrorBoundary } from "react-error-boundary";
+import {
+  ExecutionDetail,
+  ExecutionDetailError,
+  ExecutionDetailLoading,
+} from "@/features/executions/components/execution-detail";
+import { prefetchExecution } from "@/features/executions/server/prefetch";
 import { requireAuth } from "@/lib/auth-utils";
+import { HydrateClient } from "@/trpc/server";
 
 interface PageProps {
   params: Promise<{
@@ -11,7 +20,17 @@ const page = async ({ params }: PageProps) => {
 
   const { executionId } = await params;
 
-  return <p>executions Id: {executionId}</p>;
+  prefetchExecution(executionId);
+
+  return (
+    <HydrateClient>
+      <ErrorBoundary fallback={<ExecutionDetailError />}>
+        <Suspense fallback={<ExecutionDetailLoading />}>
+          <ExecutionDetail executionId={executionId} />
+        </Suspense>
+      </ErrorBoundary>
+    </HydrateClient>
+  );
 };
 
 export default page;

@@ -4,6 +4,7 @@ import { Loader2Icon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -47,6 +48,9 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export function RegisterForm() {
   const router = useRouter();
+  const [loadingProvider, setLoadingProvider] = useState<
+    "github" | "google" | null
+  >(null);
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -76,7 +80,26 @@ export function RegisterForm() {
     );
   };
 
-  const isPending = form.formState.isSubmitting;
+  const handleSocialLogin = async (provider: "github" | "google") => {
+    setLoadingProvider(provider);
+    await authClient.signIn.social(
+      {
+        provider,
+        callbackURL: "/",
+      },
+      {
+        onError: (ctx) => {
+          toast.error(
+            ctx.error.message || `Failed to sign in with ${provider}`,
+          );
+          setLoadingProvider(null);
+        },
+      },
+    );
+  };
+
+  const isSubmitting = form.formState.isSubmitting;
+  const isAnyLoading = isSubmitting || loadingProvider !== null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,10 +116,11 @@ export function RegisterForm() {
                   <Button
                     variant="outline"
                     className="w-full"
-                    disabled={isPending}
+                    disabled={isAnyLoading}
                     type="button"
+                    onClick={() => handleSocialLogin("github")}
                   >
-                    {isPending ? (
+                    {loadingProvider === "github" ? (
                       <Loader2Icon className="size-5 animate-spin" />
                     ) : (
                       <Image
@@ -111,10 +135,11 @@ export function RegisterForm() {
                   <Button
                     variant="outline"
                     className="w-full"
-                    disabled={isPending}
+                    disabled={isAnyLoading}
                     type="button"
+                    onClick={() => handleSocialLogin("google")}
                   >
-                    {isPending ? (
+                    {loadingProvider === "google" ? (
                       <Loader2Icon className="size-5 animate-spin" />
                     ) : (
                       <Image
@@ -150,7 +175,7 @@ export function RegisterForm() {
                     name="password"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>password</FormLabel>
+                        <FormLabel>Password</FormLabel>
                         <FormControl>
                           <Input
                             type="password"
@@ -180,9 +205,15 @@ export function RegisterForm() {
                     )}
                   />
 
-                  <Button type="submit" className="w-full" disabled={isPending}>
-                    {isPending && <Loader2Icon className="size-4 animate-spin" />}
-                    {isPending ? "Creating account..." : "Sign Up"}
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={isAnyLoading}
+                  >
+                    {isSubmitting && (
+                      <Loader2Icon className="size-4 animate-spin" />
+                    )}
+                    {isSubmitting ? "Creating account..." : "Sign Up"}
                   </Button>
                 </div>
 

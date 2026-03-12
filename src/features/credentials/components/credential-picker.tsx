@@ -67,6 +67,12 @@ const credentialConfig: Record<
     logo: "/logos/gmail.svg",
     color: "red",
   },
+  [CredentialType.WHATSAPP_TOKEN]: {
+    label: "WhatsApp",
+    credentialLabel: "access token",
+    logo: "/logos/whatsapp.svg",
+    color: "green",
+  },
 };
 
 interface CredentialPickerProps {

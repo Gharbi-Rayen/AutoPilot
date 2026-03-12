@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { cache } from "react";
 import superjson from "superjson";
 import { auth } from "@/lib/auth";
-import { polarClient } from "@/lib/polar";
+// import { polarClient } from "@/lib/polar";
 export const createTRPCContext = cache(async () => {
   /**
    * @see: https://trpc.io/docs/server/context
@@ -39,30 +39,31 @@ export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
   return next({ ctx: { ...ctx, auth: session } });
 });
 
-export const premiumProcedure = protectedProcedure.use(
-  async ({ ctx, next }) => {
-    const customer = await polarClient.customers.getStateExternal({
-      externalId: ctx.auth.user.id,
-    }).catch((error) => {
-      // If the Polar API token is invalid/expired, or the customer doesn't exist yet,
-      // treat it as a non-subscriber rather than crashing with a raw 401 error
-      console.error("Polar API error:", error);
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Active subscription required to access this resource.",
-      });
-    });
+// Polar disabled for testing — premiumProcedure is just protectedProcedure
+export const premiumProcedure = protectedProcedure;
 
-    if (
-      !customer.activeSubscriptions ||
-      customer.activeSubscriptions.length === 0
-    ) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message: "Active subscription required to access this resource.",
-      });
-    }
-
-    return next({ ctx: { ...ctx, customer } });
-  },
-);
+// export const premiumProcedure = protectedProcedure.use(
+//   async ({ ctx, next }) => {
+//     const customer = await polarClient.customers.getStateExternal({
+//       externalId: ctx.auth.user.id,
+//     }).catch((error) => {
+//       console.error("Polar API error:", error);
+//       throw new TRPCError({
+//         code: "FORBIDDEN",
+//         message: "Active subscription required to access this resource.",
+//       });
+//     });
+//
+//     if (
+//       !customer.activeSubscriptions ||
+//       customer.activeSubscriptions.length === 0
+//     ) {
+//       throw new TRPCError({
+//         code: "FORBIDDEN",
+//         message: "Active subscription required to access this resource.",
+//       });
+//     }
+//
+//     return next({ ctx: { ...ctx, customer } });
+//   },
+// );

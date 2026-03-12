@@ -25,6 +25,8 @@ const nodeTypeEnum = z.enum([
   "SLACK",
   "TELEGRAM",
   "EMAIL_SMTP",
+  "WHATSAPP",
+  "CODE",
 ]);
 
 export const workflowsRouter = createTRPCRouter({

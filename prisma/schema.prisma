@@ -9,13 +9,13 @@ datasource db {
 }
 
 model User {
-  id            String     @id
+  id            String        @id
   name          String
   email         String
-  emailVerified Boolean    @default(false)
+  emailVerified Boolean       @default(false)
   image         String?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   sessions      Session[]
   accounts      Account[]
   workflows     Workflow[]
@@ -73,18 +73,17 @@ model Verification {
   @@map("verification")
 }
 
-
-model Credentials{
-  id        String   @id @default(cuid())
+model Credentials {
+  id        String         @id @default(cuid())
   name      String
   type      CredentialType
-  value String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  value     String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
-  userId      String
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  Node Node[]
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Node   Node[]
 }
 
 enum CredentialType {
@@ -95,6 +94,7 @@ enum CredentialType {
   SLACK_WEBHOOK
   TELEGRAM_BOT
   EMAIL_SMTP
+  WHATSAPP_TOKEN
 }
 
 model Workflow {
@@ -107,6 +107,7 @@ model Workflow {
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   nodes       Node[]
   connections Connection[]
+  executions  Execution[]
 }
 
 enum NodeType {
@@ -122,19 +123,21 @@ enum NodeType {
   SLACK
   TELEGRAM
   EMAIL_SMTP
+  WHATSAPP
+  CODE
 }
 
 model Node {
-  id         String   @id @default(cuid())
-  workflowId String
-  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  name       String
-  type       NodeType
-  data       Json     @default("{}")
+  id           String       @id @default(cuid())
+  workflowId   String
+  workflow     Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  name         String
+  type         NodeType
+  data         Json         @default("{}")
   credentialId String?
   credential   Credentials? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
 
-  position   Json
+  position Json
 
   outputConnections Connection[] @relation("FromNode")
   inputConnections  Connection[] @relation("ToNode")
@@ -159,4 +162,26 @@ model Connection {
   updatedAt DateTime @updatedAt
 
   @@unique([fromNodeId, toNodeId, fromOutput, toInput])
+}
+
+enum ExecutionStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model Execution {
+  id         String   @id @default(cuid())
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  status ExecutionStatus @default(RUNNING)
+  output Json?
+
+  error      String? @db.Text
+  errorStack String? @db.Text
+
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  inngestEventId String    @unique
 }
