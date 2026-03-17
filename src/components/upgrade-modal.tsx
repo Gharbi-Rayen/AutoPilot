@@ -14,12 +14,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { authClient } from "@/lib/auth-client";
 
+type PolarAuthClient = {
+  checkout?: (input: { slug: string }) => Promise<unknown>;
+};
+
 interface upgradeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export const UpgradeModal = ({ open, onOpenChange }: upgradeModalProps) => {
+  const polarAuthClient = authClient as PolarAuthClient;
   const [isLoading, setIsLoading] = useState(false);
 
   return (
@@ -34,11 +39,14 @@ export const UpgradeModal = ({ open, onOpenChange }: upgradeModalProps) => {
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            disabled={isLoading}
+            disabled={isLoading || !polarAuthClient.checkout}
             onClick={async () => {
+              if (!polarAuthClient.checkout) {
+                return;
+              }
               setIsLoading(true);
               try {
-                await authClient.checkout({ slug: "pro" });
+                await polarAuthClient.checkout({ slug: "pro" });
               } finally {
                 setIsLoading(false);
               }

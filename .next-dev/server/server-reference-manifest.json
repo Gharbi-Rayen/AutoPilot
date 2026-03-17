@@ -1,0 +1,231 @@
+{
+  "node": {
+    "003e4786dccc2717cbdbc638c020508a8d68888acc": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchAnthropicRealTimeToken",
+          "filename": "src/features/executions/components/anthropic/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/anthropic/actions.ts",
+      "exportedName": "fetchAnthropicRealTimeToken"
+    },
+    "00888bdf7619bc331eb7c71acff2f71820939da477": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchCodeRealTimeToken",
+          "filename": "src/features/executions/components/code/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/code/actions.ts",
+      "exportedName": "fetchCodeRealTimeToken"
+    },
+    "00ecb06fc70ed5c59b6178c21e3b9abe5ce8af6b8a": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchFileRealTimeToken",
+          "filename": "src/features/executions/components/download-file/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/download-file/actions.ts",
+      "exportedName": "fetchFileRealTimeToken"
+    },
+    "0082a1e1d753c2361b7fe1ed36f027f1578c77c1d4": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchDiscordRealTimeToken",
+          "filename": "src/features/executions/components/discord/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/discord/actions.ts",
+      "exportedName": "fetchDiscordRealTimeToken"
+    },
+    "0066c3d1b3d238f9bc776ee4c29f8c3c909b13370b": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchEmailRealTimeToken",
+          "filename": "src/features/executions/components/email/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/email/actions.ts",
+      "exportedName": "fetchEmailRealTimeToken"
+    },
+    "00434ec8f0a023b01c43a5776301e0c95df426db5d": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchGeminiRealTimeToken",
+          "filename": "src/features/executions/components/gemini/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/gemini/actions.ts",
+      "exportedName": "fetchGeminiRealTimeToken"
+    },
+    "0010a9ffab83509822035f9cae512f3d6a39a658bf": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchHttpRequestRealTimeToken",
+          "filename": "src/features/executions/components/http-request/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/http-request/actions.ts",
+      "exportedName": "fetchHttpRequestRealTimeToken"
+    },
+    "00dc9c931ededbb971e0b4e3c1e3287b18ed067a8c": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchOpenAIRealTimeToken",
+          "filename": "src/features/executions/components/openai/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/openai/actions.ts",
+      "exportedName": "fetchOpenAIRealTimeToken"
+    },
+    "00c385b511fcbcb62545d68888d9ff7b1d04eb9356": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchSlackRealTimeToken",
+          "filename": "src/features/executions/components/slack/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/slack/actions.ts",
+      "exportedName": "fetchSlackRealTimeToken"
+    },
+    "0010bd8526428eecd5ca358f2c2a6ef0964381095d": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchFileRealTimeToken",
+          "filename": "src/features/executions/components/upload-file/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/upload-file/actions.ts",
+      "exportedName": "fetchFileRealTimeToken"
+    },
+    "00ce18521f2c855df28fa44e16aa779dff35fa13f1": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchTelegramRealTimeToken",
+          "filename": "src/features/executions/components/telegram/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/telegram/actions.ts",
+      "exportedName": "fetchTelegramRealTimeToken"
+    },
+    "00d6f3b9fe873f73316cb47b4b8ec81e5a91bd8d7d": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchWhatsAppRealTimeToken",
+          "filename": "src/features/executions/components/whatsapp/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/executions/components/whatsapp/actions.ts",
+      "exportedName": "fetchWhatsAppRealTimeToken"
+    },
+    "0059fdc0e5aa94f29a760218ded2f2d6f8cd2186fa": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchGoogleFormTriggerRealTimeToken",
+          "filename": "src/features/triggers/components/googleForm-trigger/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/triggers/components/googleForm-trigger/actions.ts",
+      "exportedName": "fetchGoogleFormTriggerRealTimeToken"
+    },
+    "00e3e4dcfa5d961ab2e3aacfaed25dba937ea2a019": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchManualTriggerRealTimeToken",
+          "filename": "src/features/triggers/components/manual-trigger/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/triggers/components/manual-trigger/actions.ts",
+      "exportedName": "fetchManualTriggerRealTimeToken"
+    },
+    "00cab7219edc226b4ae5caac1ebf043bc21146fdbd": {
+      "workers": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": {
+          "moduleId": "[project]/.next-internal/server/app/(dashboard)/(editor)/workflows/[workflowId]/page/actions.js { ACTIONS_MODULE0 => \"[project]/src/features/executions/components/anthropic/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE1 => \"[project]/src/features/executions/components/code/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE2 => \"[project]/src/features/executions/components/download-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE3 => \"[project]/src/features/executions/components/discord/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE4 => \"[project]/src/features/executions/components/email/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE5 => \"[project]/src/features/executions/components/gemini/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE6 => \"[project]/src/features/executions/components/http-request/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE7 => \"[project]/src/features/executions/components/openai/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE8 => \"[project]/src/features/executions/components/slack/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE9 => \"[project]/src/features/executions/components/upload-file/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE10 => \"[project]/src/features/executions/components/telegram/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE11 => \"[project]/src/features/executions/components/whatsapp/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE12 => \"[project]/src/features/triggers/components/googleForm-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE13 => \"[project]/src/features/triggers/components/manual-trigger/actions.ts [app-rsc] (ecmascript)\", ACTIONS_MODULE14 => \"[project]/src/features/triggers/components/stripe-trigger/actions.ts [app-rsc] (ecmascript)\" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "fetchStripeTriggerRealTimeToken",
+          "filename": "src/features/triggers/components/stripe-trigger/actions.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/(editor)/workflows/[workflowId]/page": "action-browser"
+      },
+      "filename": "src/features/triggers/components/stripe-trigger/actions.ts",
+      "exportedName": "fetchStripeTriggerRealTimeToken"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "c1I6nwSW8tYDLOonRZkNA7KGyypp23I78+nJPst2pR8="
+}

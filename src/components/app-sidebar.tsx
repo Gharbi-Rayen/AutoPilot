@@ -28,6 +28,13 @@ import {
 import { useHasActiveSubscription } from "@/features/subscriptions/hooks/use-subscription";
 import { authClient } from "@/lib/auth-client";
 
+type PolarAuthClient = {
+  checkout?: (input: { slug: string }) => Promise<unknown>;
+  customer?: {
+    portal?: () => Promise<unknown>;
+  };
+};
+
 const menuItems = [
   {
     title: "Home",
@@ -52,6 +59,7 @@ const menuItems = [
 ];
 
 export const AppSidebar = () => {
+  const polarAuthClient = authClient as PolarAuthClient;
   const router = useRouter();
   const pathname = usePathname();
   const { hasActiveSubscription, isLoading } = useHasActiveSubscription();
@@ -148,11 +156,14 @@ export const AppSidebar = () => {
               >
                 <button 
                   type="button"
-                  disabled={isUpgrading}
+                  disabled={isUpgrading || !polarAuthClient.checkout}
                   onClick={async () => {
+                    if (!polarAuthClient.checkout) {
+                      return;
+                    }
                     setIsUpgrading(true);
                     try {
-                      await authClient.checkout({ slug: "pro" });
+                      await polarAuthClient.checkout({ slug: "pro" });
                     } finally {
                       setIsUpgrading(false);
                     }
@@ -178,11 +189,14 @@ export const AppSidebar = () => {
             >
               <button
                 type="button"
-                disabled={isBilling}
+                disabled={isBilling || !polarAuthClient.customer?.portal}
                 onClick={async () => {
+                  if (!polarAuthClient.customer?.portal) {
+                    return;
+                  }
                   setIsBilling(true);
                   try {
-                    await authClient.customer.portal();
+                    await polarAuthClient.customer.portal();
                   } finally {
                     setIsBilling(false);
                   }

@@ -2,7 +2,7 @@
 
 import { createId } from "@paralleldrive/cuid2";
 import { useReactFlow } from "@xyflow/react";
-import { GlobeIcon, MousePointerIcon, SearchIcon } from "lucide-react";
+import { Download, FileText, GlobeIcon, MousePointerIcon, SearchIcon, File, Table2, Upload } from "lucide-react";
 import Image from "next/image";
 import type { ComponentType, ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
@@ -107,6 +107,246 @@ const executionNodes: NodeTypeOption[] = [
     label: "Code",
     description: "Run custom JavaScript code.",
     icon: "/logos/code.svg",
+  },
+  {
+    type: NodeType.DOWNLOAD_FILE,
+    label: "Download File",
+    description: "Download file from URL",
+    icon: Download,
+  },
+  {
+    type: NodeType.UPLOAD_FILE,
+    label: "Upload File",
+    description: "Upload file manually to workflow",
+    icon: Upload,
+  },
+  {
+    type: NodeType.READ_FILE,
+    label: "Read File",
+    description: "Read file content and parse it",
+    icon: FileText,
+  },
+  {
+    type: NodeType.PDF_EXTRACT_TEXT,
+    label: "PDF Extract Text",
+    description: "Extract text from PDF files",
+    icon: File,
+  },
+  {
+    type: NodeType.CSV_PARSE,
+    label: "CSV Parse",
+    description: "Parse CSV data into records",
+    icon: Table2,
+  },
+  {
+    type: NodeType.WRITE_FILE,
+    label: "Write File",
+    description: "Write text or binary data to a file",
+    icon: "/logos/write-file.svg",
+  },
+  {
+    type: NodeType.CONVERT_FILE,
+    label: "Convert File",
+    description: "Convert files between formats",
+    icon: "/logos/convert-file.svg",
+  },
+  {
+    type: NodeType.PDF_EXTRACT_TABLES,
+    label: "PDF Extract Tables",
+    description: "Extract tabular data from PDFs",
+    icon: "/logos/pdf-extract-tables.svg",
+  },
+  {
+    type: NodeType.PDF_SPLIT,
+    label: "PDF Split",
+    description: "Split a PDF into multiple documents",
+    icon: "/logos/pdf-split.svg",
+  },
+  {
+    type: NodeType.PDF_MERGE,
+    label: "PDF Merge",
+    description: "Merge multiple PDFs into one",
+    icon: "/logos/pdf-merge.svg",
+  },
+  {
+    type: NodeType.PDF_FILL_FORM,
+    label: "PDF Fill Form",
+    description: "Fill PDF form fields with variables",
+    icon: "/logos/pdf-fill-form.svg",
+  },
+  {
+    type: NodeType.PDF_GENERATE,
+    label: "PDF Generate",
+    description: "Generate a PDF from workflow data",
+    icon: "/logos/pdf-generate.svg",
+  },
+  {
+    type: NodeType.PDF_SIGN,
+    label: "PDF Sign",
+    description: "Apply signatures to PDF files",
+    icon: "/logos/pdf-sign.svg",
+  },
+  {
+    type: NodeType.CSV_GENERATE,
+    label: "CSV Generate",
+    description: "Create CSV output from data",
+    icon: "/logos/csv-generate.svg",
+  },
+  {
+    type: NodeType.CSV_FILTER,
+    label: "CSV Filter",
+    description: "Filter rows in CSV data",
+    icon: "/logos/csv-filter.svg",
+  },
+  {
+    type: NodeType.CSV_AGGREGATE,
+    label: "CSV Aggregate",
+    description: "Aggregate grouped CSV rows",
+    icon: "/logos/csv-aggregate.svg",
+  },
+  {
+    type: NodeType.CSV_JOIN,
+    label: "CSV Join",
+    description: "Join two CSV datasets",
+    icon: "/logos/csv-join.svg",
+  },
+  {
+    type: NodeType.READ_EXCEL,
+    label: "Read Excel",
+    description: "Read worksheets from Excel files",
+    icon: "/logos/read-excel.svg",
+  },
+  {
+    type: NodeType.WRITE_EXCEL,
+    label: "Write Excel",
+    description: "Write data into Excel workbooks",
+    icon: "/logos/write-excel.svg",
+  },
+  {
+    type: NodeType.APPEND_ROW,
+    label: "Append Row",
+    description: "Append rows to spreadsheet tables",
+    icon: "/logos/append-row.svg",
+  },
+  {
+    type: NodeType.SHEET_TRANSFORM,
+    label: "Sheet Transform",
+    description: "Transform spreadsheet data",
+    icon: "/logos/sheet-transform.svg",
+  },
+  {
+    type: NodeType.CREATE_PRESENTATION,
+    label: "Create Presentation",
+    description: "Create a PowerPoint presentation",
+    icon: "/logos/create-presentation.svg",
+  },
+  {
+    type: NodeType.ADD_SLIDE,
+    label: "Add Slide",
+    description: "Add slides to a presentation",
+    icon: "/logos/add-slide.svg",
+  },
+  {
+    type: NodeType.FILL_TEMPLATE,
+    label: "Fill Template",
+    description: "Fill presentation templates",
+    icon: "/logos/fill-template.svg",
+  },
+  {
+    type: NodeType.RESIZE_IMAGE,
+    label: "Resize Image",
+    description: "Resize image dimensions",
+    icon: "/logos/resize-image.svg",
+  },
+  {
+    type: NodeType.CROP_IMAGE,
+    label: "Crop Image",
+    description: "Crop image areas",
+    icon: "/logos/crop-image.svg",
+  },
+  {
+    type: NodeType.CONVERT_IMAGE,
+    label: "Convert Image",
+    description: "Convert image formats",
+    icon: "/logos/convert-image.svg",
+  },
+  {
+    type: NodeType.OCR_IMAGE,
+    label: "OCR Image",
+    description: "Extract text from images",
+    icon: "/logos/ocr-image.svg",
+  },
+  {
+    type: NodeType.JSON_TRANSFORM,
+    label: "JSON Transform",
+    description: "Transform JSON structures",
+    icon: "/logos/json-transform.svg",
+  },
+  {
+    type: NodeType.FILTER,
+    label: "Filter",
+    description: "Filter arrays and records",
+    icon: "/logos/filter.svg",
+  },
+  {
+    type: NodeType.LOOP,
+    label: "Loop",
+    description: "Loop through items",
+    icon: "/logos/loop.svg",
+  },
+  {
+    type: NodeType.CONDITION,
+    label: "Condition",
+    description: "Branch workflow paths",
+    icon: "/logos/condition.svg",
+  },
+  {
+    type: NodeType.DELAY,
+    label: "Delay",
+    description: "Pause workflow execution",
+    icon: "/logos/delay.svg",
+  },
+  {
+    type: NodeType.MERGE,
+    label: "Merge",
+    description: "Merge data streams",
+    icon: "/logos/merge.svg",
+  },
+  {
+    type: NodeType.SPLIT,
+    label: "Split",
+    description: "Split data into branches",
+    icon: "/logos/split.svg",
+  },
+  {
+    type: NodeType.S3_UPLOAD,
+    label: "S3 Upload",
+    description: "Upload to Amazon S3",
+    icon: "/logos/s3-upload.svg",
+  },
+  {
+    type: NodeType.S3_DOWNLOAD,
+    label: "S3 Download",
+    description: "Download from Amazon S3",
+    icon: "/logos/s3-download.svg",
+  },
+  {
+    type: NodeType.GOOGLE_DRIVE,
+    label: "Google Drive",
+    description: "Read and write files in Google Drive",
+    icon: "/logos/google-drive.svg",
+  },
+  {
+    type: NodeType.DROPBOX,
+    label: "Dropbox",
+    description: "Read and write files in Dropbox",
+    icon: "/logos/dropbox.svg",
+  },
+  {
+    type: NodeType.LOCAL_STORAGE,
+    label: "Local Storage",
+    description: "Store files locally",
+    icon: "/logos/local-storage.svg",
   },
 ];
 

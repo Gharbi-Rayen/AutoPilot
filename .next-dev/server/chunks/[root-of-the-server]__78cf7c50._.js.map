@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 202, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/gghar/OneDrive/Bureau/AutoPilot/autopilot/src/instrumentation.ts"],"sourcesContent":[";globalThis[\"_sentryNextJsVersion\"] = \"15.5.11\";globalThis[\"_sentryRewritesTunnelPath\"] = \"/monitoring\";import * as Sentry from \"@sentry/nextjs\";\n\nexport async function register() {\n  if (process.env.NEXT_RUNTIME === \"nodejs\") {\n    await import(\"../sentry.server.config\");\n  }\n\n  if (process.env.NEXT_RUNTIME === \"edge\") {\n    await import(\"../sentry.edge.config\");\n  }\n}\n\nexport const onRequestError = Sentry.captureRequestError;\n"],"names":[],"mappings":";;;;;;AAAwG;AAAvG,UAAU,CAAC,uBAAuB,GAAG;AAAU,UAAU,CAAC,4BAA4B,GAAG;;AAEnF,eAAe;IACpB,wCAA2C;QACzC;IACF;IAEA;;AAGF;AAEO,MAAM,iBAAiB,iMAA0B","debugId":null}}]
+}

@@ -122,6 +122,7 @@ const credentialLogos: Record<CredentialType, string> = {
   [CredentialType.SLACK_WEBHOOK]: "/logos/slack.svg",
   [CredentialType.TELEGRAM_BOT]: "/logos/telegram.svg",
   [CredentialType.EMAIL_SMTP]: "/logos/gmail.svg",
+  [CredentialType.WHATSAPP_TOKEN]: "/logos/whatsapp.svg",
 };
 
 export const CredentialItem = ({ data }: { data: Credentials }) => {

@@ -11,23 +11,7 @@ import {
   protectedProcedure,
 } from "@/trpc/init";
 
-// Zod enum for NodeType validation
-const nodeTypeEnum = z.enum([
-  "INITIAL",
-  "MANUAL_TRIGGER",
-  "HTTP_REQUEST",
-  "GOOGLE_FORM_TRIGGER",
-  "STRIPE_TRIGGER",
-  "ANTHROPIC",
-  "GEMINI",
-  "OPENAI",
-  "DISCORD",
-  "SLACK",
-  "TELEGRAM",
-  "EMAIL_SMTP",
-  "WHATSAPP",
-  "CODE",
-]);
+const nodeTypeEnum = z.nativeEnum(NodeType);
 
 export const workflowsRouter = createTRPCRouter({
   execute: protectedProcedure

@@ -1,11 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 
+type PolarCustomerClient = {
+  customer?: {
+    state?: () => Promise<{ data: PolarCustomerState | null }>;
+  };
+};
+
+type PolarCustomerState = {
+  activeSubscriptions?: Array<Record<string, unknown>>;
+};
+
 export const useSubscription = () => {
+  const polarAuthClient = authClient as PolarCustomerClient;
+
   return useQuery({
     queryKey: ["subscription"],
     queryFn: async () => {
-      const { data } = await authClient.customer.state();
+      if (!polarAuthClient.customer?.state) {
+        return null;
+      }
+
+      const { data } = await polarAuthClient.customer.state();
       return data;
     },
   });

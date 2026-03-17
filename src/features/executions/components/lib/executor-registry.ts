@@ -5,6 +5,7 @@ import { NodeType } from "@/generated/prisma";
 import { AnthropicExecutor } from "../anthropic/executor";
 import { CodeExecutor } from "../code/executor";
 import { DiscordExecutor } from "../discord/executor";
+import { DownloadFileExecutor } from "../download-file/executor";
 import { EmailExecutor } from "../email/executor";
 import { GeminiExecutor } from "../gemini/executor";
 import { HttpRequestExecutor } from "../http-request/executor";
@@ -13,6 +14,47 @@ import { SlackExecutor } from "../slack/executor";
 import { TelegramExecutor } from "../telegram/executor";
 import type { NodeExecutor } from "../types";
 import { WhatsAppExecutor } from "../whatsapp/executor";
+import { UploadFileExecutor } from "../upload-file/executor";
+import {
+  readFileExecutor,
+  writeFileExecutor,
+  convertFileExecutor,
+  pdfExtractTextExecutor,
+  pdfExtractTablesExecutor,
+  pdfSplitExecutor,
+  pdfMergeExecutor,
+  pdfFillFormExecutor,
+  pdfGenerateExecutor,
+  pdfSignExecutor,
+  csvParseExecutor,
+  csvGenerateExecutor,
+  csvFilterExecutor,
+  csvAggregateExecutor,
+  csvJoinExecutor,
+  readExcelExecutor,
+  writeExcelExecutor,
+  appendRowExecutor,
+  sheetTransformExecutor,
+  createPresentationExecutor,
+  addSlideExecutor,
+  fillTemplateExecutor,
+  resizeImageExecutor,
+  cropImageExecutor,
+  convertImageExecutor,
+  ocrImageExecutor,
+  jsonTransformExecutor,
+  filterExecutor,
+  loopExecutor,
+  conditionExecutor,
+  delayExecutor,
+  mergeExecutor,
+  splitExecutor,
+  s3UploadExecutor,
+  s3DownloadExecutor,
+  googleDriveExecutor,
+  dropboxExecutor,
+  localStorageExecutor,
+} from "../stubs/executors";
 
 export const executorRegistry: Record<NodeType, NodeExecutor> = {
   [NodeType.MANUAL_TRIGGER]: manualTriggerExecutor,
@@ -29,6 +71,54 @@ export const executorRegistry: Record<NodeType, NodeExecutor> = {
   [NodeType.EMAIL_SMTP]: EmailExecutor,
   [NodeType.WHATSAPP]: WhatsAppExecutor,
   [NodeType.CODE]: CodeExecutor,
+  [NodeType.DOWNLOAD_FILE]: DownloadFileExecutor,
+  // File Processing Nodes
+  [NodeType.UPLOAD_FILE]: UploadFileExecutor,
+  [NodeType.READ_FILE]: readFileExecutor,
+  [NodeType.WRITE_FILE]: writeFileExecutor,
+  [NodeType.CONVERT_FILE]: convertFileExecutor,
+  // PDF Processing Nodes
+  [NodeType.PDF_EXTRACT_TEXT]: pdfExtractTextExecutor,
+  [NodeType.PDF_EXTRACT_TABLES]: pdfExtractTablesExecutor,
+  [NodeType.PDF_SPLIT]: pdfSplitExecutor,
+  [NodeType.PDF_MERGE]: pdfMergeExecutor,
+  [NodeType.PDF_FILL_FORM]: pdfFillFormExecutor,
+  [NodeType.PDF_GENERATE]: pdfGenerateExecutor,
+  [NodeType.PDF_SIGN]: pdfSignExecutor,
+  // CSV Processing Nodes
+  [NodeType.CSV_PARSE]: csvParseExecutor,
+  [NodeType.CSV_GENERATE]: csvGenerateExecutor,
+  [NodeType.CSV_FILTER]: csvFilterExecutor,
+  [NodeType.CSV_AGGREGATE]: csvAggregateExecutor,
+  [NodeType.CSV_JOIN]: csvJoinExecutor,
+  // Spreadsheet Nodes
+  [NodeType.READ_EXCEL]: readExcelExecutor,
+  [NodeType.WRITE_EXCEL]: writeExcelExecutor,
+  [NodeType.APPEND_ROW]: appendRowExecutor,
+  [NodeType.SHEET_TRANSFORM]: sheetTransformExecutor,
+  // PowerPoint Nodes
+  [NodeType.CREATE_PRESENTATION]: createPresentationExecutor,
+  [NodeType.ADD_SLIDE]: addSlideExecutor,
+  [NodeType.FILL_TEMPLATE]: fillTemplateExecutor,
+  // Image Processing Nodes
+  [NodeType.RESIZE_IMAGE]: resizeImageExecutor,
+  [NodeType.CROP_IMAGE]: cropImageExecutor,
+  [NodeType.CONVERT_IMAGE]: convertImageExecutor,
+  [NodeType.OCR_IMAGE]: ocrImageExecutor,
+  // Data Transformation Nodes
+  [NodeType.JSON_TRANSFORM]: jsonTransformExecutor,
+  [NodeType.FILTER]: filterExecutor,
+  [NodeType.LOOP]: loopExecutor,
+  [NodeType.CONDITION]: conditionExecutor,
+  [NodeType.DELAY]: delayExecutor,
+  [NodeType.MERGE]: mergeExecutor,
+  [NodeType.SPLIT]: splitExecutor,
+  // Storage Nodes
+  [NodeType.S3_UPLOAD]: s3UploadExecutor,
+  [NodeType.S3_DOWNLOAD]: s3DownloadExecutor,
+  [NodeType.GOOGLE_DRIVE]: googleDriveExecutor,
+  [NodeType.DROPBOX]: dropboxExecutor,
+  [NodeType.LOCAL_STORAGE]: localStorageExecutor,
 };
 
 export const getExecutor = (type: NodeType): NodeExecutor => {
