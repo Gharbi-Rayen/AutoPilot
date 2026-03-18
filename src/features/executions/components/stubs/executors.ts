@@ -4,6 +4,7 @@ import { FileChannel } from "@/inngest/channels/file";
 import { ReadFileExecutor } from "../read-file/executor";
 import { PdfExtractTextExecutor } from "../pdf-extract-text/executor";
 import { CsvParseExecutor } from "../csv-parse/executor";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const pendingExecutor = (name: string): NodeExecutor => {
   return async ({ data }) => {
@@ -262,7 +263,118 @@ export const pdfMergeExecutor: NodeExecutor = pendingExecutor("pdf_merge");
 
 export const pdfFillFormExecutor: NodeExecutor = pendingExecutor("pdf_fill_form");
 
-export const pdfGenerateExecutor: NodeExecutor = pendingExecutor("pdf_generate");
+type PdfGenerateData = {
+  variableName?: string;
+  contentVariable?: string;
+  title?: string;
+  fileName?: string;
+};
+
+export const pdfGenerateExecutor: NodeExecutor<PdfGenerateData> = async ({
+  data,
+  nodeId,
+  context,
+  publish,
+  step,
+}) =>
+  withFileNodeStatus(nodeId, publish, async () => {
+    if (!data.variableName) {
+      throw new NonRetriableError("Variable name is required");
+    }
+
+    if (!data.contentVariable) {
+      throw new NonRetriableError("Content variable is required");
+    }
+
+    const content = context[data.contentVariable];
+    if (content === undefined) {
+      throw new NonRetriableError(
+        `Content variable '${data.contentVariable}' not found in workflow context`,
+      );
+    }
+
+    const textContent = typeof content === "string" ? content : JSON.stringify(content, null, 2);
+    const title = data.title;
+
+    const pdfBuffer = await step.run("generate-pdf", async () => {
+      const pdfDoc = await PDFDocument.create();
+      let page = pdfDoc.addPage();
+      const { width, height } = page.getSize();
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const fontSize = 12;
+      const margin = 50;
+      const lineHeight = fontSize * 1.5;
+      const maxLineWidth = width - margin * 2;
+      const titleFontSize = 20;
+
+      let y = height - margin;
+
+      if (title) {
+        const titleFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        page.drawText(title, {
+          x: margin,
+          y: y - titleFontSize,
+          size: titleFontSize,
+          font: titleFont,
+          color: rgb(0, 0, 0),
+        });
+        y -= titleFontSize * 2;
+      }
+
+      const words = textContent.split(/\s+/);
+      let line = "";
+      
+      for (const word of words) {
+        const testLine = line ? `${line} ${word}` : word;
+        const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+        
+        if (textWidth > maxLineWidth) {
+          // Draw the current line
+          page.drawText(line, {
+            x: margin,
+            y: y - fontSize,
+            size: fontSize,
+            font,
+            color: rgb(0, 0, 0),
+          });
+          
+          y -= lineHeight;
+          line = word;
+
+          // Check for page break
+          if (y < margin + lineHeight) {
+            page = pdfDoc.addPage();
+            y = height - margin;
+          }
+        } else {
+          line = testLine;
+        }
+      }
+      
+      // Draw remaining text
+      if (line) {
+        page.drawText(line, {
+          x: margin,
+          y: y - fontSize,
+          size: fontSize,
+          font,
+          color: rgb(0, 0, 0),
+        });
+      }
+
+      const pdfBytes = await pdfDoc.save();
+      return Buffer.from(pdfBytes);
+    });
+
+    return {
+      [data.variableName]: {
+        name: data.fileName || `${data.variableName}.pdf`,
+        mimeType: "application/pdf",
+        buffer: pdfBuffer,
+        size: pdfBuffer.length,
+      },
+    };
+  });
 
 export const pdfSignExecutor: NodeExecutor = pendingExecutor("pdf_sign");
 
@@ -500,22 +612,36 @@ export const csvAggregateExecutor: NodeExecutor<CsvAggregateData> = async ({
   step,
 }) =>
   withFileNodeStatus(nodeId, publish, async () => {
-    if (!data.variableName) {
+    const variableName = data.variableName?.trim();
+    const sourceVariable = data.sourceVariable?.trim();
+    const groupBy = data.groupBy?.trim();
+    const targetField = data.targetField?.trim();
+
+    if (!variableName) {
       throw new NonRetriableError("Variable name is required");
     }
 
-    if (!data.sourceVariable) {
+    if (!sourceVariable) {
       throw new NonRetriableError("Source variable is required");
     }
 
-    if (!data.groupBy) {
+    if (!groupBy) {
       throw new NonRetriableError("Group by field is required");
     }
 
-    const source = context[data.sourceVariable];
+    if (!Object.hasOwn(context, sourceVariable)) {
+      const availableKeys = Object.keys(context).slice(0, 20).join(", ");
+      throw new NonRetriableError(
+        `Source variable '${sourceVariable}' not found in workflow context. Available keys: ${availableKeys || "(none)"}`,
+      );
+    }
+
+    const source = context[sourceVariable];
     const rows = resolveRecords(source);
     if (rows.length === 0) {
-      throw new NonRetriableError("Source variable must contain CSV records");
+      throw new NonRetriableError(
+        `Source variable '${sourceVariable}' must contain CSV records (array or object with records array)`,
+      );
     }
 
     const operation = data.operation ?? "count";
@@ -535,7 +661,7 @@ export const csvAggregateExecutor: NodeExecutor<CsvAggregateData> = async ({
 
       const records = Array.from(groups.entries()).map(([groupKey, groupRows]) => {
         const base: Record<string, unknown> = {
-          [data.groupBy as string]: groupKey,
+          [groupBy]: groupKey,
           count: groupRows.length,
         };
 
@@ -544,14 +670,14 @@ export const csvAggregateExecutor: NodeExecutor<CsvAggregateData> = async ({
           return base;
         }
 
-        if (!data.targetField) {
+        if (!targetField) {
           throw new NonRetriableError(
             "targetField is required for sum/avg/min/max operations",
           );
         }
 
         const numbers = groupRows
-          .map((row) => parseNumber(row[data.targetField as string]))
+          .map((row) => parseNumber(row[targetField]))
           .filter((n): n is number => n !== null);
 
         if (numbers.length === 0) {
@@ -586,7 +712,7 @@ export const csvAggregateExecutor: NodeExecutor<CsvAggregateData> = async ({
     });
 
     return {
-      [data.variableName]: aggregated,
+      [variableName]: aggregated,
     };
   });
 
@@ -607,20 +733,40 @@ export const csvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
   step,
 }) =>
   withFileNodeStatus(nodeId, publish, async () => {
-    if (!data.variableName) {
+    const variableName = data.variableName?.trim();
+    const leftVariable = data.leftVariable?.trim();
+    const rightVariable = data.rightVariable?.trim();
+    const leftKey = data.leftKey?.trim();
+    const rightKey = data.rightKey?.trim();
+
+    if (!variableName) {
       throw new NonRetriableError("Variable name is required");
     }
 
-    if (!data.leftVariable || !data.rightVariable) {
+    if (!leftVariable || !rightVariable) {
       throw new NonRetriableError("Both left and right source variables are required");
     }
 
-    if (!data.leftKey || !data.rightKey) {
+    if (!leftKey || !rightKey) {
       throw new NonRetriableError("Both leftKey and rightKey are required");
     }
 
-    const leftRows = resolveRecords(context[data.leftVariable]);
-    const rightRows = resolveRecords(context[data.rightVariable]);
+    if (!Object.hasOwn(context, leftVariable)) {
+      const availableKeys = Object.keys(context).slice(0, 20).join(", ");
+      throw new NonRetriableError(
+        `Left source variable '${leftVariable}' not found in workflow context. Available keys: ${availableKeys || "(none)"}`,
+      );
+    }
+
+    if (!Object.hasOwn(context, rightVariable)) {
+      const availableKeys = Object.keys(context).slice(0, 20).join(", ");
+      throw new NonRetriableError(
+        `Right source variable '${rightVariable}' not found in workflow context. Available keys: ${availableKeys || "(none)"}`,
+      );
+    }
+
+    const leftRows = resolveRecords(context[leftVariable]);
+    const rightRows = resolveRecords(context[rightVariable]);
 
     if (leftRows.length === 0 || rightRows.length === 0) {
       throw new NonRetriableError("Both source variables must contain CSV records");
@@ -631,7 +777,7 @@ export const csvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
     const joined = await step.run("csv-join", async () => {
       const rightIndex = new Map<string, Record<string, unknown>[]>();
       for (const row of rightRows) {
-        const key = String(row[data.rightKey as string] ?? "");
+        const key = String(row[rightKey] ?? "");
         const entries = rightIndex.get(key);
         if (entries) {
           entries.push(row);
@@ -643,7 +789,7 @@ export const csvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
       const records: Record<string, unknown>[] = [];
 
       for (const leftRow of leftRows) {
-        const leftKeyValue = String(leftRow[data.leftKey as string] ?? "");
+        const leftKeyValue = String(leftRow[leftKey] ?? "");
         const matches = rightIndex.get(leftKeyValue) ?? [];
 
         if (matches.length === 0) {
@@ -668,7 +814,7 @@ export const csvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
     });
 
     return {
-      [data.variableName]: joined,
+      [variableName]: joined,
     };
   });
 

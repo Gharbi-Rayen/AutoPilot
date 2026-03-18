@@ -112,7 +112,7 @@ export const executeWorkflow = inngest.createFunction(
 
       try {
         const executor = getExecutor(node.type as NodeType);
-        context = await executor({
+        const output = await executor({
           data: node.data as Record<string, unknown>,
           nodeId: node.id,
           context,
@@ -120,6 +120,11 @@ export const executeWorkflow = inngest.createFunction(
           publish,
           userId: ownerId,
         });
+
+        context = {
+          ...context,
+          ...output,
+        };
 
         console.log("[Inngest] Node completed:", node.id);
       } catch (error) {
