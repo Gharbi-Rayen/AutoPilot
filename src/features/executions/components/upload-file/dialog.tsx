@@ -39,11 +39,21 @@ const formSchema = z.object({
 
 export type UploadFileFormValues = z.infer<typeof formSchema>;
 
+export interface SerializedUploadFile {
+  name: string;
+  mimeType: string;
+  size: number;
+  lastModified: number;
+  contentBase64: string;
+}
+
 interface UploadFileDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (values: UploadFileFormValues & { file?: File }) => void;
-  defaultValues?: Partial<UploadFileFormValues>;
+  onSubmit: (
+    values: UploadFileFormValues & { file?: SerializedUploadFile }
+  ) => void;
+  defaultValues?: Partial<UploadFileFormValues> & { file?: SerializedUploadFile };
 }
 
 export const UploadFileDialog = ({
@@ -68,6 +78,25 @@ export const UploadFileDialog = ({
 
   const watchVariableName = form.watch("variableName") || "uploadedFile";
 
+  const hasPersistedFile =
+    !!defaultValues.file &&
+    typeof defaultValues.file.contentBase64 === "string" &&
+    defaultValues.file.contentBase64.length > 0;
+
+  const fileToBase64 = async (file: File): Promise<string> => {
+    const arrayBuffer = await file.arrayBuffer();
+    let binary = "";
+    const bytes = new Uint8Array(arrayBuffer);
+    const chunkSize = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+
+    return btoa(binary);
+  };
+
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
     if (!form.watch("fileName")) {
@@ -90,17 +119,36 @@ export const UploadFileDialog = ({
     }
   };
 
-  const handleSubmit = (values: UploadFileFormValues) => {
-    if (!selectedFile) {
+  const handleSubmit = async (values: UploadFileFormValues) => {
+    if (!selectedFile && !hasPersistedFile) {
       form.setError("fileName", {
         message: "Please select a file",
       });
       return;
     }
 
+    const filePayload = selectedFile
+      ? {
+          name: selectedFile.name,
+          mimeType: selectedFile.type || "application/octet-stream",
+          size: selectedFile.size,
+          lastModified: selectedFile.lastModified,
+          contentBase64: await fileToBase64(selectedFile),
+        }
+      : hasPersistedFile
+        ? defaultValues.file
+        : undefined;
+
+    const allowedTypes = values.allowedTypes
+      ?.split(",")
+      .map((type) => type.trim())
+      .filter(Boolean)
+      .join(",");
+
     onSubmit({
       ...values,
-      file: selectedFile,
+      allowedTypes,
+      file: filePayload,
     });
     onOpenChange(false);
     setSelectedFile(null);
@@ -180,12 +228,33 @@ export const UploadFileDialog = ({
                 ) : (
                   <div className="text-center">
                     <Upload className="size-8 mx-auto mb-2 text-muted-foreground" />
-                    <p className="font-medium text-sm">
-                      Drag file here or click to select
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Select a file to upload
-                    </p>
+                    {hasPersistedFile && defaultValues.file ? (
+                      <>
+                        <p className="font-medium text-sm">{defaultValues.file.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {(defaultValues.file.size / 1024).toFixed(2)} KB (saved)
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Click to replace file
+                        </p>
+                      </>
+                    ) : defaultValues.file ? (
+                      <>
+                        <p className="font-medium text-sm">Saved file is invalid</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Please select the file again, then save workflow.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-medium text-sm">
+                          Drag file here or click to select
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Select a file to upload
+                        </p>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

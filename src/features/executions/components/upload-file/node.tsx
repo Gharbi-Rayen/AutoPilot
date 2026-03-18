@@ -10,6 +10,7 @@ import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "./actions";
 import {
   UploadFileDialog,
+  type SerializedUploadFile,
   type UploadFileFormValues,
 } from "./dialog";
 
@@ -18,13 +19,16 @@ interface UploadFileNodeData extends Record<string, unknown> {
   variableName?: string;
   maxSizeMB?: number;
   allowedTypes?: string;
+  file?: SerializedUploadFile;
 }
 
 export const UploadFileNode = memo((props: NodeProps) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { setNodes } = useReactFlow();
 
-  const handleSubmit = (values: UploadFileFormValues & { file?: File }) => {
+  const handleSubmit = (
+    values: UploadFileFormValues & { file?: SerializedUploadFile }
+  ) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === props.id) {
