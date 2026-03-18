@@ -20,6 +20,7 @@ import { PdfExtractTextNode } from "@/features/executions/components/pdf-extract
 import { ReadFileNode } from "@/features/executions/components/read-file/node";
 import { SlackNode } from "@/features/executions/components/slack/node";
 import { SplitNode } from "@/features/executions/components/split/node";
+import { PdfGenerateNode } from "@/features/executions/components/pdf-generate/node";
 import {
   AddSlideNode,
   AppendRowNode,
@@ -38,7 +39,6 @@ import {
   OcrImageNode,
   PdfExtractTablesNode,
   PdfFillFormNode,
-  PdfGenerateNode,
   PdfMergeNode,
   PdfSignNode,
   PdfSplitNode,

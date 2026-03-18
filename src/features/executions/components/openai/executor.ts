@@ -77,7 +77,7 @@ export const OpenAIExecutor: NodeExecutor<OpenAIData> = async ({
   });
 
   try {
-    const { text } = await step.ai.wrap("openai-generate-text", generateText, {
+    const result = await step.ai.wrap("openai-generate-text", generateText, {
       model: openai(data.model || "gpt-4.1-mini"),
       system: systemPrompt,
       prompt: userPrompt,
@@ -88,13 +88,18 @@ export const OpenAIExecutor: NodeExecutor<OpenAIData> = async ({
       },
     });
 
+    const raw = result as unknown as { text?: string; _output?: string };
+    const text: string | undefined = raw.text || raw._output;
+
+    if (!text) {
+      console.error("[OpenAIExecutor] No text found in result", raw);
+      throw new NonRetriableError("No text generated from OpenAI");
+    }
+
     await updateStatePublish("success");
 
     return {
-      ...context,
-      [data.variableName]: {
-        aiResponse: text,
-      },
+      [data.variableName]: text,
     };
   } catch (error) {
     await updateStatePublish("error");

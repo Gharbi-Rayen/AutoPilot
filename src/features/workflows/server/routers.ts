@@ -10,6 +10,7 @@ import {
   premiumProcedure,
   protectedProcedure,
 } from "@/trpc/init";
+import { createId } from "@paralleldrive/cuid2";
 
 const nodeTypeEnum = z.nativeEnum(NodeType);
 
@@ -24,14 +25,34 @@ export const workflowsRouter = createTRPCRouter({
         },
       });
 
-      await inngest.send({
-        name: "workflows/execute.workflow",
+      // Create execution record BEFORE sending event to ensure user sees it immediately
+      const executionId = createId();
+      const inngestId = createId();
+      
+      await prisma.execution.create({
         data: {
+          id: executionId,
           workflowId: input.id,
+          // userId removed as it is not in the schema
+          status: "RUNNING",
+          startedAt: new Date(),
+          inngestEventId: inngestId,
         },
       });
 
-      return workflow;
+      await inngest.send({
+        id: inngestId,
+        name: "workflows/execute.workflow",
+        data: {
+          workflowId: input.id,
+          executionId: executionId,
+        },
+      });
+
+      return {
+        ...workflow,
+        executionId,
+      };
     }),
 
   create: premiumProcedure.mutation(({ ctx }) => {

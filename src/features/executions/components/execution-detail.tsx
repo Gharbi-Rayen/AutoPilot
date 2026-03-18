@@ -5,6 +5,7 @@ import {
   ArrowLeftIcon,
   CheckCircle2Icon,
   ClockIcon,
+  DownloadIcon,
   Loader2Icon,
   XCircleIcon,
 } from "lucide-react";
@@ -41,6 +42,95 @@ const statusConfig = {
     iconClassName: "",
   },
 } as const;
+
+type FileOutput = {
+  name: string;
+  mimeType: string;
+  buffer: { type: "Buffer"; data: number[] };
+};
+
+const isFileOutput = (value: unknown): value is FileOutput => {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    typeof candidate.name === "string" &&
+    typeof candidate.mimeType === "string" &&
+    typeof candidate.buffer === "object" &&
+    candidate.buffer !== null &&
+    (candidate.buffer as { type: string }).type === "Buffer" &&
+    Array.isArray((candidate.buffer as { data: unknown }).data)
+  );
+};
+
+const FileDownloadCard = ({
+  label,
+  file,
+}: { label: string; file: FileOutput }) => {
+  const handleDownload = () => {
+    const { data } = file.buffer;
+    const blob = new Blob([new Uint8Array(data)], { type: file.mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Card>
+      <CardHeader className="p-4 pb-2">
+        <CardTitle className="text-sm font-medium truncate" title={label}>
+          {label}
+        </CardTitle>
+        <CardDescription className="text-xs truncate" title={file.name}>
+          {file.name}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-4 pt-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-2"
+          onClick={handleDownload}
+        >
+          <DownloadIcon className="size-3.5" />
+          Download
+        </Button>
+      </CardContent>
+    </Card>
+  );
+};
+
+const ExecutionOutputFiles = ({
+  output,
+}: { output: Record<string, unknown> }) => {
+  if (!output || typeof output !== "object") return null;
+
+  const fileEntries = Object.entries(output).filter(([_, value]) =>
+    isFileOutput(value),
+  );
+
+  if (fileEntries.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="text-lg font-semibold">Generated Files</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {fileEntries.map(([key, file]) => (
+          <FileDownloadCard
+            key={key}
+            label={key}
+            file={file as FileOutput}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
 
 export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
   const { data: execution } = useSuspenseExecution(executionId);
@@ -171,6 +261,12 @@ export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {execution.output && (
+          <ExecutionOutputFiles
+            output={execution.output as Record<string, unknown>}
+          />
         )}
 
         {execution.output && (

@@ -1,4 +1,4 @@
-# CSV and PDF Testing Workflow
+# CSV and PDF Testing Workflow Guide
 
 This guide outlines a comprehensive testing scenario for validating CSV operations (Join, Parse, Filter, Aggregate, Generate), AI integration, and PDF Report Generation.
 
@@ -14,9 +14,10 @@ We will create a workflow that:
 1.  **Ingests** two CSV files (Revenue and Usage data).
 2.  **Joins** them into a single dataset based on date.
 3.  **Filters** for high-revenue days.
-4.  **Analyzes** the trends using AI.
-5.  **Generates** a clean CSV export of the high-value days.
-6.  **Generates** a PDF management report containing the AI analysis.
+4.  **Prepares** the data for AI analysis (JSON Stringification).
+5.  **Analyzes** the trends using AI.
+6.  **Generates** a clean CSV export of the high-value days.
+7.  **Generates** a PDF management report containing the AI analysis.
 
 ## Step-by-Step Configuration
 
@@ -62,20 +63,26 @@ We will create a workflow that:
   - **Operator**: `gt`
   - **Value**: `50000` (Filter for days with > $50k revenue)
 
-### 6. CSV Aggregate (Optional Verification)
+### 6. Data Preparation (Crucial Step)
 
-- **Node G (CSV Aggregate)**:
-  - **Source Variable**: `highRevenueDays`
-  - **Variable Name**: `weeklyStats`
-  - **Group By**: `week_start` (if available in data) or `date`
-  - **Operation**: `sum`
-  - **Target Field**: `revenue`
+To prevent the AI node from receiving `[object Object]`, we must convert the filtered data into a string format.
+
+- **Node G (Code Node)**:
+  - **Variable Name**: `dataForAI`
+  - **Code**:
+    ```javascript // Access variables through the 'context' object
+    const highRevenueDays = context.highRevenueDays;
+    return {
+      // Use JSON.stringify to make the data readable for the AI
+      stringifiedData: JSON.stringify(highRevenueDays.records, null, 2),
+    };
+    ```
 
 ### 7. AI Analysis
 
 - **Node H (AI / Gemini or OpenAI)**:
   - **System Prompt**: "You are a data analyst. Analyze the provided daily telecom stats."
-  - **User Prompt**: "Here is the data for our highest revenue days:\n\n{{highRevenueDays}}\n\nProvide a summary of the correlation between 'revenue' and 'new_users'. identifying any trends. Keep it concise (1 paragraph)."
+  - **User Prompt**: "Here is the data for our highest revenue days:\n\n{{dataForAI.stringifiedData}}\n\nProvide a summary of the correlation between 'revenue' and 'new_users'. identifying any trends. Keep it concise (1 paragraph)."
   - **Variable Name**: `aiSummary`
 
 ### 8. Generate Report Files
@@ -89,18 +96,23 @@ We will create a workflow that:
 
 #### B. Generate PDF Report
 
-- **Node J (PDF Generate - NEW)**:
+- **Node J (PDF Generate)**:
   - **Content Variable**: `aiSummary` (The text output from the AI node)
   - **Title**: "High Revenue Days Analysis"
   - **Variable Name**: `pdfReport`
   - **File Name**: `analysis_report.pdf`
+  - **Configuration**:
+    - **Output Variable Name**: `pdfReport`
+    - **Content Source Variable**: `aiSummary`
+    - **Title**: `High Revenue Days Analysis`
+    - **File Name**: `analysis_report.pdf`
 
-## Validation
+## Validation Checklist
 
 1.  **Execute** the workflow.
 2.  **Check Output**:
-    - `combinedData` should have columns from both files (`revenue`, `active_users`, `new_users`, `churned_users`).
-    - `highRevenueDays` should only contain rows where `revenue > 50000`.
-    - `aiSummary` should contain a text paragraph.
-    - `exportCsv` should be a downloadable CSV file string/buffer.
-    - `pdfReport` should be a downloadable PDF file.
+    - **CSV Join**: `combinedData` should have 30 rows with merged columns.
+    - **CSV Filter**: `highRevenueDays` should have **11 rows** (days with revenue > 50k).
+    - **Code Node**: `dataForAI` should contain a valid JSON string of the 11 records.
+    - **AI Analysis**: `aiSummary` should be a coherent text paragraph, not an error message about missing data.
+    - **PDF Report**: Go to the **Execution Details** page. Look for the **Generated Files** section (above the raw output). Click the **Download** button for `pdfReport` and `exportCsv` to verify the files.

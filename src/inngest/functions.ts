@@ -1,4 +1,5 @@
 import { NonRetriableError } from "inngest";
+import { randomUUID } from "node:crypto";
 import { getExecutor } from "@/features/executions/components/lib/executor-registry";
 import type { NodeType } from "@/generated/prisma";
 import prisma from "@/lib/db";
@@ -53,6 +54,39 @@ export const executeWorkflow = inngest.createFunction(
     if (!workflowId) {
       throw new NonRetriableError("No workflow ID provided");
     }
+    
+    // 1. Get or Create Execution Record
+    const executionId = await step.run("get-or-create-execution", async () => {
+      // If passed from manual trigger, use that ID
+      if (event.data.executionId && typeof event.data.executionId === "string") {
+        return event.data.executionId;
+      }
+      
+      // Check if already exists by Inngest Event ID (idempotency)
+      if (event.id) {
+        const existing = await prisma.execution.findUnique({
+          where: { inngestEventId: event.id },
+          select: { id: true }
+        });
+        
+        if (existing) {
+          return existing.id;
+        }
+      }
+      
+      // Create new execution record
+      const newExecution = await prisma.execution.create({
+        data: {
+          workflowId,
+          status: "RUNNING",
+          inngestEventId: event.id ?? randomUUID(),
+          startedAt: new Date(),
+        },
+        select: { id: true }
+      });
+      
+      return newExecution.id;
+    });
 
     const workflowData = await step.run("prepare-workflow", async () => {
       console.log("[Inngest] Fetching workflow:", workflowId);
@@ -99,18 +133,18 @@ export const executeWorkflow = inngest.createFunction(
     let context = event.data.initialData || {};
     console.log("[Inngest] Initial context:", JSON.stringify(context, null, 2));
 
-    //execute each node
+    try {
+      //execute each node
 
-    console.log("[Inngest] Executing", sortedNodes.length, "nodes");
+      console.log("[Inngest] Executing", sortedNodes.length, "nodes");
 
-    for (const node of sortedNodes) {
-      console.log("[Inngest] Executing node:", {
-        id: node.id,
-        type: node.type,
-        name: node.name,
-      });
+      for (const node of sortedNodes) {
+        console.log("[Inngest] Executing node:", {
+          id: node.id,
+          type: node.type,
+          name: node.name,
+        });
 
-      try {
         const executor = getExecutor(node.type as NodeType);
         const output = await executor({
           data: node.data as Record<string, unknown>,
@@ -127,14 +161,42 @@ export const executeWorkflow = inngest.createFunction(
         };
 
         console.log("[Inngest] Node completed:", node.id);
-      } catch (error) {
-        console.error("[Inngest] Node execution failed:", {
-          nodeId: node.id,
-          nodeType: node.type,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        throw error;
       }
+
+      // Mark execution as SUCCESS
+      await step.run("complete-execution", async () => {
+        await prisma.execution.update({
+          where: { id: executionId },
+          data: {
+            status: "SUCCESS",
+            finishedAt: new Date(),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            output: context as any,
+          },
+        });
+      });
+
+    } catch (error) {
+      console.error("[Inngest] Workflow execution failed:", {
+        workflowId,
+        executionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      // Mark execution as FAILED
+      await step.run("fail-execution", async () => {
+        await prisma.execution.update({
+          where: { id: executionId },
+          data: {
+            status: "FAILED",
+            finishedAt: new Date(),
+            error: error instanceof Error ? error.message : String(error),
+            errorStack: error instanceof Error ? error.stack : undefined,
+          },
+        });
+      });
+
+      throw error; // Re-throw to allow Inngest retries if configured (though retries=0 currently)
     }
 
     return {

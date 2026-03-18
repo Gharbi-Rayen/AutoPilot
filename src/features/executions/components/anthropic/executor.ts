@@ -77,7 +77,7 @@ export const AnthropicExecutor: NodeExecutor<AnthropicData> = async ({
   });
 
   try {
-    const { text } = await step.ai.wrap(
+    const result = await step.ai.wrap(
       "anthropic-generate-text",
       generateText,
       {
@@ -92,13 +92,18 @@ export const AnthropicExecutor: NodeExecutor<AnthropicData> = async ({
       },
     );
 
+    const raw = result as unknown as { text?: string; _output?: string };
+    const text: string | undefined = raw.text || raw._output;
+
+    if (!text) {
+      console.error("[AnthropicExecutor] No text found in result", raw);
+      throw new NonRetriableError("No text generated from Anthropic");
+    }
+
     await updateStatePublish("success");
 
     return {
-      ...context,
-      [data.variableName]: {
-        aiResponse: text,
-      },
+      [data.variableName]: text,
     };
   } catch (error) {
     await updateStatePublish("error");

@@ -77,7 +77,7 @@ export const GeminiExecutor: NodeExecutor<GeminiData> = async ({
   });
 
   try {
-    const { text } = await step.ai.wrap("gemini-generate-text", generateText, {
+    const result = await step.ai.wrap("gemini-generate-text", generateText, {
       model: google(data.model || "gemini-2.5-flash"),
       system: systemPrompt,
       prompt: userPrompt,
@@ -88,13 +88,20 @@ export const GeminiExecutor: NodeExecutor<GeminiData> = async ({
       },
     });
 
+    const raw = result as unknown as { text?: string; _output?: string };
+
+    // Handle both direct text and internal Inngest output structure
+    const text: string | undefined = raw.text || raw._output;
+
+    if (!text) {
+      console.error("[GeminiExecutor] No text found in result", raw);
+      throw new NonRetriableError("No text generated from Gemini");
+    }
+
     await updateStatePublish("success");
 
     return {
-      ...context,
-      [data.variableName]: {
-        aiResponse: text,
-      },
+      [data.variableName]: text,
     };
   } catch (error) {
     await updateStatePublish("error");
