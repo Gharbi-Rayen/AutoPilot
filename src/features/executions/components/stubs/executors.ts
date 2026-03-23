@@ -370,8 +370,8 @@ export const pdfGenerateExecutor: NodeExecutor<PdfGenerateData> = async ({
       [data.variableName]: {
         name: data.fileName || `${data.variableName}.pdf`,
         mimeType: "application/pdf",
-        buffer: pdfBuffer,
-        size: pdfBuffer.length,
+        buffer: Buffer.from(pdfBuffer.data),
+        size: pdfBuffer.data.length,
       },
     };
   });

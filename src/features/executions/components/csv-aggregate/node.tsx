@@ -17,7 +17,7 @@ interface CsvAggregateNodeData extends Record<string, unknown> {
   sourceVariable?: string;
   variableName?: string;
   groupBy?: string;
-  operation?: string;
+  operation?: "max" | "min" | "count" | "sum" | "avg";
   targetField?: string;
 }
 

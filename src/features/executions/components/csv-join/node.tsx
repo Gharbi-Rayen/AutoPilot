@@ -15,7 +15,7 @@ interface CsvJoinNodeData extends Record<string, unknown> {
   rightVariable?: string;
   leftKey?: string;
   rightKey?: string;
-  joinType?: string;
+  joinType?: "inner" | "left";
   variableName?: string;
 }
 

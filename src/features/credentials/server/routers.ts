@@ -15,7 +15,7 @@ export const credentialsRouter = createTRPCRouter({
   create: protectedProcedure
   .input(z.object({
     name: z.string().min(1,"name is required"),
-    type: z.enum(CredentialType),
+    type: z.nativeEnum(CredentialType),
     value: z.string().min(1,"value is required"),
   }))
   .mutation(({ ctx , input}) => {
@@ -47,7 +47,7 @@ export const credentialsRouter = createTRPCRouter({
       z.object({
         id: z.string(),
         name: z.string().min(1, "name is required"),
-        type: z.enum(CredentialType),
+        type: z.nativeEnum(CredentialType),
         value: z.string().min(1, "value is required"),  
       }),
     )
@@ -148,7 +148,7 @@ export const credentialsRouter = createTRPCRouter({
     }),
 
     getByType : protectedProcedure
-    .input(z.object({ type: z.enum(CredentialType) }))
+    .input(z.object({ type: z.nativeEnum(CredentialType) }))
     .query(async ({ ctx, input }) => {
     const { type } = input;
     return prisma.credentials.findMany({

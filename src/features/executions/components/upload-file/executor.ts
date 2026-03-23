@@ -47,7 +47,7 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
         typeof data.file.contentBase64 === "string" &&
         data.file.contentBase64.length > 0;
 
-      const uploadedFile = hasPersistedBase64
+      const uploadedFile = hasPersistedBase64 && data.file
         ? {
             name: data.file.name,
             mimeType: data.file.mimeType,

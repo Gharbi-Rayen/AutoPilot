@@ -14,7 +14,7 @@ interface CsvFilterNodeData extends Record<string, unknown> {
   sourceVariable?: string;
   variableName?: string;
   field?: string;
-  operator?: string;
+  operator?: "eq" | "ne" | "contains" | "not_contains" | "starts_with" | "ends_with" | "gt" | "gte" | "lt" | "lte" | "is_empty" | "is_not_empty";
   value?: string;
 }
 

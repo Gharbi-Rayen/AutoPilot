@@ -13,8 +13,9 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.15",
-    "@ai-sdk/google": "^3.0.10",
+    "@ai-sdk/google": "^3.0.52",
     "@ai-sdk/openai": "^3.0.12",
+    "@dagrejs/dagre": "^3.0.0",
     "@hookform/resolvers": "^5.2.2",
     "@inngest/realtime": "^0.4.5",
     "@neondatabase/serverless": "^1.0.2",
@@ -55,7 +56,7 @@
     "@trpc/server": "^11.8.1",
     "@trpc/tanstack-react-query": "^11.8.1",
     "@xyflow/react": "^12.10.0",
-    "ai": "^6.0.40",
+    "ai": "^6.0.134",
     "better-auth": "^1.4.13",
     "class-variance-authority": "^0.7.1",
     "client-only": "^0.0.1",
@@ -70,7 +71,7 @@
     "handlebars": "^4.7.8",
     "inngest": "^3.44.1",
     "input-otp": "^1.4.2",
-    "jotai": "^2.17.0",
+    "jotai": "^2.18.1",
     "ky": "^1.14.3",
     "lucide-react": "^0.562.0",
     "next": "^15.5.11",
@@ -101,7 +102,7 @@
     "vaul": "^1.1.2",
     "ws": "^8.19.0",
     "xlsx": "^0.18.5",
-    "zod": "^4.3.5"
+    "zod": "^3.25.76"
   },
   "overrides": {
     "import-in-the-middle": "2.0.4",
@@ -110,6 +111,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
     "@tailwindcss/postcss": "^4",
+    "@types/dagre": "^0.7.54",
     "@types/node": "^20",
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19",
