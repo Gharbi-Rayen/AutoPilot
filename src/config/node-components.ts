@@ -11,16 +11,16 @@ import { CsvParseNode } from "@/features/executions/components/csv-parse/node";
 import { DiscordNode } from "@/features/executions/components/discord/node";
 import { DownloadFileNode } from "@/features/executions/components/download-file/node";
 import { EmailNode } from "@/features/executions/components/email/node";
+import { FilterNode } from "@/features/executions/components/filter/node";
 import { GeminiNode } from "@/features/executions/components/gemini/node";
 import { HttpRequestNode } from "@/features/executions/components/http-request/node";
-import { FilterNode } from "@/features/executions/components/filter/node";
 import { MergeNode } from "@/features/executions/components/merge/node";
 import { OpenAINode } from "@/features/executions/components/openai/node";
 import { PdfExtractTextNode } from "@/features/executions/components/pdf-extract-text/node";
+import { PdfGenerateNode } from "@/features/executions/components/pdf-generate/node";
 import { ReadFileNode } from "@/features/executions/components/read-file/node";
 import { SlackNode } from "@/features/executions/components/slack/node";
 import { SplitNode } from "@/features/executions/components/split/node";
-import { PdfGenerateNode } from "@/features/executions/components/pdf-generate/node";
 import {
   AddSlideNode,
   AppendRowNode,
@@ -50,8 +50,8 @@ import {
   WriteExcelNode,
   WriteFileNode,
 } from "@/features/executions/components/stubs/pending-node";
-import { UploadFileNode } from "@/features/executions/components/upload-file/node";
 import { TelegramNode } from "@/features/executions/components/telegram/node";
+import { UploadFileNode } from "@/features/executions/components/upload-file/node";
 import { WhatsAppNode } from "@/features/executions/components/whatsapp/node";
 import { GoogleFormTrigger } from "@/features/triggers/components/googleForm-trigger/node";
 import { ManualTriggerNode } from "@/features/triggers/components/manual-trigger/node";

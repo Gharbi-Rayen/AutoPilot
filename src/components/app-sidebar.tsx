@@ -106,9 +106,10 @@ export const AppSidebar = () => {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  const isActive = item.url === "/"
-                    ? pathname === "/"
-                    : pathname.startsWith(item.url);
+                  const isActive =
+                    item.url === "/"
+                      ? pathname === "/"
+                      : pathname.startsWith(item.url);
                   const isNavigating = navigatingTo === item.url && !isActive;
 
                   return (
@@ -119,7 +120,7 @@ export const AppSidebar = () => {
                         asChild
                         className="gap-x-4 h-10 px-4"
                       >
-                        <Link 
+                        <Link
                           href={item.url}
                           onClick={() => {
                             if (!isActive) {
@@ -154,7 +155,7 @@ export const AppSidebar = () => {
                 isActive={false}
                 className="gap-x-4 h-10 px-4"
               >
-                <button 
+                <button
                   type="button"
                   disabled={isUpgrading || !polarAuthClient.checkout}
                   onClick={async () => {

@@ -1,17 +1,14 @@
 "use client";
 
 import { type NodeProps, useReactFlow } from "@xyflow/react";
-import { memo, useState } from "react";
 import { FileText } from "lucide-react";
+import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "../download-file/actions";
-import {
-  ReadFileDialog,
-  type ReadFileFormValues,
-} from "./dialog";
+import { ReadFileDialog, type ReadFileFormValues } from "./dialog";
 
 interface ReadFileNodeData extends Record<string, unknown> {
   fileVariable?: string;
@@ -43,7 +40,9 @@ export const ReadFileNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as ReadFileNodeData;
-  const description = data?.fileVariable ? `Read: ${data.fileVariable}` : "Read file content";
+  const description = data?.fileVariable
+    ? `Read: ${data.fileVariable}`
+    : "Read file content";
 
   const nodeStatus = useNodeStatus({
     nodeId: props.id,

@@ -89,7 +89,10 @@ export const SplitDialog = ({
 
         <div className="space-y-4 py-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+            <form
+              onSubmit={form.handleSubmit(handleSubmit)}
+              className="space-y-5"
+            >
               <FormField
                 control={form.control}
                 name="sourceVariable"
@@ -99,7 +102,9 @@ export const SplitDialog = ({
                     <FormControl>
                       <Input placeholder="records" {...field} />
                     </FormControl>
-                    <FormDescription>Array or records payload to split</FormDescription>
+                    <FormDescription>
+                      Array or records payload to split
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -112,9 +117,16 @@ export const SplitDialog = ({
                   <FormItem>
                     <FormLabel>Chunk Size</FormLabel>
                     <FormControl>
-                      <Input type="number" min={1} placeholder="100" {...field} />
+                      <Input
+                        type="number"
+                        min={1}
+                        placeholder="100"
+                        {...field}
+                      />
                     </FormControl>
-                    <FormDescription>Maximum items per generated chunk</FormDescription>
+                    <FormDescription>
+                      Maximum items per generated chunk
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -130,7 +142,8 @@ export const SplitDialog = ({
                       <Input placeholder="split" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Chunks will be created as {`{{${watchVariablePrefix}_1}}`}, {`{{${watchVariablePrefix}_2}}`}, etc.
+                      Chunks will be created as {`{{${watchVariablePrefix}_1}}`}
+                      , {`{{${watchVariablePrefix}_2}}`}, etc.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

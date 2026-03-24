@@ -8,10 +8,7 @@ import { BaseExecutionNode } from "@/features/executions/components/base-executi
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "../download-file/actions";
-import {
-  CsvAggregateDialog,
-  type CsvAggregateFormValues,
-} from "./dialog";
+import { CsvAggregateDialog, type CsvAggregateFormValues } from "./dialog";
 
 interface CsvAggregateNodeData extends Record<string, unknown> {
   sourceVariable?: string;

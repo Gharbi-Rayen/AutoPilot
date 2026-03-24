@@ -77,20 +77,16 @@ export const AnthropicExecutor: NodeExecutor<AnthropicData> = async ({
   });
 
   try {
-    const result = await step.ai.wrap(
-      "anthropic-generate-text",
-      generateText,
-      {
-        model: anthropic(data.model || "claude-sonnet-4-6"),
-        system: systemPrompt,
-        prompt: userPrompt,
-        experimental_telemetry: {
-          isEnabled: true,
-          recordInputs: true,
-          recordOutputs: true,
-        },
+    const result = await step.ai.wrap("anthropic-generate-text", generateText, {
+      model: anthropic(data.model || "claude-sonnet-4-6"),
+      system: systemPrompt,
+      prompt: userPrompt,
+      experimental_telemetry: {
+        isEnabled: true,
+        recordInputs: true,
+        recordOutputs: true,
       },
-    );
+    });
 
     const raw = result as unknown as { text?: string; _output?: string };
     const text: string | undefined = raw.text || raw._output;

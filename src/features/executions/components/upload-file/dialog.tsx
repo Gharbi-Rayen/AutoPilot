@@ -51,9 +51,11 @@ interface UploadFileDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (
-    values: UploadFileFormValues & { file?: SerializedUploadFile }
+    values: UploadFileFormValues & { file?: SerializedUploadFile },
   ) => void;
-  defaultValues?: Partial<UploadFileFormValues> & { file?: SerializedUploadFile };
+  defaultValues?: Partial<UploadFileFormValues> & {
+    file?: SerializedUploadFile;
+  };
 }
 
 export const UploadFileDialog = ({
@@ -208,7 +210,9 @@ export const UploadFileDialog = ({
                         <Upload className="size-4 text-primary" />
                       </div>
                       <div className="flex-1">
-                        <p className="font-medium text-sm">{selectedFile.name}</p>
+                        <p className="font-medium text-sm">
+                          {selectedFile.name}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           {(selectedFile.size / 1024).toFixed(2)} KB
                         </p>
@@ -230,9 +234,12 @@ export const UploadFileDialog = ({
                     <Upload className="size-8 mx-auto mb-2 text-muted-foreground" />
                     {hasPersistedFile && defaultValues.file ? (
                       <>
-                        <p className="font-medium text-sm">{defaultValues.file.name}</p>
+                        <p className="font-medium text-sm">
+                          {defaultValues.file.name}
+                        </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {(defaultValues.file.size / 1024).toFixed(2)} KB (saved)
+                          {(defaultValues.file.size / 1024).toFixed(2)} KB
+                          (saved)
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
                           Click to replace file
@@ -240,7 +247,9 @@ export const UploadFileDialog = ({
                       </>
                     ) : defaultValues.file ? (
                       <>
-                        <p className="font-medium text-sm">Saved file is invalid</p>
+                        <p className="font-medium text-sm">
+                          Saved file is invalid
+                        </p>
                         <p className="text-xs text-muted-foreground mt-1">
                           Please select the file again, then save workflow.
                         </p>
@@ -273,7 +282,9 @@ export const UploadFileDialog = ({
                         {...field}
                         onChange={(e) =>
                           field.onChange(
-                            e.target.value ? parseInt(e.target.value) : undefined
+                            e.target.value
+                              ? parseInt(e.target.value)
+                              : undefined,
                           )
                         }
                       />
@@ -299,7 +310,8 @@ export const UploadFileDialog = ({
                       />
                     </FormControl>
                     <FormDescription>
-                      Comma-separated MIME types or extensions (e.g., image/*, .pdf, .csv)
+                      Comma-separated MIME types or extensions (e.g., image/*,
+                      .pdf, .csv)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -313,10 +325,7 @@ export const UploadFileDialog = ({
                   <FormItem>
                     <FormLabel>Variable Name</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="uploadedFile"
-                        {...field}
-                      />
+                      <Input placeholder="uploadedFile" {...field} />
                     </FormControl>
                     <FormDescription>
                       Store uploaded file as {`{{${watchVariableName}}}`}

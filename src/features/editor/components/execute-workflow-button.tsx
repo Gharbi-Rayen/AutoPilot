@@ -48,11 +48,7 @@ export const ExecuteWorkflowButton = ({
   const isPending = executeWorkflow.isPending || saveWorkflow.isPending;
 
   return (
-    <Button
-      size="lg"
-      onClick={handleExecute}
-      disabled={isPending}
-    >
+    <Button size="lg" onClick={handleExecute} disabled={isPending}>
       {isPending ? (
         <Loader2Icon className="size-4 animate-spin" />
       ) : (

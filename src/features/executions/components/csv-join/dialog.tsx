@@ -33,9 +33,7 @@ import {
 
 const formSchema = z.object({
   leftVariable: z.string().min(1, { message: "Left variable is required" }),
-  rightVariable: z
-    .string()
-    .min(1, { message: "Right variable is required" }),
+  rightVariable: z.string().min(1, { message: "Right variable is required" }),
   leftKey: z.string().min(1, { message: "Left key is required" }),
   rightKey: z.string().min(1, { message: "Right key is required" }),
   joinType: z.enum(["inner", "left"]),
@@ -132,7 +130,9 @@ export const CsvJoinDialog = ({
                     <FormControl>
                       <Input placeholder="ordersData" {...field} />
                     </FormControl>
-                    <FormDescription>Dataset to merge with left</FormDescription>
+                    <FormDescription>
+                      Dataset to merge with left
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -174,10 +174,7 @@ export const CsvJoinDialog = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Join Type</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select join type" />

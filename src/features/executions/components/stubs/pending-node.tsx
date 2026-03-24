@@ -26,7 +26,8 @@ function createPendingNode(meta: PendingNodeMeta) {
                 data: {
                   ...node.data,
                   __pending: true,
-                  __note: "Ready in builder. Execution implementation in progress.",
+                  __note:
+                    "Ready in builder. Execution implementation in progress.",
                 },
               }
             : node,

@@ -1,16 +1,16 @@
 "use client";
 
 import { type NodeProps, useReactFlow } from "@xyflow/react";
-import { memo, useState } from "react";
 import { Upload } from "lucide-react";
+import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "./actions";
 import {
-  UploadFileDialog,
   type SerializedUploadFile,
+  UploadFileDialog,
   type UploadFileFormValues,
 } from "./dialog";
 
@@ -27,7 +27,7 @@ export const UploadFileNode = memo((props: NodeProps) => {
   const { setNodes } = useReactFlow();
 
   const handleSubmit = (
-    values: UploadFileFormValues & { file?: SerializedUploadFile }
+    values: UploadFileFormValues & { file?: SerializedUploadFile },
   ) => {
     setNodes((nds) =>
       nds.map((node) => {

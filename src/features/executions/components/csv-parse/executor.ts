@@ -1,5 +1,5 @@
-import { NonRetriableError } from "inngest";
 import { parse } from "csv-parse/sync";
+import { NonRetriableError } from "inngest";
 import type { NodeExecutor } from "@/features/executions/components/types";
 import { FileChannel } from "@/inngest/channels/file";
 
@@ -47,7 +47,7 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
 
       if (!csvObj) {
         throw new NonRetriableError(
-          `CSV variable '${data.csvVariable}' not found in workflow context`
+          `CSV variable '${data.csvVariable}' not found in workflow context`,
         );
       }
 
@@ -55,7 +55,7 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
 
       if (!csv.buffer && !csv.url && typeof csv !== "string") {
         throw new NonRetriableError(
-          "CSV object must have a buffer, URL, or be a string"
+          "CSV object must have a buffer, URL, or be a string",
         );
       }
 
@@ -75,7 +75,7 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
         ) {
           // Inngest context serialization can turn Buffer into { type: "Buffer", data: number[] }
           csvText = Buffer.from(
-            (csv.buffer as { data: number[] }).data
+            (csv.buffer as { data: number[] }).data,
           ).toString("utf-8");
         } else if (Array.isArray(csv.buffer)) {
           csvText = Buffer.from(csv.buffer as number[]).toString("utf-8");
@@ -86,7 +86,7 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
         const response = await fetch(csv.url);
         if (!response.ok) {
           throw new NonRetriableError(
-            `Failed to fetch CSV from URL: ${response.statusText}`
+            `Failed to fetch CSV from URL: ${response.statusText}`,
           );
         }
         csvText = await response.text();

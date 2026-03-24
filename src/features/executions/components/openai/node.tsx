@@ -7,11 +7,7 @@ import { BaseExecutionNode } from "@/features/executions/components/base-executi
 import { OPENAI_CHANNEL_NAME } from "@/inngest/channels/openai";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchOpenAIRealTimeToken } from "./actions";
-import {
-  DEFAULT_MODEL,
-  OpenAIDialog,
-  type OpenAIFormValues,
-} from "./dialog";
+import { DEFAULT_MODEL, OpenAIDialog, type OpenAIFormValues } from "./dialog";
 
 export const OpenAINode = memo((props: NodeProps) => {
   const [dialogOpen, setDialogOpen] = useState(false);

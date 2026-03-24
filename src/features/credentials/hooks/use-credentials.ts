@@ -5,9 +5,9 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { toast } from "sonner";
+import type { CredentialType } from "@/generated/prisma";
 import { useTRPC } from "@/trpc/client";
 import { useCredentialsParams } from "./use-credentials-params";
-import type { CredentialType } from "@/generated/prisma";
 
 /**
  *
@@ -31,7 +31,9 @@ export const useCreateCredential = () => {
     trpc.credentials.create.mutationOptions({
       onSuccess: (data) => {
         toast.success(`Credential "${data.name}" created successfully.`);
-        queryClient.invalidateQueries(trpc.credentials.getMany.queryOptions({}));
+        queryClient.invalidateQueries(
+          trpc.credentials.getMany.queryOptions({}),
+        );
       },
       onError: (error) => {
         // Don't show a toast for FORBIDDEN — it's handled by the upgrade modal
@@ -55,7 +57,9 @@ export const useRemoveCredential = () => {
     trpc.credentials.remove.mutationOptions({
       onSuccess: (data) => {
         toast.success(`Credential "${data.name}" removed successfully.`);
-        queryClient.invalidateQueries(trpc.credentials.getMany.queryOptions({}));
+        queryClient.invalidateQueries(
+          trpc.credentials.getMany.queryOptions({}),
+        );
         queryClient.invalidateQueries(
           trpc.credentials.getOne.queryFilter({ id: data.id }),
         );
@@ -73,7 +77,6 @@ export const useSuspenseCredential = (id: string) => {
   return useSuspenseQuery(trpc.credentials.getOne.queryOptions({ id }));
 };
 
-
 /**
  *
  * Hook to update a credential .
@@ -88,7 +91,9 @@ export const useUpdateCredential = () => {
     trpc.credentials.update.mutationOptions({
       onSuccess: (data) => {
         toast.success(`Credential "${data.name}" updated successfully.`);
-        queryClient.invalidateQueries(trpc.credentials.getMany.queryOptions({}));
+        queryClient.invalidateQueries(
+          trpc.credentials.getMany.queryOptions({}),
+        );
         queryClient.invalidateQueries(
           trpc.credentials.getOne.queryOptions({ id: data.id }),
         );
@@ -103,12 +108,10 @@ export const useUpdateCredential = () => {
 };
 
 /**
- * Hook to fetch credentials by type 
+ * Hook to fetch credentials by type
  */
 export const useCredentialsByType = (type: CredentialType) => {
-const trpc = useTRPC();
+  const trpc = useTRPC();
 
-return useQuery(trpc.credentials.getByType.queryOptions({ type }));
-
+  return useQuery(trpc.credentials.getByType.queryOptions({ type }));
 };
-

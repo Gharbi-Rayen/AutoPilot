@@ -1,3 +1,4 @@
+import { createId } from "@paralleldrive/cuid2";
 import type { Edge, Node } from "@xyflow/react";
 import { generateSlug } from "random-word-slugs";
 import z from "zod";
@@ -10,7 +11,6 @@ import {
   premiumProcedure,
   protectedProcedure,
 } from "@/trpc/init";
-import { createId } from "@paralleldrive/cuid2";
 
 const nodeTypeEnum = z.nativeEnum(NodeType);
 
@@ -28,7 +28,7 @@ export const workflowsRouter = createTRPCRouter({
       // Create execution record BEFORE sending event to ensure user sees it immediately
       const executionId = createId();
       const inngestId = createId();
-      
+
       await prisma.execution.create({
         data: {
           id: executionId,

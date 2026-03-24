@@ -72,7 +72,10 @@ export function PdfGenerateDialog({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form
+            onSubmit={form.handleSubmit(handleSubmit)}
+            className="space-y-4"
+          >
             <FormField
               control={form.control}
               name="variableName"
@@ -83,7 +86,8 @@ export function PdfGenerateDialog({
                     <Input placeholder="e.g. pdfReport" {...field} />
                   </FormControl>
                   <FormDescription>
-                    The variable name where the generated PDF file will be stored.
+                    The variable name where the generated PDF file will be
+                    stored.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -99,7 +103,8 @@ export function PdfGenerateDialog({
                     <Input placeholder="e.g. aiSummary" {...field} />
                   </FormControl>
                   <FormDescription>
-                    The variable containing the text content to include in the PDF.
+                    The variable containing the text content to include in the
+                    PDF.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -131,7 +136,8 @@ export function PdfGenerateDialog({
                     <Input placeholder="e.g. report.pdf" {...field} />
                   </FormControl>
                   <FormDescription>
-                    The name of the file when downloaded. Defaults to [variableName].pdf
+                    The name of the file when downloaded. Defaults to
+                    [variableName].pdf
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

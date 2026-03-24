@@ -7,11 +7,7 @@ import { BaseExecutionNode } from "@/features/executions/components/base-executi
 import { GEMINI_CHANNEL_NAME } from "@/inngest/channels/gemini";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchGeminiRealTimeToken } from "./actions";
-import {
-  DEFAULT_MODEL,
-  GeminiDialog,
-  type GeminiFormValues,
-} from "./dialog";
+import { DEFAULT_MODEL, GeminiDialog, type GeminiFormValues } from "./dialog";
 
 export const GeminiNode = memo((props: NodeProps) => {
   const [dialogOpen, setDialogOpen] = useState(false);

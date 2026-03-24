@@ -47,18 +47,19 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
         typeof data.file.contentBase64 === "string" &&
         data.file.contentBase64.length > 0;
 
-      const uploadedFile = hasPersistedBase64 && data.file
-        ? {
-            name: data.file.name,
-            mimeType: data.file.mimeType,
-            size: data.file.size,
-            buffer: Buffer.from(data.file.contentBase64, "base64"),
-          }
-        : (context["_uploadedFile"] as any);
+      const uploadedFile =
+        hasPersistedBase64 && data.file
+          ? {
+              name: data.file.name,
+              mimeType: data.file.mimeType,
+              size: data.file.size,
+              buffer: Buffer.from(data.file.contentBase64, "base64"),
+            }
+          : (context["_uploadedFile"] as any);
 
       if (data.file && !hasPersistedBase64) {
         throw new NonRetriableError(
-          "Upload File node has invalid saved file data. Re-open node settings, select the file again, save workflow, then execute."
+          "Upload File node has invalid saved file data. Re-open node settings, select the file again, save workflow, then execute.",
         );
       }
 
@@ -73,7 +74,7 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
 
       if (!uploadedFile) {
         throw new NonRetriableError(
-          "No file uploaded. Please select a file in the Upload File node."
+          "No file uploaded. Please select a file in the Upload File node.",
         );
       }
 
@@ -82,16 +83,13 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
         const maxBytes = data.maxSizeMB * 1024 * 1024;
         if (uploadedFile.size > maxBytes) {
           throw new NonRetriableError(
-            `File size exceeds maximum allowed (${data.maxSizeMB}MB)`
+            `File size exceeds maximum allowed (${data.maxSizeMB}MB)`,
           );
         }
       }
 
       // Validate file type if specified
-      if (
-        allowedTypes.length > 0 &&
-        uploadedFile.mimeType
-      ) {
+      if (allowedTypes.length > 0 && uploadedFile.mimeType) {
         const fileName = String(uploadedFile.name || "").toLowerCase();
         const mimeType = String(uploadedFile.mimeType || "").toLowerCase();
 
@@ -113,7 +111,7 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
 
         if (!isAllowed) {
           throw new NonRetriableError(
-            `File type not allowed. Accepted types: ${allowedTypes.join(", ")}`
+            `File type not allowed. Accepted types: ${allowedTypes.join(", ")}`,
           );
         }
       }

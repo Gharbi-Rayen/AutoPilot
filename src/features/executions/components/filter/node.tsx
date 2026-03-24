@@ -14,7 +14,19 @@ interface FilterNodeData extends Record<string, unknown> {
   sourceVariable?: string;
   variableName?: string;
   field?: string;
-  operator?: "eq" | "ne" | "contains" | "not_contains" | "starts_with" | "ends_with" | "gt" | "gte" | "lt" | "lte" | "is_empty" | "is_not_empty";
+  operator?:
+    | "eq"
+    | "ne"
+    | "contains"
+    | "not_contains"
+    | "starts_with"
+    | "ends_with"
+    | "gt"
+    | "gte"
+    | "lt"
+    | "lte"
+    | "is_empty"
+    | "is_not_empty";
   value?: string;
 }
 
@@ -42,7 +54,9 @@ export const FilterNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as FilterNodeData;
-  const description = data?.field ? `Filter by ${data.field}` : "Filter records";
+  const description = data?.field
+    ? `Filter by ${data.field}`
+    : "Filter records";
 
   const nodeStatus = useNodeStatus({
     nodeId: props.id,

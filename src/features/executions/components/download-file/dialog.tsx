@@ -25,7 +25,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 const formSchema = z.object({
-  fileUrl: z.string().url("Must be a valid URL").min(1, { message: "File URL is required" }),
+  fileUrl: z
+    .string()
+    .url("Must be a valid URL")
+    .min(1, { message: "File URL is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -105,7 +108,7 @@ export const DownloadFileDialog = ({
                     </FormControl>
                     <FormDescription>
                       The URL of the file to download. Supports variable syntax
-                      like <code>{'{{variable}}'}</code>
+                      like <code>{"{{variable}}"}</code>
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -119,10 +122,7 @@ export const DownloadFileDialog = ({
                   <FormItem>
                     <FormLabel>File Name (Optional)</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="document.pdf"
-                        {...field}
-                      />
+                      <Input placeholder="document.pdf" {...field} />
                     </FormControl>
                     <FormDescription>
                       Name for the downloaded file
@@ -139,13 +139,11 @@ export const DownloadFileDialog = ({
                   <FormItem>
                     <FormLabel>Variable Name</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="downloadedFile"
-                        {...field}
-                      />
+                      <Input placeholder="downloadedFile" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Name to store the file. Use as {`{{${watchVariableName}}}`}
+                      Name to store the file. Use as{" "}
+                      {`{{${watchVariableName}}}`}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

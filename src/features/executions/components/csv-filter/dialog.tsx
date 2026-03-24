@@ -174,10 +174,7 @@ export const CsvFilterDialog = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Operator</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger className="w-full">
                           <SelectValue placeholder="Select operator" />
@@ -197,9 +194,7 @@ export const CsvFilterDialog = ({
                           Greater than or equal
                         </SelectItem>
                         <SelectItem value="lt">Less than</SelectItem>
-                        <SelectItem value="lte">
-                          Less than or equal
-                        </SelectItem>
+                        <SelectItem value="lte">Less than or equal</SelectItem>
                         <SelectItem value="is_empty">Is empty</SelectItem>
                         <SelectItem value="is_not_empty">
                           Is not empty
@@ -211,24 +206,25 @@ export const CsvFilterDialog = ({
                 )}
               />
 
-              {watchOperator !== "is_empty" && watchOperator !== "is_not_empty" && (
-                <FormField
-                  control={form.control}
-                  name="value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Value</FormLabel>
-                      <FormControl>
-                        <Input placeholder="active" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        Value compared against selected field
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+              {watchOperator !== "is_empty" &&
+                watchOperator !== "is_not_empty" && (
+                  <FormField
+                    control={form.control}
+                    name="value"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Value</FormLabel>
+                        <FormControl>
+                          <Input placeholder="active" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Value compared against selected field
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
               <FormField
                 control={form.control}

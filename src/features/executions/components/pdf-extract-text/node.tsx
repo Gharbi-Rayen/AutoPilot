@@ -1,17 +1,14 @@
 "use client";
 
 import { type NodeProps, useReactFlow } from "@xyflow/react";
-import { memo, useState } from "react";
 import { FileText } from "lucide-react";
+import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "../download-file/actions";
-import {
-  PdfExtractTextDialog,
-  type PdfExtractTextFormValues,
-} from "./dialog";
+import { PdfExtractTextDialog, type PdfExtractTextFormValues } from "./dialog";
 
 interface PdfExtractTextNodeData extends Record<string, unknown> {
   pdfVariable?: string;
@@ -43,7 +40,9 @@ export const PdfExtractTextNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as PdfExtractTextNodeData;
-  const description = data?.pdfVariable ? `Extract: ${data.pdfVariable}` : "Extract text from PDF";
+  const description = data?.pdfVariable
+    ? `Extract: ${data.pdfVariable}`
+    : "Extract text from PDF";
 
   const nodeStatus = useNodeStatus({
     nodeId: props.id,

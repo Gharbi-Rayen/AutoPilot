@@ -48,7 +48,9 @@ const operators = [
 
 const formSchema = z
   .object({
-    sourceVariable: z.string().min(1, { message: "Source variable is required" }),
+    sourceVariable: z
+      .string()
+      .min(1, { message: "Source variable is required" }),
     variableName: z
       .string()
       .min(1, { message: "Variable name is required" })
@@ -128,7 +130,10 @@ export const FilterDialog = ({
 
         <div className="space-y-4 py-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+            <form
+              onSubmit={form.handleSubmit(handleSubmit)}
+              className="space-y-5"
+            >
               <FormField
                 control={form.control}
                 name="sourceVariable"
@@ -138,7 +143,9 @@ export const FilterDialog = ({
                     <FormControl>
                       <Input placeholder="records" {...field} />
                     </FormControl>
-                    <FormDescription>Array or records payload to filter</FormDescription>
+                    <FormDescription>
+                      Array or records payload to filter
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -153,7 +160,9 @@ export const FilterDialog = ({
                     <FormControl>
                       <Input placeholder="status" {...field} />
                     </FormControl>
-                    <FormDescription>Record key used in comparisons</FormDescription>
+                    <FormDescription>
+                      Record key used in comparisons
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -175,15 +184,21 @@ export const FilterDialog = ({
                         <SelectItem value="eq">Equals</SelectItem>
                         <SelectItem value="ne">Not equals</SelectItem>
                         <SelectItem value="contains">Contains</SelectItem>
-                        <SelectItem value="not_contains">Does not contain</SelectItem>
+                        <SelectItem value="not_contains">
+                          Does not contain
+                        </SelectItem>
                         <SelectItem value="starts_with">Starts with</SelectItem>
                         <SelectItem value="ends_with">Ends with</SelectItem>
                         <SelectItem value="gt">Greater than</SelectItem>
-                        <SelectItem value="gte">Greater than or equal</SelectItem>
+                        <SelectItem value="gte">
+                          Greater than or equal
+                        </SelectItem>
                         <SelectItem value="lt">Less than</SelectItem>
                         <SelectItem value="lte">Less than or equal</SelectItem>
                         <SelectItem value="is_empty">Is empty</SelectItem>
-                        <SelectItem value="is_not_empty">Is not empty</SelectItem>
+                        <SelectItem value="is_not_empty">
+                          Is not empty
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -191,22 +206,25 @@ export const FilterDialog = ({
                 )}
               />
 
-              {watchOperator !== "is_empty" && watchOperator !== "is_not_empty" && (
-                <FormField
-                  control={form.control}
-                  name="value"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Value</FormLabel>
-                      <FormControl>
-                        <Input placeholder="active" {...field} />
-                      </FormControl>
-                      <FormDescription>Comparison value for selected operator</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+              {watchOperator !== "is_empty" &&
+                watchOperator !== "is_not_empty" && (
+                  <FormField
+                    control={form.control}
+                    name="value"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Value</FormLabel>
+                        <FormControl>
+                          <Input placeholder="active" {...field} />
+                        </FormControl>
+                        <FormDescription>
+                          Comparison value for selected operator
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
               <FormField
                 control={form.control}

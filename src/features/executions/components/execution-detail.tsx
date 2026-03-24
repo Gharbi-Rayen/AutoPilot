@@ -66,7 +66,10 @@ const isFileOutput = (value: unknown): value is FileOutput => {
 const FileDownloadCard = ({
   label,
   file,
-}: { label: string; file: FileOutput }) => {
+}: {
+  label: string;
+  file: FileOutput;
+}) => {
   const handleDownload = () => {
     const { data } = file.buffer;
     const blob = new Blob([new Uint8Array(data)], { type: file.mimeType });
@@ -107,7 +110,9 @@ const FileDownloadCard = ({
 
 const ExecutionOutputFiles = ({
   output,
-}: { output: Record<string, unknown> }) => {
+}: {
+  output: Record<string, unknown>;
+}) => {
   if (!output || typeof output !== "object") return null;
 
   const fileEntries = Object.entries(output).filter(([_, value]) =>
@@ -121,11 +126,7 @@ const ExecutionOutputFiles = ({
       <h2 className="text-lg font-semibold">Generated Files</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {fileEntries.map(([key, file]) => (
-          <FileDownloadCard
-            key={key}
-            label={key}
-            file={file as FileOutput}
-          />
+          <FileDownloadCard key={key} label={key} file={file as FileOutput} />
         ))}
       </div>
     </div>

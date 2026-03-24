@@ -2,7 +2,16 @@
 
 import { createId } from "@paralleldrive/cuid2";
 import { useReactFlow } from "@xyflow/react";
-import { Download, FileText, GlobeIcon, MousePointerIcon, SearchIcon, File, Table2, Upload } from "lucide-react";
+import {
+  Download,
+  File,
+  FileText,
+  GlobeIcon,
+  MousePointerIcon,
+  SearchIcon,
+  Table2,
+  Upload,
+} from "lucide-react";
 import Image from "next/image";
 import type { ComponentType, ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";

@@ -1,17 +1,14 @@
 "use client";
 
 import { type NodeProps, useReactFlow } from "@xyflow/react";
-import { memo, useState } from "react";
 import { Table2 } from "lucide-react";
+import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "../download-file/actions";
-import {
-  CsvParseDialog,
-  type CsvParseFormValues,
-} from "./dialog";
+import { CsvParseDialog, type CsvParseFormValues } from "./dialog";
 
 interface CsvParseNodeData extends Record<string, unknown> {
   csvVariable?: string;
@@ -44,7 +41,9 @@ export const CsvParseNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as CsvParseNodeData;
-  const description = data?.csvVariable ? `Parse: ${data.csvVariable}` : "Parse CSV data";
+  const description = data?.csvVariable
+    ? `Parse: ${data.csvVariable}`
+    : "Parse CSV data";
 
   const nodeStatus = useNodeStatus({
     nodeId: props.id,

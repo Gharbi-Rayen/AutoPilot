@@ -35,8 +35,8 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { useAIModels } from "@/features/executions/hooks/use-ai-models";
 import { CredentialPicker } from "@/features/credentials/components/credential-picker";
+import { useAIModels } from "@/features/executions/hooks/use-ai-models";
 import { CredentialType } from "@/generated/prisma";
 
 export const DEFAULT_MODEL = "claude-sonnet-4-6";
@@ -284,7 +284,9 @@ export const AnthropicDialog = ({
                   disabled={form.formState.isSubmitting}
                   className="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white"
                 >
-                  {form.formState.isSubmitting ? "Saving..." : "Save Configuration"}
+                  {form.formState.isSubmitting
+                    ? "Saving..."
+                    : "Save Configuration"}
                 </Button>
               </DialogFooter>
             </form>

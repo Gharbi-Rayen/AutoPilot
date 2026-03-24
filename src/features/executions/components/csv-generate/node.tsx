@@ -8,10 +8,7 @@ import { BaseExecutionNode } from "@/features/executions/components/base-executi
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "../download-file/actions";
-import {
-  CsvGenerateDialog,
-  type CsvGenerateFormValues,
-} from "./dialog";
+import { CsvGenerateDialog, type CsvGenerateFormValues } from "./dialog";
 
 interface CsvGenerateNodeData extends Record<string, unknown> {
   sourceVariable?: string;

@@ -49,7 +49,7 @@ export async function handleUploadFile(params: UploadFileActionParams) {
 export async function validateFileUpload(
   file: File,
   maxSizeMB?: number,
-  allowedTypes?: string[]
+  allowedTypes?: string[],
 ) {
   try {
     // Validate file size

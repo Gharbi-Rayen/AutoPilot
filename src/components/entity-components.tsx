@@ -81,22 +81,22 @@ export const EntityHeader = ({
         </Button>
       )}
       {!onNew && newButtonHref && (
-          <Button 
-            size="sm" 
-            disabled={isNavigating}
-            onClick={() => {
-              setIsNavigating(true);
-              router.push(newButtonHref);
-            }}
-          >
-            {isNavigating ? (
-              <Loader2Icon className="size-4 animate-spin" />
-            ) : (
-              <PlusIcon className="size-4" />
-            )}
-            {isNavigating ? "Loading..." : newButtonLabel}
-          </Button>
-        )}
+        <Button
+          size="sm"
+          disabled={isNavigating}
+          onClick={() => {
+            setIsNavigating(true);
+            router.push(newButtonHref);
+          }}
+        >
+          {isNavigating ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : (
+            <PlusIcon className="size-4" />
+          )}
+          {isNavigating ? "Loading..." : newButtonLabel}
+        </Button>
+      )}
     </div>
   );
 };
@@ -390,7 +390,7 @@ export const EntityItem = ({
                         e.stopPropagation();
                       }}
                     >
-                      {(isRemoving || isDeleting) ? (
+                      {isRemoving || isDeleting ? (
                         <Loader2Icon className="size-4 animate-spin" />
                       ) : (
                         <MoreVerticalIcon className="size-4" />

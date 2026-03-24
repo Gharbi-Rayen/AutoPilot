@@ -1,36 +1,32 @@
-
 import z from "zod";
 import { PAGINATION } from "@/config/constants";
 import { CredentialType } from "@/generated/prisma";
 
 import prisma from "@/lib/db";
-import {
-  createTRPCRouter,
-  protectedProcedure,
-} from "@/trpc/init";
-
+import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
 
 export const credentialsRouter = createTRPCRouter({
-
   create: protectedProcedure
-  .input(z.object({
-    name: z.string().min(1,"name is required"),
-    type: z.nativeEnum(CredentialType),
-    value: z.string().min(1,"value is required"),
-  }))
-  .mutation(({ ctx , input}) => {
-    const { name, type, value } = input;
+    .input(
+      z.object({
+        name: z.string().min(1, "name is required"),
+        type: z.nativeEnum(CredentialType),
+        value: z.string().min(1, "value is required"),
+      }),
+    )
+    .mutation(({ ctx, input }) => {
+      const { name, type, value } = input;
 
-    return prisma.credentials.create({
-      data: {
-        name ,
-        userId: ctx.auth.user.id,
-        type,
-        value,
-        //add encryption in production
-      },
-    });
-  }),
+      return prisma.credentials.create({
+        data: {
+          name,
+          userId: ctx.auth.user.id,
+          type,
+          value,
+          //add encryption in production
+        },
+      });
+    }),
 
   remove: protectedProcedure
     .input(z.object({ id: z.string() }))
@@ -48,7 +44,7 @@ export const credentialsRouter = createTRPCRouter({
         id: z.string(),
         name: z.string().min(1, "name is required"),
         type: z.nativeEnum(CredentialType),
-        value: z.string().min(1, "value is required"),  
+        value: z.string().min(1, "value is required"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -70,13 +66,11 @@ export const credentialsRouter = createTRPCRouter({
         data: {
           name,
           type,
-          value,//add encryption in production
-        }
+          value, //add encryption in production
+        },
       });
-     
-
     }),
-  
+
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
@@ -119,7 +113,6 @@ export const credentialsRouter = createTRPCRouter({
           orderBy: {
             updatedAt: "desc",
           },
-        
         }),
         prisma.credentials.count({
           where: {
@@ -147,22 +140,18 @@ export const credentialsRouter = createTRPCRouter({
       };
     }),
 
-    getByType : protectedProcedure
+  getByType: protectedProcedure
     .input(z.object({ type: z.nativeEnum(CredentialType) }))
     .query(async ({ ctx, input }) => {
-    const { type } = input;
-    return prisma.credentials.findMany({
-      where: {
-        userId: ctx.auth.user.id,
-        type,
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    });
-  }),
-   
-    
-
-
+      const { type } = input;
+      return prisma.credentials.findMany({
+        where: {
+          userId: ctx.auth.user.id,
+          type,
+        },
+        orderBy: {
+          updatedAt: "desc",
+        },
+      });
+    }),
 });

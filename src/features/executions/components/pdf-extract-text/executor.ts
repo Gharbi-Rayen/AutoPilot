@@ -64,16 +64,14 @@ export const PdfExtractTextExecutor: NodeExecutor<PdfExtractTextData> = async ({
 
       if (!pdfObj) {
         throw new NonRetriableError(
-          `PDF variable '${data.pdfVariable}' not found in workflow context`
+          `PDF variable '${data.pdfVariable}' not found in workflow context`,
         );
       }
 
       const pdf = pdfObj as any;
 
       if (!pdf.buffer && !pdf.url) {
-        throw new NonRetriableError(
-          "PDF object must have a buffer or URL"
-        );
+        throw new NonRetriableError("PDF object must have a buffer or URL");
       }
 
       let buffer: Buffer;
@@ -86,7 +84,7 @@ export const PdfExtractTextExecutor: NodeExecutor<PdfExtractTextData> = async ({
         const response = await fetch(pdf.url);
         if (!response.ok) {
           throw new NonRetriableError(
-            `Failed to fetch PDF from URL: ${response.statusText}`
+            `Failed to fetch PDF from URL: ${response.statusText}`,
           );
         }
         buffer = Buffer.from(await response.arrayBuffer());
@@ -94,7 +92,9 @@ export const PdfExtractTextExecutor: NodeExecutor<PdfExtractTextData> = async ({
         throw new NonRetriableError("Cannot extract text: no buffer or URL");
       }
 
-      const { CanvasFactory } = (await import("pdf-parse/worker")) as PdfWorkerModule;
+      const { CanvasFactory } = (await import(
+        "pdf-parse/worker"
+      )) as PdfWorkerModule;
       const { PDFParse } = (await import("pdf-parse")) as PdfParseModule;
 
       const parser = new PDFParse({

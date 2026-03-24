@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -22,10 +23,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 
 const formSchema = z.object({
-  csvVariable: z.string().min(1, { message: "Source CSV variable is required" }),
+  csvVariable: z
+    .string()
+    .min(1, { message: "Source CSV variable is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -100,10 +102,7 @@ export const CsvParseDialog = ({
                   <FormItem>
                     <FormLabel>Source CSV Variable</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="csvFile"
-                        {...field}
-                      />
+                      <Input placeholder="csvFile" {...field} />
                     </FormControl>
                     <FormDescription>
                       Reference to CSV file or data from previous node
@@ -120,14 +119,11 @@ export const CsvParseDialog = ({
                   <FormItem>
                     <FormLabel>Delimiter</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder=","
-                        maxLength={1}
-                        {...field}
-                      />
+                      <Input placeholder="," maxLength={1} {...field} />
                     </FormControl>
                     <FormDescription>
-                      Character used to separate columns (comma, semicolon, tab, etc.)
+                      Character used to separate columns (comma, semicolon, tab,
+                      etc.)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -164,10 +160,7 @@ export const CsvParseDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="csvData"
-                        {...field}
-                      />
+                      <Input placeholder="csvData" {...field} />
                     </FormControl>
                     <FormDescription>
                       Store parsed data as {`{{${watchVariableName}}}`}

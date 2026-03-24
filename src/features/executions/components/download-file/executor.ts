@@ -1,5 +1,5 @@
-import { NonRetriableError } from "inngest";
 import Handlebars from "handlebars";
+import { NonRetriableError } from "inngest";
 import type { NodeExecutor } from "@/features/executions/components/types";
 import { FileChannel } from "@/inngest/channels/file";
 
@@ -45,12 +45,13 @@ export const DownloadFileExecutor: NodeExecutor<DownloadFileData> = async ({
       const response = await fetch(fileUrl);
       if (!response.ok) {
         throw new NonRetriableError(
-          `Failed to download file: ${response.statusText}`
+          `Failed to download file: ${response.statusText}`,
         );
       }
 
       const buffer = await response.arrayBuffer();
-      const mimeType = response.headers.get("content-type") || "application/octet-stream";
+      const mimeType =
+        response.headers.get("content-type") || "application/octet-stream";
 
       return {
         name: fileName,

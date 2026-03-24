@@ -1,5 +1,5 @@
-import { NonRetriableError } from "inngest";
 import { randomUUID } from "node:crypto";
+import { NonRetriableError } from "inngest";
 import { getExecutor } from "@/features/executions/components/lib/executor-registry";
 import type { NodeType } from "@/generated/prisma";
 import prisma from "@/lib/db";
@@ -54,26 +54,29 @@ export const executeWorkflow = inngest.createFunction(
     if (!workflowId) {
       throw new NonRetriableError("No workflow ID provided");
     }
-    
+
     // 1. Get or Create Execution Record
     const executionId = await step.run("get-or-create-execution", async () => {
       // If passed from manual trigger, use that ID
-      if (event.data.executionId && typeof event.data.executionId === "string") {
+      if (
+        event.data.executionId &&
+        typeof event.data.executionId === "string"
+      ) {
         return event.data.executionId;
       }
-      
+
       // Check if already exists by Inngest Event ID (idempotency)
       if (event.id) {
         const existing = await prisma.execution.findUnique({
           where: { inngestEventId: event.id },
-          select: { id: true }
+          select: { id: true },
         });
-        
+
         if (existing) {
           return existing.id;
         }
       }
-      
+
       // Create new execution record
       const newExecution = await prisma.execution.create({
         data: {
@@ -82,9 +85,9 @@ export const executeWorkflow = inngest.createFunction(
           inngestEventId: event.id ?? randomUUID(),
           startedAt: new Date(),
         },
-        select: { id: true }
+        select: { id: true },
       });
-      
+
       return newExecution.id;
     });
 
@@ -175,7 +178,6 @@ export const executeWorkflow = inngest.createFunction(
           },
         });
       });
-
     } catch (error) {
       console.error("[Inngest] Workflow execution failed:", {
         workflowId,

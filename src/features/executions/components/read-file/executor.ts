@@ -41,23 +41,21 @@ export const ReadFileExecutor: NodeExecutor<ReadFileData> = async ({
   try {
     const fileData = await step.run("read-file", async () => {
       const fileObj = context[data.fileVariable as string];
-      
+
       if (!fileObj) {
         throw new NonRetriableError(
-          `File variable '${data.fileVariable}' not found in workflow context`
+          `File variable '${data.fileVariable}' not found in workflow context`,
         );
       }
 
       const file = fileObj as any;
-      
+
       if (!file.buffer && !file.url) {
-        throw new NonRetriableError(
-          "File object must have a buffer or URL"
-        );
+        throw new NonRetriableError("File object must have a buffer or URL");
       }
 
       let content: string;
-      
+
       if (file.buffer) {
         content = Buffer.isBuffer(file.buffer)
           ? file.buffer.toString(encoding as BufferEncoding)
@@ -66,7 +64,7 @@ export const ReadFileExecutor: NodeExecutor<ReadFileData> = async ({
         const response = await fetch(file.url);
         if (!response.ok) {
           throw new NonRetriableError(
-            `Failed to fetch file from URL: ${response.statusText}`
+            `Failed to fetch file from URL: ${response.statusText}`,
           );
         }
         content = await response.text();

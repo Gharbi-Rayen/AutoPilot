@@ -1,9 +1,9 @@
 "use client";
 
 import { useAtom } from "jotai";
-import { aiPanelOpenAtom } from "../store/atoms";
-import { Button } from "@/components/ui/button";
 import { Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { aiPanelOpenAtom } from "../store/atoms";
 
 export function AiAssistantTrigger() {
   const [isOpen, setIsOpen] = useAtom(aiPanelOpenAtom);

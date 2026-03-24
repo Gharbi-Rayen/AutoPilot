@@ -158,9 +158,21 @@ async function fetchAnthropicModels(): Promise<AIModel[]> {
 // ─── Fallback lists ──────────────────────────────────────────────────
 const fallback = {
   gemini: [
-    { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", provider: "google" as const },
-    { id: "gemini-2.5-flash-lite", name: "Gemini 2.5 Flash Lite", provider: "google" as const },
-    { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", provider: "google" as const },
+    {
+      id: "gemini-2.5-flash",
+      name: "Gemini 2.5 Flash",
+      provider: "google" as const,
+    },
+    {
+      id: "gemini-2.5-flash-lite",
+      name: "Gemini 2.5 Flash Lite",
+      provider: "google" as const,
+    },
+    {
+      id: "gemini-2.5-pro",
+      name: "Gemini 2.5 Pro",
+      provider: "google" as const,
+    },
   ],
   openai: [
     { id: "gpt-4.1", name: "GPT-4.1", provider: "openai" as const },
@@ -170,11 +182,31 @@ const fallback = {
     { id: "o4-mini", name: "O4 Mini", provider: "openai" as const },
   ],
   anthropic: [
-    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", provider: "anthropic" as const },
-    { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" as const },
-    { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", provider: "anthropic" as const },
-    { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", provider: "anthropic" as const },
-    { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku", provider: "anthropic" as const },
+    {
+      id: "claude-sonnet-4-6",
+      name: "Claude Sonnet 4.6",
+      provider: "anthropic" as const,
+    },
+    {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      provider: "anthropic" as const,
+    },
+    {
+      id: "claude-haiku-4-5",
+      name: "Claude Haiku 4.5",
+      provider: "anthropic" as const,
+    },
+    {
+      id: "claude-3-5-sonnet-20241022",
+      name: "Claude 3.5 Sonnet",
+      provider: "anthropic" as const,
+    },
+    {
+      id: "claude-3-5-haiku-20241022",
+      name: "Claude 3.5 Haiku",
+      provider: "anthropic" as const,
+    },
   ],
 };
 

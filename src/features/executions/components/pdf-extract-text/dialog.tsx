@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -22,10 +23,11 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 
 const formSchema = z.object({
-  pdfVariable: z.string().min(1, { message: "Source PDF variable is required" }),
+  pdfVariable: z
+    .string()
+    .min(1, { message: "Source PDF variable is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -97,13 +99,11 @@ export const PdfExtractTextDialog = ({
                   <FormItem>
                     <FormLabel>Source PDF Variable</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="pdfFile"
-                        {...field}
-                      />
+                      <Input placeholder="pdfFile" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Reference to PDF file object from previous node(e.g., downloadedPDF)
+                      Reference to PDF file object from previous node(e.g.,
+                      downloadedPDF)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -117,10 +117,7 @@ export const PdfExtractTextDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="pdfText"
-                        {...field}
-                      />
+                      <Input placeholder="pdfText" {...field} />
                     </FormControl>
                     <FormDescription>
                       Store extracted text as {`{{${watchVariableName}}}`}

@@ -31,7 +31,9 @@ import {
 } from "@/components/ui/select";
 
 const formSchema = z.object({
-  fileVariable: z.string().min(1, { message: "Source file variable is required" }),
+  fileVariable: z
+    .string()
+    .min(1, { message: "Source file variable is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -103,13 +105,11 @@ export const ReadFileDialog = ({
                   <FormItem>
                     <FormLabel>Source File Variable</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="downloadedFile"
-                        {...field}
-                      />
+                      <Input placeholder="downloadedFile" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Reference to file object from previous node (e.g., downloadedFile)
+                      Reference to file object from previous node (e.g.,
+                      downloadedFile)
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -122,10 +122,7 @@ export const ReadFileDialog = ({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Encoding</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                    >
+                    <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select encoding" />
@@ -153,13 +150,11 @@ export const ReadFileDialog = ({
                   <FormItem>
                     <FormLabel>Variable Name</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="fileContent"
-                        {...field}
-                      />
+                      <Input placeholder="fileContent" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Name to store the file content. Use as {`{{${watchVariableName}}}`}
+                      Name to store the file content. Use as{" "}
+                      {`{{${watchVariableName}}}`}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

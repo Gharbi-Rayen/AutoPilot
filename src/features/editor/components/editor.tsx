@@ -19,30 +19,34 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import "@xyflow/react/dist/style.css";
 
-import { useSetAtom, useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
+import { Sparkles } from "lucide-react";
+import dynamic from "next/dynamic";
 import { ErrorView, LoadingView } from "@/components/entity-components";
 import { nodeComponents } from "@/config/node-components";
+import { aiGeneratingAtom } from "@/features/ai-assistant/store/atoms";
 import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
-import dynamic from "next/dynamic";
 import { NodeType } from "@/generated/prisma";
 import { editorAtom } from "../store/atoms";
-import { aiGeneratingAtom } from "@/features/ai-assistant/store/atoms";
-import { Sparkles } from "lucide-react";
 
 const AddNodeButton = dynamic(
   () => import("./add-node-button").then((m) => m.AddNodeButton),
-  { ssr: false } // No need to SSR the button if it opens a heavy modal, or we can just leave default
+  { ssr: false }, // No need to SSR the button if it opens a heavy modal, or we can just leave default
 );
 const ExecuteWorkflowButton = dynamic(
-  () => import("./execute-workflow-button").then((m) => m.ExecuteWorkflowButton),
-  { ssr: false }
+  () =>
+    import("./execute-workflow-button").then((m) => m.ExecuteWorkflowButton),
+  { ssr: false },
 );
 
 import { AiAssistantTrigger } from "@/features/ai-assistant/components/ai-assistant-trigger";
 
 const AiAssistantPanel = dynamic(
-  () => import("@/features/ai-assistant/components/ai-assistant-panel").then((m) => m.AiAssistantPanel),
-  { ssr: false }
+  () =>
+    import("@/features/ai-assistant/components/ai-assistant-panel").then(
+      (m) => m.AiAssistantPanel,
+    ),
+  { ssr: false },
 );
 
 export const EditorLoading = () => {
@@ -125,18 +129,22 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
       {/* AI Generating Overlay */}
       {isAiGenerating && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px] transition-all duration-300">
-           <div className="flex flex-col items-center gap-4 p-6 bg-background rounded-xl border shadow-lg max-w-sm w-full text-center">
-             <div className="flex bg-primary/10 p-4 rounded-full">
-               <Sparkles className="w-8 h-8 text-primary animate-pulse" />
-             </div>
-             <div className="space-y-1">
-               <h3 className="font-semibold text-lg">AI is building your workflow</h3>
-               <p className="text-sm text-muted-foreground">Selecting nodes and wiring variables...</p>
-             </div>
-             <div className="w-full h-1.5 bg-secondary/50 rounded-full overflow-hidden mt-4">
-               <div className="h-full bg-primary/80 w-full animate-pulse" />
-             </div>
-           </div>
+          <div className="flex flex-col items-center gap-4 p-6 bg-background rounded-xl border shadow-lg max-w-sm w-full text-center">
+            <div className="flex bg-primary/10 p-4 rounded-full">
+              <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-semibold text-lg">
+                AI is building your workflow
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Selecting nodes and wiring variables...
+              </p>
+            </div>
+            <div className="w-full h-1.5 bg-secondary/50 rounded-full overflow-hidden mt-4">
+              <div className="h-full bg-primary/80 w-full animate-pulse" />
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -35,8 +35,8 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import { useAIModels } from "@/features/executions/hooks/use-ai-models";
 import { CredentialPicker } from "@/features/credentials/components/credential-picker";
+import { useAIModels } from "@/features/executions/hooks/use-ai-models";
 import { CredentialType } from "@/generated/prisma";
 
 export const DEFAULT_MODEL = "gemini-2.5-flash";
@@ -284,7 +284,9 @@ export const GeminiDialog = ({
                   disabled={form.formState.isSubmitting}
                   className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
                 >
-                  {form.formState.isSubmitting ? "Saving..." : "Save Configuration"}
+                  {form.formState.isSubmitting
+                    ? "Saving..."
+                    : "Save Configuration"}
                 </Button>
               </DialogFooter>
             </form>

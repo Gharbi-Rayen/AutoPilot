@@ -6,14 +6,14 @@ const NODE_HEIGHT = 70;
 
 export function applyDagreLayout(
   nodes: AIWorkflowNode[],
-  edges: { source: string; target: string }[]
+  edges: { source: string; target: string }[],
 ): (AIWorkflowNode & { position: { x: number; y: number } })[] {
   const g = new dagre.graphlib.Graph();
 
   g.setGraph({
-    rankdir: "LR",   // left-to-right (matches typical workflow reading direction)
-    nodesep: 80,     // vertical gap between nodes in the same rank
-    ranksep: 140,    // horizontal gap between ranks
+    rankdir: "LR", // left-to-right (matches typical workflow reading direction)
+    nodesep: 80, // vertical gap between nodes in the same rank
+    ranksep: 140, // horizontal gap between ranks
     marginx: 40,
     marginy: 40,
   });

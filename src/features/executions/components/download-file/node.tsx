@@ -1,17 +1,14 @@
 "use client";
 
 import { type NodeProps, useReactFlow } from "@xyflow/react";
-import { memo, useState } from "react";
 import { Download } from "lucide-react";
+import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "./actions";
-import {
-  DownloadFileDialog,
-  type DownloadFileFormValues,
-} from "./dialog";
+import { DownloadFileDialog, type DownloadFileFormValues } from "./dialog";
 
 interface DownloadFileNodeData extends Record<string, unknown> {
   fileUrl?: string;
@@ -43,7 +40,9 @@ export const DownloadFileNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as DownloadFileNodeData;
-  const description = data?.fileUrl ? `Download from: ${data.fileUrl}` : "Download file from URL";
+  const description = data?.fileUrl
+    ? `Download from: ${data.fileUrl}`
+    : "Download file from URL";
 
   const nodeStatus = useNodeStatus({
     nodeId: props.id,

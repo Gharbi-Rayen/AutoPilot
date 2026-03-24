@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import z from "zod";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -22,13 +23,10 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 
 const formSchema = z.object({
-  sourceVariable: z
-    .string()
-    .min(1, { message: "Source variable is required" }),
+  sourceVariable: z.string().min(1, { message: "Source variable is required" }),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })

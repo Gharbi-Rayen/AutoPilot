@@ -124,7 +124,10 @@ export const MergeDialog = ({
 
         <div className="space-y-4 py-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
+            <form
+              onSubmit={form.handleSubmit(handleSubmit)}
+              className="space-y-5"
+            >
               <FormField
                 control={form.control}
                 name="leftVariable"
@@ -172,7 +175,8 @@ export const MergeDialog = ({
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Concat appends lists, zip pairs index-to-index, by_key merges matching rows
+                      Concat appends lists, zip pairs index-to-index, by_key
+                      merges matching rows
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

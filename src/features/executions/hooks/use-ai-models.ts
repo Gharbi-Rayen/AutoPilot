@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useTRPC } from "@/trpc/client";
 import type { AIModel } from "@/features/executions/server/ai-models-router";
+import { useTRPC } from "@/trpc/client";
 
 export function useAIModels(provider: "google" | "openai" | "anthropic") {
   const trpc = useTRPC();
