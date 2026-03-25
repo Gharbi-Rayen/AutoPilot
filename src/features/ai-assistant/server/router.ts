@@ -28,72 +28,106 @@ import { applyDagreLayout } from "../lib/layout";
 import { NODE_CATALOG } from "../lib/system-prompt";
 import {
   type AIWorkflowNode,
-  AIWorkflowResponseSchema,
   validateNodeParameters,
+  TopLevelSchema,
+  type TopLevelResult,
 } from "../lib/workflow-schema";
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY || "",
 });
 
-// ─── Top-level response schema ────────────────────────────────────────────────
-// Gemini can return either a complete workflow or a list of clarifying questions.
-// We use a discriminated union on "type" so the panel knows which to render.
+// ─── Conversation input schemas ──────────────────────────────────────────────
 
-const TopLevelSchema = z.discriminatedUnion("type", [
-  // Happy path — full workflow
-  AIWorkflowResponseSchema.extend({ type: z.literal("workflow") }),
+const ConversationMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  content: z.string(),
+  // When role is assistant and a workflow was generated, store it
+  // as a JSON string so the agent can reference it for refinements
+  workflowSnapshot: z.string().optional(),
+});
 
-  // Ambiguous prompt — Gemini asks the user for more detail
-  z.object({
-    type: z.literal("clarification"),
-    questions: z
-      .array(z.string())
-      .min(1)
-      .max(3)
-      .describe(
-        "1-3 short specific questions to ask the user. " +
-          "ONLY use this when critical information is truly missing and cannot be inferred. " +
-          "DO NOT use this for clear requests like 'find CSV duplicates and make a PDF report' — " +
-          "generate the workflow directly for those.",
-      ),
-  }),
-]);
+const inputSchema = z.object({
+  // The current user message
+  prompt: z.string().min(1).max(2000),
+  // All previous turns in this session (empty on first message)
+  history: z.array(ConversationMessageSchema).default([]),
+});
 
-type TopLevelResult = z.infer<typeof TopLevelSchema>;
+type ConversationMessage = z.infer<typeof ConversationMessageSchema>;
+
+function buildPromptWithHistory(
+  userPrompt: string,
+  history: ConversationMessage[],
+  correctionHint?: string,
+): string {
+  let fullPrompt = "";
+
+  if (history.length > 0) {
+    fullPrompt += "CONVERSATION HISTORY (most recent first):\n";
+    const recentHistory = history.slice(-6);
+    for (const msg of recentHistory) {
+      fullPrompt += `${msg.role.toUpperCase()}: ${msg.content}\n`;
+      if (msg.workflowSnapshot) {
+        fullPrompt += `[Previously generated workflow: ${msg.workflowSnapshot}]\n`;
+      }
+    }
+    fullPrompt += "\n---\n";
+  }
+
+  fullPrompt += `USER: ${userPrompt}`;
+
+  if (correctionHint) {
+    fullPrompt +=
+      "\n\n---\nCORRECTION REQUIRED: Previous attempt left these fields empty. " +
+      "Fill them with real content:\n" +
+      correctionHint;
+  }
+
+  return fullPrompt;
+}
 
 // ─── Generation helper ────────────────────────────────────────────────────────
 
 async function attemptGeneration(
-  userPrompt: string,
+  input: z.infer<typeof inputSchema>,
   correctionHint?: string,
 ): Promise<TopLevelResult> {
-  const prompt = correctionHint
-    ? `${userPrompt}\n\n---\nCORRECTION REQUIRED: A previous attempt left these ` +
-      `fields empty. You MUST fill them with real content this time:\n${correctionHint}`
-    : userPrompt;
+  const prompt = buildPromptWithHistory(
+    input.prompt,
+    input.history,
+    correctionHint,
+  );
+  try {
+    const { object } = await generateObject({
+      model: google("gemini-2.0-flash"),
+      schema: TopLevelSchema,
+      system: NODE_CATALOG,
+      prompt,
+    });
 
-  const { object } = await generateObject({
-    model: google("gemini-2.0-flash"),
-    schema: TopLevelSchema,
-    system: NODE_CATALOG,
-    prompt,
-  });
-
-  return object;
+    return object;
+  } catch (error) {
+    // Log full error for debugging while keeping client-facing message generic
+    // eslint-disable-next-line no-console
+    console.error("generateObject failed:", error);
+    throw error;
+  }
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 
 export const aiAssistantRouter = createTRPCRouter({
   generateWorkflow: protectedProcedure
-    .input(z.object({ prompt: z.string().min(10).max(1000) }))
+    .input(inputSchema)
     .mutation(async ({ input }) => {
+      // eslint-disable-next-line no-console
+      console.log("router hit", input);
       // ── Attempt 1 ──────────────────────────────────────────────────────────
-      const result = await attemptGeneration(input.prompt);
+      const result = await attemptGeneration(input);
 
-      if (result.type === "clarification") {
-        return { type: "clarification" as const, questions: result.questions };
+      if (result.type === "clarification" || result.type === "suggestion") {
+        return result;
       }
 
       // ── Validate that generative fields (code, html, prompt…) are filled ──
@@ -105,10 +139,10 @@ export const aiAssistantRouter = createTRPCRouter({
           .map((e) => `• Node "${e.nodeId}", field "${e.field}": ${e.issue}`)
           .join("\n");
 
-        const retry = await attemptGeneration(input.prompt, correctionHint);
+        const retry = await attemptGeneration(input, correctionHint);
 
-        if (retry.type === "clarification") {
-          return { type: "clarification" as const, questions: retry.questions };
+        if (retry.type === "clarification" || retry.type === "suggestion") {
+          return retry;
         }
 
         const retryErrors = validateNodeParameters(
@@ -129,6 +163,7 @@ export const aiAssistantRouter = createTRPCRouter({
         return {
           type: "workflow" as const,
           workflowName: retry.workflowName,
+          explanation: retry.explanation,
           nodes: applyDagreLayout(retry.nodes as AIWorkflowNode[], retry.edges),
           edges: retry.edges,
           notes: retry.notes,
@@ -139,6 +174,7 @@ export const aiAssistantRouter = createTRPCRouter({
       return {
         type: "workflow" as const,
         workflowName: result.workflowName,
+        explanation: result.explanation,
         nodes: applyDagreLayout(result.nodes as AIWorkflowNode[], result.edges),
         edges: result.edges,
         notes: result.notes,

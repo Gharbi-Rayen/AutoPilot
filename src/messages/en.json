@@ -1,0 +1,28 @@
+{
+  "nav": {
+    "workflows": "Workflows",
+    "credentials": "Credentials",
+    "executions": "Executions",
+    "settings": "Settings",
+    "upgradeToPro": "Upgrade to Pro",
+    "billingPortal": "Billing portal",
+    "logOut": "Log out",
+    "loggingOut": "Signing out...",
+    "loading": "Loading..."
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account",
+    "general": "General",
+    "displayName": "Display name",
+    "email": "Email",
+    "emailReadOnly": "Email cannot be changed",
+    "language": "Language",
+    "theme": "Theme",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "themeSystem": "System",
+    "saveChanges": "Save changes",
+    "saved": "Settings saved"
+  }
+}

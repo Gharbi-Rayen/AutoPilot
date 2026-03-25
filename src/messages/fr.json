@@ -1,0 +1,28 @@
+{
+  "nav": {
+    "workflows": "Workflows",
+    "credentials": "Identifiants",
+    "executions": "Exécutions",
+    "settings": "Paramètres",
+    "upgradeToPro": "Passer à Pro",
+    "billingPortal": "Portail de facturation",
+    "logOut": "Se déconnecter",
+    "loggingOut": "Déconnexion...",
+    "loading": "Chargement..."
+  },
+  "settings": {
+    "title": "Paramètres",
+    "account": "Compte",
+    "general": "Général",
+    "displayName": "Nom d'affichage",
+    "email": "E-mail",
+    "emailReadOnly": "L'e-mail ne peut pas être modifié",
+    "language": "Langue",
+    "theme": "Thème",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "themeSystem": "Système",
+    "saveChanges": "Enregistrer",
+    "saved": "Paramètres sauvegardés"
+  }
+}

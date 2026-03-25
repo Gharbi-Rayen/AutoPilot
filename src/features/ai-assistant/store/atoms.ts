@@ -1,16 +1,52 @@
 import { atom } from "jotai";
 
-// Whether the AI assistant panel is visible
+// Whether the AI assistant panel is open
 export const aiPanelOpenAtom = atom<boolean>(false);
 
-// Draft state — holds the last generated workflow before the user confirms
-export const aiDraftAtom = atom<{
-  type: string;
-  workflowName?: string;
-  nodes?: Record<string, unknown>[];
-  edges?: Record<string, unknown>[];
-  notes?: string;
-} | null>(null);
+// ── Conversation history ──────────────────────────────────────────────────────
+// Each message in the conversation. Cleared when the panel is closed and
+// the user discards the session, or when they click "New conversation".
 
-// Loading state for when the AI is currently generating a workflow
+export type ConversationMessage =
+  | { role: "user"; content: string }
+  | {
+      role: "assistant";
+      type: "workflow";
+      workflowName: string;
+      explanation: string;
+      notes: string;
+      nodes: unknown[];
+      edges: unknown[];
+      workflowSnapshot: string;
+    }
+  | {
+      role: "assistant";
+      type: "suggestion";
+      message: string;
+      suggestions: {
+        title: string;
+        description: string;
+        promptToGenerate: string;
+      }[];
+    }
+  | { role: "assistant"; type: "clarification"; question: string }
+  | { role: "assistant"; type: "error"; message: string };
+
+export const conversationAtom = atom<ConversationMessage[]>([]);
+
+// ── Draft workflow (last generated, pending user confirmation) ────────────────
+export const aiDraftAtom = atom<
+  | {
+      type: "workflow";
+      workflowName: string;
+      explanation: string;
+      notes: string;
+      nodes: unknown[];
+      edges: unknown[];
+    }
+  | null
+>(null);
+
+// ── Generation loading state (shared with canvas indicator) ──────────────────
 export const aiGeneratingAtom = atom<boolean>(false);
+export const aiGenerationStepAtom = atom<number>(0);

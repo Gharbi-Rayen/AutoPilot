@@ -1,0 +1,28 @@
+{
+  "nav": {
+    "workflows": "سير العمل",
+    "credentials": "بيانات الاعتماد",
+    "executions": "التنفيذات",
+    "settings": "الإعدادات",
+    "upgradeToPro": "الترقية إلى برو",
+    "billingPortal": "بوابة الفواتير",
+    "logOut": "تسجيل الخروج",
+    "loggingOut": "جارٍ الخروج...",
+    "loading": "جارٍ التحميل..."
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "account": "الحساب",
+    "general": "عام",
+    "displayName": "الاسم المعروض",
+    "email": "البريد الإلكتروني",
+    "emailReadOnly": "لا يمكن تغيير البريد الإلكتروني",
+    "language": "اللغة",
+    "theme": "المظهر",
+    "themeLight": "فاتح",
+    "themeDark": "داكن",
+    "themeSystem": "النظام",
+    "saveChanges": "حفظ التغييرات",
+    "saved": "تم حفظ الإعدادات"
+  }
+}

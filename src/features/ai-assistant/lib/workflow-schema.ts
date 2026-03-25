@@ -210,6 +210,69 @@ export const AIWorkflowResponseSchema = z.object({
 export type AIWorkflowResponse = z.infer<typeof AIWorkflowResponseSchema>;
 export type AIWorkflowNode = z.infer<typeof AIWorkflowNodeSchema>;
 
+// ─── Top-level assistant response schema (workflow, suggestion, clarification) ─
+
+const SuggestionSchema = z.object({
+  type: z.literal("suggestion"),
+  message: z
+    .string()
+    .describe(
+      "A short friendly sentence acknowledging what the user mentioned, " +
+        "e.g. 'Here are some workflows I can build for you with CSV files:'",
+    ),
+  suggestions: z
+    .array(
+      z.object({
+        title: z.string().describe("Short title, 5 words max"),
+        description: z
+          .string()
+          .describe(
+            "One sentence plain-language description of what this workflow does",
+          ),
+        promptToGenerate: z
+          .string()
+          .describe(
+            "The exact detailed prompt that, when sent back as the user message, " +
+              "will generate this workflow in WORKFLOW mode. Must be specific enough " +
+              "to produce a complete workflow without further clarification.",
+          ),
+      }),
+    )
+    .min(2)
+    .max(4),
+});
+
+export const TopLevelSchema = z.discriminatedUnion("type", [
+  // Full workflow generation (and refinements)
+  AIWorkflowResponseSchema.extend({
+    type: z.literal("workflow"),
+    explanation: z
+      .string()
+      .describe(
+        "1-3 sentences in plain language explaining what this workflow does " +
+          "and why this approach was chosen. No internal node names.",
+      ),
+  }),
+
+  // User was vague — offer concrete suggestions
+  SuggestionSchema,
+
+  // Truly ambiguous — ask one focused question
+  z.object({
+    type: z.literal("clarification"),
+    question: z
+      .string()
+      .describe(
+        "A single question. Must explain why you need this information. " +
+          "Example: 'What should trigger this workflow — a form submission, " +
+          "a payment, or should it run manually?'",
+      ),
+  }),
+]);
+
+export type TopLevelResult = z.infer<typeof TopLevelSchema>;
+export type SuggestionResult = z.infer<typeof SuggestionSchema>;
+
 // ─── Post-generation parameter validator ─────────────────────────────────────
 // Call this in the tRPC router after generateObject() returns.
 // If errors exist, throw a TRPCError so the panel surfaces them as a toast.

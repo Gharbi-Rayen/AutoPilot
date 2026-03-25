@@ -22,9 +22,8 @@ import "@xyflow/react/dist/style.css";
 import { useAtomValue, useSetAtom } from "jotai";
 import { Sparkles } from "lucide-react";
 import dynamic from "next/dynamic";
-import { ErrorView, LoadingView } from "@/components/entity-components";
+import { LoadingView, ErrorView } from "@/components/entity-components";
 import { nodeComponents } from "@/config/node-components";
-import { aiGeneratingAtom } from "@/features/ai-assistant/store/atoms";
 import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
 import { NodeType } from "@/generated/prisma";
 import { editorAtom } from "../store/atoms";
@@ -40,6 +39,7 @@ const ExecuteWorkflowButton = dynamic(
 );
 
 import { AiAssistantTrigger } from "@/features/ai-assistant/components/ai-assistant-trigger";
+import { AiGenerationIndicator } from "@/features/ai-assistant/components/ai-generation-indicator";
 
 const AiAssistantPanel = dynamic(
   () =>
@@ -61,7 +61,6 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
   const { data: workflow } = useSuspenseWorkflow(workflowId);
 
   const setEditor = useSetAtom(editorAtom);
-  const isAiGenerating = useAtomValue(aiGeneratingAtom);
   const [nodes, setNodes] = useState<Node[]>(workflow.nodes);
   const [edges, setEdges] = useState<Edge[]>(workflow.edges);
 
@@ -126,27 +125,7 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
         )}
       </ReactFlow>
 
-      {/* AI Generating Overlay */}
-      {isAiGenerating && (
-        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px] transition-all duration-300">
-          <div className="flex flex-col items-center gap-4 p-6 bg-background rounded-xl border shadow-lg max-w-sm w-full text-center">
-            <div className="flex bg-primary/10 p-4 rounded-full">
-              <Sparkles className="w-8 h-8 text-primary animate-pulse" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-semibold text-lg">
-                AI is building your workflow
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Selecting nodes and wiring variables...
-              </p>
-            </div>
-            <div className="w-full h-1.5 bg-secondary/50 rounded-full overflow-hidden mt-4">
-              <div className="h-full bg-primary/80 w-full animate-pulse" />
-            </div>
-          </div>
-        </div>
-      )}
+      <AiGenerationIndicator />
     </div>
   );
 };

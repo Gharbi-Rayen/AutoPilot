@@ -7,12 +7,14 @@ import {
   KeyIcon,
   Loader2Icon,
   LogOutIcon,
+  SettingsIcon,
   StarIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useState } from "react";
+import { useTranslations } from "@/features/settings/hooks/use-translations";
 import {
   Sidebar,
   SidebarContent,
@@ -40,7 +42,7 @@ const menuItems = [
     title: "Home",
     items: [
       {
-        title: "Workflows",
+        title: "workflows",
         icon: FolderOpenIcon,
         url: "/workflows",
       },
@@ -54,11 +56,17 @@ const menuItems = [
         icon: HistoryIcon,
         url: "/executions",
       },
+      {
+        title: "settings",
+        icon: SettingsIcon,
+        url: "/settings",
+      },
     ],
   },
 ];
 
 export const AppSidebar = () => {
+  const { t } = useTranslations();
   const polarAuthClient = authClient as PolarAuthClient;
   const router = useRouter();
   const pathname = usePathname();
@@ -115,7 +123,7 @@ export const AppSidebar = () => {
                   return (
                     <SidebarMenuItem key={item.title}>
                       <SidebarMenuButton
-                        tooltip={item.title}
+                        tooltip={t(`nav.${item.title}`)}
                         isActive={isActive}
                         asChild
                         className="gap-x-4 h-10 px-4"
@@ -133,7 +141,7 @@ export const AppSidebar = () => {
                           ) : (
                             <item.icon className="size-4" />
                           )}
-                          <span>{item.title}</span>
+                          <span className="capitalize">{t(`nav.${item.title}`)}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -151,7 +159,7 @@ export const AppSidebar = () => {
             <SidebarMenuItem>
               <SidebarMenuButton
                 asChild
-                tooltip="Upgrade to Pro"
+                tooltip={t("nav.upgradeToPro")}
                 isActive={false}
                 className="gap-x-4 h-10 px-4"
               >
@@ -175,7 +183,7 @@ export const AppSidebar = () => {
                   ) : (
                     <StarIcon className="size-4" />
                   )}
-                  <span>{isUpgrading ? "Loading..." : "Upgrade to Pro"}</span>
+                  <span>{isUpgrading ? t("nav.loading") : t("nav.upgradeToPro")}</span>
                 </button>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -184,7 +192,7 @@ export const AppSidebar = () => {
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              tooltip="Billing portal"
+              tooltip={t("nav.billingPortal")}
               isActive={false}
               className="gap-x-4 h-10 px-4"
             >
@@ -208,14 +216,14 @@ export const AppSidebar = () => {
                 ) : (
                   <CreditCardIcon className="size-4" />
                 )}
-                <span>{isBilling ? "Loading..." : "Billing portal"}</span>
+                <span>{isBilling ? t("nav.loading") : t("nav.billingPortal")}</span>
               </button>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              tooltip="Log out"
+              tooltip={t("nav.logOut")}
               isActive={false}
               className="gap-x-4 h-10 px-4"
             >
@@ -238,7 +246,7 @@ export const AppSidebar = () => {
                 ) : (
                   <LogOutIcon className="size-4" />
                 )}
-                <span>{isLoggingOut ? "Signing out..." : "Log out"}</span>
+                <span>{isLoggingOut ? t("nav.loggingOut") : t("nav.logOut")}</span>
               </button>
             </SidebarMenuButton>
           </SidebarMenuItem>

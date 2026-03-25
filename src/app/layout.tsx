@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Provider } from "jotai";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { LocaleHtmlAttrs } from "@/components/locale-html-attrs";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TRPCReactProvider } from "@/trpc/client";
@@ -41,8 +42,9 @@ export default function RootLayout({
           <TRPCReactProvider>
             <NuqsAdapter>
               <Provider>
+                <LocaleHtmlAttrs />
                 {children}
-                <Toaster />
+                <Toaster position="top-right" />
               </Provider>
             </NuqsAdapter>
           </TRPCReactProvider>
