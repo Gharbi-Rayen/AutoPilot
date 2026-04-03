@@ -1,10 +1,10 @@
 "use client";
 
 import { useAtomValue } from "jotai";
-import { localeAtom } from "../store/language-atom";
+import ar from "@/messages/ar.json";
 import en from "@/messages/en.json";
 import fr from "@/messages/fr.json";
-import ar from "@/messages/ar.json";
+import { localeAtom } from "../store/language-atom";
 
 // All message files indexed by locale
 const messages = { en, fr, ar };

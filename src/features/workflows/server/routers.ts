@@ -3,6 +3,8 @@ import type { Edge, Node } from "@xyflow/react";
 import { generateSlug } from "random-word-slugs";
 import z from "zod";
 import { PAGINATION } from "@/config/constants";
+import { registerExecutionInQueue } from "@/features/executions/server/execution-queue";
+import { classifyExecutionProfile } from "@/features/executions/server/queue-policy";
 import { NodeType } from "@/generated/prisma";
 import { inngest } from "@/inngest/client";
 import prisma from "@/lib/db";
@@ -23,7 +25,18 @@ export const workflowsRouter = createTRPCRouter({
           id: input.id,
           userId: ctx.auth.user.id,
         },
+        include: {
+          nodes: {
+            select: {
+              type: true,
+            },
+          },
+        },
       });
+
+      const executionProfile = classifyExecutionProfile(
+        workflow.nodes.map((node) => node.type),
+      );
 
       // Create execution record BEFORE sending event to ensure user sees it immediately
       const executionId = createId();
@@ -40,18 +53,79 @@ export const workflowsRouter = createTRPCRouter({
         },
       });
 
+      const queueState = await registerExecutionInQueue({
+        executionId,
+        profile: executionProfile,
+      });
+
       await inngest.send({
         id: inngestId,
         name: "workflows/execute.workflow",
         data: {
           workflowId: input.id,
           executionId: executionId,
+          executionProfile,
+        },
+      });
+
+      const workflowWithoutNodes = {
+        ...workflow,
+      };
+
+      delete (workflowWithoutNodes as { nodes?: unknown }).nodes;
+
+      return {
+        ...workflowWithoutNodes,
+        executionId,
+        queueState,
+        executionProfile,
+      };
+    }),
+
+  pauseExecution: protectedProcedure
+    .input(z.object({ executionId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const execution = await prisma.execution.findFirstOrThrow({
+        where: {
+          id: input.executionId,
+          workflow: {
+            userId: ctx.auth.user.id,
+          },
+        },
+        select: {
+          id: true,
+          status: true,
+          workflow: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+
+      if (execution.status !== "RUNNING") {
+        return {
+          ...execution,
+          paused: false,
+        };
+      }
+
+      await prisma.execution.update({
+        where: {
+          id: execution.id,
+        },
+        data: {
+          status: "FAILED",
+          finishedAt: new Date(),
+          error: "Paused by user.",
         },
       });
 
       return {
-        ...workflow,
-        executionId,
+        ...execution,
+        status: "FAILED" as const,
+        paused: true,
       };
     }),
 

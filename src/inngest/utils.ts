@@ -38,16 +38,18 @@ export const topologicalSort = (
   // We map sorted IDs back to nodes first
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const sortedNodes = sortedNodeIds
-    .map((id) => nodeMap.get(id)!)
-    .filter(Boolean);
+    .map((id) => nodeMap.get(id))
+    .filter((node): node is Node => Boolean(node));
 
   return [...sortedNodes, ...isolatedNodes];
 };
 
-export const sendWorkflowExecution = async (data: {
+export type WorkflowExecutionPayload = {
   workflowId: string;
-  [Key: string]: any;
-}) => {
+  [key: string]: unknown;
+};
+
+export const sendWorkflowExecution = async (data: WorkflowExecutionPayload) => {
   return inngest.send({
     name: "workflows/execute.workflow",
     data,

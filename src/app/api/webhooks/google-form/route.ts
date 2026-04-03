@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { sendWorkflowExecution } from "@/inngest/utils";
 
 // GET handler for testing/debugging
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   return NextResponse.json({
     message: "Google Form webhook endpoint is active",
     method: "POST",

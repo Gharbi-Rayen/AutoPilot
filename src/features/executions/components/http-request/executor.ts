@@ -119,7 +119,6 @@ export const HttpRequestExecutor: NodeExecutor<HttpRequestData> = async ({
       };
 
       return {
-        ...context,
         [data.variableName]: responsePlayload,
       };
     });

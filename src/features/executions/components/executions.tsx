@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   CheckCircle2Icon,
   CircleDotIcon,
+  Clock3Icon,
   Loader2Icon,
   XCircleIcon,
 } from "lucide-react";
@@ -30,6 +31,12 @@ import { useSuspenseExecutions } from "../hooks/use-executions";
 import { useExecutionsParams } from "../hooks/use-executions-params";
 
 const statusConfig = {
+  QUEUED: {
+    label: "Queued",
+    icon: Clock3Icon,
+    className: "bg-amber-100 text-amber-700 border-amber-200",
+    iconClassName: "",
+  },
   RUNNING: {
     label: "Running",
     icon: Loader2Icon,
@@ -138,6 +145,7 @@ export const ExecutionsEmpty = () => {
 type ExecutionItemData = {
   id: string;
   status: "RUNNING" | "SUCCESS" | "FAILED";
+  queueState?: "QUEUED" | "RUNNING" | null;
   startedAt: Date;
   finishedAt: Date | null;
   error: string | null;
@@ -148,7 +156,11 @@ type ExecutionItemData = {
 };
 
 const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
-  const config = statusConfig[data.status];
+  const statusKey =
+    data.status === "RUNNING" && data.queueState === "QUEUED"
+      ? "QUEUED"
+      : data.status;
+  const config = statusConfig[statusKey];
   const StatusIcon = config.icon;
 
   return (

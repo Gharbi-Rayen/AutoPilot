@@ -182,7 +182,16 @@ export const UploadFileDialog = ({
               className="space-y-5"
             >
               {/* File Drop Zone */}
-              <div
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileInputChange}
+              />
+
+              <Button
+                type="button"
+                variant="ghost"
                 className={`relative rounded-lg border-2 border-dashed transition-colors ${
                   isDragging
                     ? "border-primary bg-primary/5"
@@ -196,15 +205,8 @@ export const UploadFileDialog = ({
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={handleFileInputChange}
-                />
-
                 {selectedFile ? (
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
                     <div className="flex items-center gap-3">
                       <div className="rounded bg-primary/10 p-2">
                         <Upload className="size-4 text-primary" />
@@ -218,16 +220,6 @@ export const UploadFileDialog = ({
                         </p>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedFile(null);
-                      }}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="size-4" />
-                    </button>
                   </div>
                 ) : (
                   <div className="text-center">
@@ -266,7 +258,20 @@ export const UploadFileDialog = ({
                     )}
                   </div>
                 )}
-              </div>
+              </Button>
+
+              {selectedFile ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-fit"
+                  onClick={() => setSelectedFile(null)}
+                >
+                  <X className="size-4" />
+                  Clear selected file
+                </Button>
+              ) : null}
 
               <FormField
                 control={form.control}
@@ -283,7 +288,7 @@ export const UploadFileDialog = ({
                         onChange={(e) =>
                           field.onChange(
                             e.target.value
-                              ? parseInt(e.target.value)
+                              ? parseInt(e.target.value, 10)
                               : undefined,
                           )
                         }

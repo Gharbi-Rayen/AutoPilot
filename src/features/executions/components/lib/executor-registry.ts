@@ -4,6 +4,13 @@ import { StripeExecutor } from "@/features/triggers/components/stripe-trigger/ex
 import { NodeType } from "@/generated/prisma";
 import { AnthropicExecutor } from "../anthropic/executor";
 import { CodeExecutor } from "../code/executor";
+import { CsvAggregateExecutor } from "../csv-aggregate/executor";
+import { CsvColumnStatsExecutor } from "../csv-column-stats/executor";
+import { CsvCompareExecutor } from "../csv-compare/executor";
+import { CsvFilterExecutor } from "../csv-filter/executor";
+import { CsvJoinExecutor } from "../csv-join/executor";
+import { CsvParseExecutor } from "../csv-parse/executor";
+import { CsvSortExecutor } from "../csv-sort/executor";
 import { DiscordExecutor } from "../discord/executor";
 import { DownloadFileExecutor } from "../download-file/executor";
 import { EmailExecutor } from "../email/executor";
@@ -19,11 +26,8 @@ import {
   convertImageExecutor,
   createPresentationExecutor,
   cropImageExecutor,
-  csvAggregateExecutor,
-  csvFilterExecutor,
+  csvDeduplicateExecutor,
   csvGenerateExecutor,
-  csvJoinExecutor,
-  csvParseExecutor,
   delayExecutor,
   dropboxExecutor,
   fillTemplateExecutor,
@@ -86,11 +90,15 @@ export const executorRegistry: Record<NodeType, NodeExecutor> = {
   [NodeType.PDF_GENERATE]: pdfGenerateExecutor,
   [NodeType.PDF_SIGN]: pdfSignExecutor,
   // CSV Processing Nodes
-  [NodeType.CSV_PARSE]: csvParseExecutor,
+  [NodeType.CSV_PARSE]: CsvParseExecutor,
   [NodeType.CSV_GENERATE]: csvGenerateExecutor,
-  [NodeType.CSV_FILTER]: csvFilterExecutor,
-  [NodeType.CSV_AGGREGATE]: csvAggregateExecutor,
-  [NodeType.CSV_JOIN]: csvJoinExecutor,
+  [NodeType.CSV_FILTER]: CsvFilterExecutor,
+  [NodeType.CSV_AGGREGATE]: CsvAggregateExecutor,
+  [NodeType.CSV_JOIN]: CsvJoinExecutor,
+  [NodeType.CSV_SORT]: CsvSortExecutor,
+  [NodeType.CSV_DEDUPLICATE]: csvDeduplicateExecutor,
+  [NodeType.CSV_COLUMN_STATS]: CsvColumnStatsExecutor,
+  [NodeType.CSV_COMPARE]: CsvCompareExecutor,
   // Spreadsheet Nodes
   [NodeType.READ_EXCEL]: readExcelExecutor,
   [NodeType.WRITE_EXCEL]: writeExcelExecutor,
@@ -128,4 +136,14 @@ export const getExecutor = (type: NodeType): NodeExecutor => {
   }
 
   return executor;
+};
+
+const fusionCompatibleNodeTypes = new Set<NodeType>([
+  NodeType.CSV_PARSE,
+  NodeType.CSV_FILTER,
+  NodeType.CSV_AGGREGATE,
+]);
+
+export const isFusionCompatibleNodeType = (type: NodeType): boolean => {
+  return fusionCompatibleNodeTypes.has(type);
 };

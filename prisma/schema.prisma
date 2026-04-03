@@ -5,7 +5,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -145,6 +144,10 @@ enum NodeType {
   CSV_FILTER
   CSV_AGGREGATE
   CSV_JOIN
+  CSV_SORT
+  CSV_DEDUPLICATE
+  CSV_COLUMN_STATS
+  CSV_COMPARE
   // Spreadsheet Nodes
   READ_EXCEL
   WRITE_EXCEL
@@ -218,6 +221,18 @@ enum ExecutionStatus {
   FAILED
 }
 
+enum DatasetStorageType {
+  JSONL
+  OBJECT_STORAGE
+  COLUMNAR
+}
+
+enum DatasetStatus {
+  WRITING
+  READY
+  FAILED
+}
+
 model Execution {
   id         String   @id @default(cuid())
   workflowId String
@@ -232,4 +247,69 @@ model Execution {
   startedAt      DateTime  @default(now())
   finishedAt     DateTime?
   inngestEventId String    @unique
+
+  datasetVariables ExecutionDatasetVariable[]
+}
+
+model ExecutionDataset {
+  id String @id @default(cuid())
+
+  storage       DatasetStorageType @default(JSONL)
+  status        DatasetStatus      @default(WRITING)
+  formatVersion Int                @default(1)
+
+  schema Json?
+
+  rowCount   Int     @default(0)
+  chunkCount Int     @default(0)
+  byteSize   BigInt?
+
+  manifestPath String
+  rootPath     String
+  checksum     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variableRefs ExecutionDatasetVariable[]
+  chunks       ExecutionDatasetChunk[]
+}
+
+model ExecutionDatasetVariable {
+  id String @id @default(cuid())
+
+  executionId String
+  execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  variableName String
+
+  datasetId String
+  dataset   ExecutionDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([executionId, variableName])
+  @@index([datasetId])
+}
+
+model ExecutionDatasetChunk {
+  id String @id @default(cuid())
+
+  datasetId String
+  dataset   ExecutionDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  chunkIndex Int
+
+  rowStart Int
+  rowEnd   Int
+  rowCount Int
+
+  byteSize Int?
+  filePath String
+  checksum String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([datasetId, chunkIndex])
+  @@index([datasetId])
 }

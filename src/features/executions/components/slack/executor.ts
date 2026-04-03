@@ -105,7 +105,6 @@ export const SlackExecutor: NodeExecutor<SlackData> = async ({
     await updateStatePublish("success");
 
     return {
-      ...context,
       [data.variableName]: result,
     };
   } catch (error) {

@@ -129,7 +129,6 @@ export const TelegramExecutor: NodeExecutor<TelegramData> = async ({
     await updateStatePublish("success");
 
     return {
-      ...context,
       [data.variableName]: result,
     };
   } catch (error) {

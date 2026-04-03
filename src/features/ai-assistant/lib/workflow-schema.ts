@@ -30,19 +30,55 @@ const CodeParameters = z.object({
     ),
 });
 
-const PdfGenerateParameters = z.object({
-  outputPath: z
-    .string()
-    .min(1)
-    .describe("Output file path, e.g. '/outputs/report.pdf'"),
-  html: z
-    .string()
-    .min(50)
-    .describe(
-      "Full HTML document with inline CSS. Reference upstream variables with " +
-        "{{variableName}} inside the string. Use {{json obj}} for objects/arrays. " +
-        "Must be real HTML — never empty.",
-    ),
+const PdfGenerateParameters = z
+  .object({
+    variableName: z
+      .string()
+      .min(1)
+      .describe("Output variable name for generated PDF file object"),
+    contentVariable: z.string().optional(),
+    statsVariable: z.string().optional(),
+    sectionsVariable: z.string().optional(),
+    tablesVariable: z.string().optional(),
+    title: z.string().optional(),
+    subtitle: z.string().optional(),
+    footerText: z.string().optional(),
+    fileName: z.string().optional(),
+  })
+  .superRefine((values, ctx) => {
+    const hasContentSource =
+      Boolean(values.contentVariable) ||
+      Boolean(values.statsVariable) ||
+      Boolean(values.sectionsVariable) ||
+      Boolean(values.tablesVariable);
+
+    if (!hasContentSource) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["contentVariable"],
+        message:
+          "Provide at least one of contentVariable, statsVariable, sectionsVariable, or tablesVariable",
+      });
+    }
+  });
+
+const PdfFillFormParameters = z.object({
+  pdfVariable: z.string().min(1),
+  formDataVariable: z.string().min(1),
+  variableName: z.string().min(1),
+  flatten: z.boolean().optional(),
+  fileName: z.string().optional(),
+  fallbackFormDataJson: z.string().optional(),
+});
+
+const PdfSignParameters = z.object({
+  pdfVariable: z.string().min(1),
+  certificateVariable: z.string().min(1),
+  certificatePasswordVariable: z.string().optional(),
+  signatureReason: z.string().optional(),
+  signatureLocation: z.string().optional(),
+  fileName: z.string().optional(),
+  variableName: z.string().min(1),
 });
 
 const GeminiParameters = z.object({
@@ -130,6 +166,37 @@ const HttpRequestParameters = z.object({
   body: z.string().default(""),
 });
 
+const CsvSortParameters = z.object({
+  sourceVariable: z.string().min(1),
+  variableName: z.string().min(1),
+  sortField: z.string().min(1),
+  direction: z.enum(["asc", "desc"]).default("asc"),
+  compareAs: z.enum(["string", "number", "date"]).default("string"),
+  nulls: z.enum(["first", "last"]).default("last"),
+});
+
+const CsvDeduplicateParameters = z.object({
+  sourceVariable: z.string().min(1),
+  variableName: z.string().min(1),
+  fields: z.string().optional(),
+  keep: z.enum(["first", "last"]).default("first"),
+  includeDuplicates: z.boolean().optional(),
+});
+
+const CsvColumnStatsParameters = z.object({
+  sourceVariable: z.string().min(1),
+  variableName: z.string().min(1),
+  fields: z.string().optional(),
+});
+
+const CsvCompareParameters = z.object({
+  leftVariable: z.string().min(1),
+  rightVariable: z.string().min(1),
+  variableName: z.string().min(1),
+  keyField: z.string().optional(),
+  compareFields: z.string().optional(),
+});
+
 // Generic fallback for all other nodes (file, PDF utilities, CSV, image, etc.)
 // export const GenericParameters = z.record(z.unknown());
 
@@ -137,7 +204,9 @@ const HttpRequestParameters = z.object({
 
 const parameterSchemaByType: Partial<Record<NodeType, z.ZodTypeAny>> = {
   [NodeType.CODE]: CodeParameters,
+  [NodeType.PDF_FILL_FORM]: PdfFillFormParameters,
   [NodeType.PDF_GENERATE]: PdfGenerateParameters,
+  [NodeType.PDF_SIGN]: PdfSignParameters,
   [NodeType.GEMINI]: GeminiParameters,
   [NodeType.OPENAI]: OpenAIParameters,
   [NodeType.ANTHROPIC]: AnthropicParameters,
@@ -147,6 +216,10 @@ const parameterSchemaByType: Partial<Record<NodeType, z.ZodTypeAny>> = {
   [NodeType.EMAIL_SMTP]: EmailParameters,
   [NodeType.WHATSAPP]: WhatsAppParameters,
   [NodeType.HTTP_REQUEST]: HttpRequestParameters,
+  [NodeType.CSV_SORT]: CsvSortParameters,
+  [NodeType.CSV_DEDUPLICATE]: CsvDeduplicateParameters,
+  [NodeType.CSV_COLUMN_STATS]: CsvColumnStatsParameters,
+  [NodeType.CSV_COMPARE]: CsvCompareParameters,
 };
 
 // ─── Main schemas passed to generateObject() ─────────────────────────────────
@@ -177,7 +250,7 @@ export const AIWorkflowNodeSchema = z.object({
       .describe(
         "Node configuration. Strict rules by field:\\n" +
           "• code (CODE node): write real JavaScript, min 20 chars, NEVER empty\\n" +
-          "• html (PDF_GENERATE): write real HTML with inline CSS, NEVER empty\\n" +
+          "• PDF_GENERATE: provide variableName and at least one source variable field (contentVariable/statsVariable/sectionsVariable/tablesVariable)\n" +
           "• prompt (AI nodes): write the actual prompt text, NEVER empty\\n" +
           "• message/body/subject (messaging nodes): write real content, NEVER empty\\n" +
           "• variableName (AI/HTTP/CODE nodes): write a snake_case name, NEVER empty\\n" +

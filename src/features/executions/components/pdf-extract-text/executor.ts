@@ -30,6 +30,53 @@ type PdfWorkerModule = {
   CanvasFactory?: unknown;
 };
 
+type PdfInputPayload = {
+  buffer?: unknown;
+  url?: unknown;
+  name?: unknown;
+  fileName?: unknown;
+};
+
+const toBuffer = (value: unknown): Buffer | null => {
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { data?: unknown }).data)
+  ) {
+    return Buffer.from((value as { data: number[] }).data);
+  }
+
+  if (Array.isArray(value) && value.every((item) => typeof item === "number")) {
+    return Buffer.from(value as number[]);
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return Buffer.from(value);
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  }
+
+  if (typeof value === "string") {
+    return Buffer.from(value, "utf-8");
+  }
+
+  return null;
+};
+
+const toPdfInputPayload = (value: unknown): PdfInputPayload | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as PdfInputPayload;
+};
+
 export const PdfExtractTextExecutor: NodeExecutor<PdfExtractTextData> = async ({
   data,
   nodeId,
@@ -68,7 +115,10 @@ export const PdfExtractTextExecutor: NodeExecutor<PdfExtractTextData> = async ({
         );
       }
 
-      const pdf = pdfObj as any;
+      const pdf = toPdfInputPayload(pdfObj);
+      if (!pdf) {
+        throw new NonRetriableError("PDF input payload is invalid");
+      }
 
       if (!pdf.buffer && !pdf.url) {
         throw new NonRetriableError("PDF object must have a buffer or URL");
@@ -77,10 +127,12 @@ export const PdfExtractTextExecutor: NodeExecutor<PdfExtractTextData> = async ({
       let buffer: Buffer;
 
       if (pdf.buffer) {
-        buffer = Buffer.isBuffer(pdf.buffer)
-          ? pdf.buffer
-          : Buffer.from(pdf.buffer);
-      } else if (pdf.url) {
+        const normalizedBuffer = toBuffer(pdf.buffer);
+        if (!normalizedBuffer) {
+          throw new NonRetriableError("Unsupported PDF buffer format");
+        }
+        buffer = normalizedBuffer;
+      } else if (typeof pdf.url === "string" && pdf.url.length > 0) {
         const response = await fetch(pdf.url);
         if (!response.ok) {
           throw new NonRetriableError(
@@ -111,7 +163,14 @@ export const PdfExtractTextExecutor: NodeExecutor<PdfExtractTextData> = async ({
         const result: Record<string, unknown> = {
           text: textResult.text,
           pages: textResult.total ?? textResult.pages?.length,
-          fileName: pdf.name || "document.pdf",
+          fileName:
+            (typeof pdf.fileName === "string" && pdf.fileName.length > 0
+              ? pdf.fileName
+              : undefined) ||
+            (typeof pdf.name === "string" && pdf.name.length > 0
+              ? pdf.name
+              : undefined) ||
+            "document.pdf",
         };
 
         if (data.includeMetadata && infoResult) {

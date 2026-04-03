@@ -65,15 +65,15 @@ export function AiGenerationIndicator() {
         {/* Step dots — 4 dots, past steps filled+faded, active dot wide,
             future steps are border-only. Smooth CSS transitions. */}
         <div style={{ display: "flex", gap: "4px", alignItems: "center" }}>
-          {STEPS.map((_, i) => (
+          {STEPS.map((stepLabel, i) => (
             <div
-              key={i}
+              key={stepLabel}
               className={
                 i < currentStep
-                  ? "bg-primary"       // past step: filled, faded
+                  ? "bg-primary" // past step: filled, faded
                   : i === currentStep
-                  ? "bg-primary"       // active step: filled, full opacity, wider
-                  : "bg-border"        // future step: unfilled
+                    ? "bg-primary" // active step: filled, full opacity, wider
+                    : "bg-border" // future step: unfilled
               }
               style={{
                 height: "4px",

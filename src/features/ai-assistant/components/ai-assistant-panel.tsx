@@ -1,19 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useAtom, useAtomValue } from "jotai";
-import { useReactFlow } from "@xyflow/react";
 import { useMutation } from "@tanstack/react-query";
-import { useTRPC } from "@/trpc/client";
-import {
-  aiPanelOpenAtom,
-  aiDraftAtom,
-  aiGeneratingAtom,
-  aiGenerationStepAtom,
-  conversationAtom,
-  type ConversationMessage,
-} from "../store/atoms";
-import { Button } from "@/components/ui/button";
+import { useReactFlow } from "@xyflow/react";
+import { useAtom, useAtomValue } from "jotai";
 import {
   AlertCircle,
   CheckCircle2,
@@ -23,8 +12,19 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { useTRPC } from "@/trpc/client";
 import type { AIWorkflowNode, TopLevelResult } from "../lib/workflow-schema";
+import {
+  aiDraftAtom,
+  aiGeneratingAtom,
+  aiGenerationStepAtom,
+  aiPanelOpenAtom,
+  type ConversationMessage,
+  conversationAtom,
+} from "../store/atoms";
 
 declare global {
   interface Window {
@@ -208,30 +208,30 @@ export function AiAssistantPanel() {
     edges: unknown[],
     mode: "overwrite" | "append",
   ) {
-    const rfNodes = (nodes as (AIWorkflowNode & { position: { x: number; y: number } })[]).map(
-      (n) => ({
-        id: n.id,
+    const rfNodes = (
+      nodes as (AIWorkflowNode & { position: { x: number; y: number } })[]
+    ).map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: {
+        label: n.data.label,
         type: n.type,
-        position: n.position,
-        data: {
-          label: n.data.label,
-          type: n.type,
-          parameters: n.data.parameters,
-        },
-        selected: false,
-        dragging: false,
-      }),
-    );
+        parameters: n.data.parameters,
+      },
+      selected: false,
+      dragging: false,
+    }));
 
-    const rfEdges = (edges as { id: string; source: string; target: string }[]).map(
-      (e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        type: "smoothstep" as const,
-        animated: false,
-      }),
-    );
+    const rfEdges = (
+      edges as { id: string; source: string; target: string }[]
+    ).map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: "smoothstep" as const,
+      animated: false,
+    }));
 
     if (mode === "overwrite") {
       setNodes(rfNodes);
@@ -326,7 +326,8 @@ export function AiAssistantPanel() {
           <div className="flex flex-col gap-3 py-2">
             <p className="text-xs text-muted-foreground text-center">
               Describe what you want to automate in plain language.
-              <br />I'll figure out the nodes.
+              <br />
+              I'll figure out the nodes.
             </p>
             {[
               "Take a CSV, find duplicate rows, generate a PDF report",
@@ -419,7 +420,11 @@ function MessageBubble({
 }: {
   message: ConversationMessage;
   onSuggestionClick: (prompt: string) => void;
-  onApply: (nodes: unknown[], edges: unknown[], mode: "overwrite" | "append") => void;
+  onApply: (
+    nodes: unknown[],
+    edges: unknown[],
+    mode: "overwrite" | "append",
+  ) => void;
 }) {
   if (message.role === "user") {
     return (
@@ -462,7 +467,9 @@ function MessageBubble({
             className="w-full text-left rounded-lg border bg-muted/40 hover:bg-muted px-3 py-2 transition-colors"
           >
             <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-xs font-medium line-clamp-1">{s.title}</span>
+              <span className="text-xs font-medium line-clamp-1">
+                {s.title}
+              </span>
             </div>
             <p className="text-xs text-muted-foreground">{s.description}</p>
           </button>

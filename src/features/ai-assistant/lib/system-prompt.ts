@@ -144,20 +144,24 @@ Example notes (separate from explanation — technical config steps):
 - LOCAL_STORAGE     -> Basic key-value store. Params: { key: "", value: "" }
 
 ### 6. PDF NODES
-- PDF_EXTRACT_TEXT  -> Extract text from PDF. Params: { filePath: "", variableName: "pdf_text" }
-- PDF_EXTRACT_TABLES-> Extract tables from PDF. Params: { filePath: "", variableName: "pdf_tables" }
-- PDF_SPLIT         -> Split PDF pages. Params: { filePath: "", ranges: "" }
-- PDF_MERGE         -> Merge multiple PDFs. Params: { filePaths: [] }
-- PDF_FILL_FORM     -> Fill PDF form fields. Params: { filePath: "", formData: {} }
-- PDF_GENERATE      -> Create PDF from HTML. Params: { html: "<!DOCTYPE html>... (WRITE REAL HTML here. Use inline CSS and reference upstream variables with {{variableName}})", outputPath: "/outputs/report.pdf" } ⚠ You must write actual HTML markup. Never leave empty.
-- PDF_SIGN          -> Apply digital signature. Params: { filePath: "", certPath: "" }
+- PDF_EXTRACT_TEXT  -> Extract text from PDF. Params: { pdfVariable: "", variableName: "pdfText", includeMetadata: false }
+- PDF_EXTRACT_TABLES-> Extract tables from PDF. Params: { pdfVariable: "", variableName: "pdfTables" }
+- PDF_SPLIT         -> Split PDF pages. Params: { pdfVariable: "", variableName: "pdfSplit", pageRanges: "1-3,5", filePrefix: "part" }
+- PDF_MERGE         -> Merge multiple PDFs. Params: { pdfVariables: "pdfA,pdfB", variableName: "mergedPdf", fileName: "merged.pdf" }
+- PDF_FILL_FORM     -> Fill PDF form fields. Params: { pdfVariable: "", formDataVariable: "", variableName: "filledPdf", flatten: true, fileName: "filled.pdf" }
+- PDF_GENERATE      -> Generate a formatted PDF from workflow variables. Params: { variableName: "pdfReport", contentVariable: "", title: "", subtitle: "", statsVariable: "", sectionsVariable: "", tablesVariable: "", footerText: "", fileName: "report.pdf" }
+- PDF_SIGN          -> Apply digital signature. Params: { pdfVariable: "", certificateVariable: "", certificatePasswordVariable: "", signatureReason: "", signatureLocation: "", variableName: "signedPdf", fileName: "signed.pdf" }
 
 ### 7. CSV & EXCEL NODES
-- CSV_PARSE         -> Parse CSV to JSON. Params: { filePath: "/uploads/data.csv", variableName: "parsedCsv" } Output available as {{parsedCsv.data}} (array)
-- CSV_GENERATE      -> Create CSV from JSON. Params: { data: "", destinationPath: "" }
-- CSV_FILTER        -> Filter CSV rows. Params: { filePath: "", condition: "" }
-- CSV_AGGREGATE     -> Aggregate CSV data. Params: { filePath: "", operations: "" }
-- CSV_JOIN          -> Join multiple CSVs. Params: { filePaths: [], joinKey: "" }
+- CSV_PARSE         -> Parse CSV into records. Params: { csvVariable: "", variableName: "parsedCsv", delimiter: "auto", hasHeader: true }
+- CSV_GENERATE      -> Create CSV from records. Params: { sourceVariable: "", variableName: "generatedCsv", delimiter: ",", includeHeader: true }
+- CSV_FILTER        -> Filter CSV rows. Params: { sourceVariable: "", variableName: "filteredCsv", field: "", operator: "eq", value: "" }
+- CSV_AGGREGATE     -> Aggregate CSV rows. Params: { sourceVariable: "", variableName: "aggregatedCsv", groupBy: "", operation: "count", targetField: "" }
+- CSV_JOIN          -> Join two CSV datasets. Params: { leftVariable: "", rightVariable: "", leftKey: "", rightKey: "", joinType: "inner", variableName: "joinedCsv" }
+- CSV_SORT          -> Sort CSV rows. Params: { sourceVariable: "", variableName: "sortedCsv", sortField: "", direction: "asc", compareAs: "string", nulls: "last" }
+- CSV_DEDUPLICATE   -> Remove duplicate CSV rows. Params: { sourceVariable: "", variableName: "dedupedCsv", fields: "", keep: "first", includeDuplicates: false }
+- CSV_COLUMN_STATS  -> Compute per-column stats. Params: { sourceVariable: "", variableName: "columnStats", fields: "" }
+- CSV_COMPARE       -> Compare two CSV datasets. Params: { leftVariable: "", rightVariable: "", variableName: "csvDiff", keyField: "", compareFields: "" }
 - READ_EXCEL        -> Read Excel sheet. Params: { filePath: "", sheetName: "", variableName: "excel_data" }
 - WRITE_EXCEL       -> Write Excel sheet. Params: { destinationPath: "", data: "" }
 - APPEND_ROW        -> Append to Excel. Params: { filePath: "", rowData: {} }
@@ -189,7 +193,7 @@ When a node generates an output and you define its variableName parameter (e.g. 
 - AI NODES (if variableName="mySummary")  : {{mySummary}}  (The AI nodes write text directly to the variable key)
 - READ_FILE (if variableName="myFile")    : {{myFile.content}}
 - PDF_EXTRACT_TEXT (if variableName="pdfExtract") : {{pdfExtract.content}}
-- CSV_PARSE (if variableName="myCsv")     : {{myCsv.content}}
+- CSV_PARSE (if variableName="myCsv")     : {{myCsv.records}}
 
 ### Examples of Correct Wiring
 - **Google Form -> Gemini -> Slack**:
@@ -231,9 +235,10 @@ Write the actual value.
     Write real JavaScript. The code has access to the full Handlebars
     context object as its input. Return a plain object with your results.
 
-  PDF_GENERATE node → "html" field
-    Write real HTML markup. Style it with inline CSS.
-    Reference upstream variables using {{variableName}} inside the HTML string.
+  PDF_GENERATE node → source variable fields
+    Provide at least one of: contentVariable, statsVariable,
+    sectionsVariable, or tablesVariable.
+    Add title/subtitle/footerText when useful.
 
   Any messaging node (SLACK, DISCORD, TELEGRAM, EMAIL_SMTP, WHATSAPP)
   → "message" / "body" / "subject" fields
@@ -254,7 +259,7 @@ use this convention so the user knows exactly what to fill in:
   Output files (files the workflow creates): "/outputs/filename.ext"
 
   Example: READ_FILE filePath → "/uploads/data.csv"
-           PDF_GENERATE outputPath → "/outputs/report.pdf"
+           CSV_PARSE csvVariable → "rawFile"
 
 The user will see these values in the node dialog and replace them.
 Note this in your notes field: "replace /uploads/data.csv with your actual file path".
@@ -276,7 +281,7 @@ The CODE node executes JavaScript on the server. It receives the entire
 workflow context as an implicit input. You access context variables like this:
 
   // If a previous CSV_PARSE node had variableName "parsedCsv":
-  const rows = context.parsedCsv.data;   // array of row objects
+  const rows = context.parsedCsv.records;   // array of row objects
 
   // If a previous HTTP_REQUEST node had variableName "fetchUser":
   const user = context.fetchUser.httpResponse.data;
@@ -289,7 +294,7 @@ in downstream nodes. Always return a plain object.
 
 EXAMPLE — find duplicate rows in a CSV and count them:
 
-  const rows = context.parsedCsv.data;
+  const rows = context.parsedCsv.records;
   const seen = {};
   const duplicates = [];
 
@@ -322,62 +327,39 @@ EXAMPLE — transform API response data:
   PDF_GENERATE NODE — full specification
 ═══════════════════════════════════════════════════════
 
-The PDF_GENERATE node converts an HTML string to a PDF file.
-You must write the full HTML in the "html" parameter.
+The PDF_GENERATE node builds a formatted PDF from workflow variables.
+You must provide at least one source variable parameter.
 
 Rules:
-  - Use inline CSS only (no <link> tags, no external stylesheets)
-  - Reference workflow variables using {{variableName}} inside the HTML string
-  - For arrays/objects, use {{json variableName}} to serialize them inline
-  - Keep styles simple: font-family, colors, borders, padding
-  - The HTML is rendered server-side — no JavaScript in the HTML itself
+  - Required: variableName
+  - Required: at least one of contentVariable / statsVariable / sectionsVariable / tablesVariable
+  - Optional: title, subtitle, footerText, fileName
+  - Keep source variables concise and structured for readable output
 
 EXAMPLE — CSV duplicate report:
 
-  <!DOCTYPE html>
-  <html>
-  <head><meta charset="utf-8"></head>
-  <body style="font-family: Arial, sans-serif; padding: 32px; color: #333;">
-    <h1 style="color: #1a1a2e; border-bottom: 2px solid #1a1a2e; padding-bottom: 8px;">
-      CSV Duplicate Report
-    </h1>
-    <div style="display: flex; gap: 24px; margin: 24px 0;">
-      <div style="background: #f0f4ff; border-radius: 8px; padding: 16px; flex: 1;">
-        <div style="font-size: 28px; font-weight: bold; color: #1a1a2e;">{{findDuplicates.totalRows}}</div>
-        <div style="color: #666; margin-top: 4px;">Total Rows</div>
-      </div>
-      <div style="background: #fff0f0; border-radius: 8px; padding: 16px; flex: 1;">
-        <div style="font-size: 28px; font-weight: bold; color: #c0392b;">{{findDuplicates.duplicateCount}}</div>
-        <div style="color: #666; margin-top: 4px;">Duplicate Rows</div>
-      </div>
-      <div style="background: #f0fff4; border-radius: 8px; padding: 16px; flex: 1;">
-        <div style="font-size: 28px; font-weight: bold; color: #27ae60;">{{findDuplicates.uniqueCount}}</div>
-        <div style="color: #666; margin-top: 4px;">Unique Rows</div>
-      </div>
-    </div>
-    <h2 style="color: #1a1a2e; margin-top: 32px;">Duplicate Records</h2>
-    <p style="color: #666;">The following rows appear more than once in the file:</p>
-    <pre style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px;
-                padding: 16px; font-size: 13px; overflow-x: auto; white-space: pre-wrap;">
-{{json findDuplicates.duplicates}}
-    </pre>
-    <p style="color: #999; font-size: 12px; margin-top: 32px;">
-      Generated by AutoPilot
-    </p>
-  </body>
-  </html>
+  {
+    type: "PDF_GENERATE",
+    data: {
+      label: "Generate PDF Report",
+      parameters: {
+        variableName: "duplicateReportPdf",
+        title: "CSV Duplicate Report",
+        subtitle: "Summary of duplicate analysis",
+        statsVariable: "findDuplicates",
+        contentVariable: "findDuplicates",
+        fileName: "duplicate_report.pdf"
+      }
+    }
+  }
 
 EXAMPLE — simple AI summary report:
 
-  <!DOCTYPE html>
-  <html>
-  <body style="font-family: Georgia, serif; padding: 40px; max-width: 800px; margin: 0 auto;">
-    <h1 style="color: #2c3e50;">Summary Report</h1>
-    <div style="line-height: 1.8; color: #34495e; margin-top: 24px;">
-      {{mySummary}}
-    </div>
-  </body>
-  </html>
+  {
+    variableName: "summaryPdf",
+    title: "Summary Report",
+    contentVariable: "mySummary"
+  }
 
 
 ═══════════════════════════════════════════════════════
@@ -411,8 +393,8 @@ nodes: [
     data: {
       label: "Parse CSV",
       parameters: {
+        csvVariable: "rawFile",
         variableName: "parsedCsv",
-        filePath: "/uploads/data.csv"
       }
     }
   },
@@ -423,7 +405,7 @@ nodes: [
       label: "Find Duplicates",
       parameters: {
         variableName: "findDuplicates",
-        code: "const rows = context.parsedCsv.data;\\nconst seen = {};\\nconst duplicates = [];\\nfor (const row of rows) {\\n  const key = JSON.stringify(row);\\n  seen[key] = (seen[key] || 0) + 1;\\n}\\nfor (const [key, count] of Object.entries(seen)) {\\n  if (count > 1) duplicates.push({ ...JSON.parse(key), occurrences: count });\\n}\\nreturn { totalRows: rows.length, duplicateCount: duplicates.length, duplicates, uniqueCount: rows.length - duplicates.length };"
+        code: "const rows = context.parsedCsv.records;\\nconst seen = {};\\nconst duplicates = [];\\nfor (const row of rows) {\\n  const key = JSON.stringify(row);\\n  seen[key] = (seen[key] || 0) + 1;\\n}\\nfor (const [key, count] of Object.entries(seen)) {\\n  if (count > 1) duplicates.push({ ...JSON.parse(key), occurrences: count });\\n}\\nreturn { totalRows: rows.length, duplicateCount: duplicates.length, duplicates, uniqueCount: rows.length - duplicates.length };"
       }
     }
   },
@@ -433,8 +415,12 @@ nodes: [
     data: {
       label: "Generate PDF Report",
       parameters: {
-        outputPath: "/outputs/duplicate_report.pdf",
-        html: "<!DOCTYPE html><html><body style='font-family:Arial,sans-serif;padding:32px'><h1>CSV Duplicate Report</h1><p>Total rows: {{findDuplicates.totalRows}}</p><p>Duplicates found: {{findDuplicates.duplicateCount}}</p><p>Unique rows: {{findDuplicates.uniqueCount}}</p><h2>Duplicate Records</h2><pre style='background:#f5f5f5;padding:16px;border-radius:4px'>{{json findDuplicates.duplicates}}</pre></body></html>"
+        variableName: "duplicateReportPdf",
+        title: "CSV Duplicate Report",
+        subtitle: "Summary of duplicate analysis",
+        statsVariable: "findDuplicates",
+        contentVariable: "findDuplicates",
+        fileName: "duplicate_report.pdf"
       }
     }
   }
@@ -445,5 +431,5 @@ edges: [
   { id: "e3", source: "parse_csv",      target: "find_duplicates" },
   { id: "e4", source: "find_duplicates",target: "generate_report" }
 ],
-notes: "Replace /uploads/data.csv in both the read_csv and parse_csv nodes with your actual file path. The report will be saved to /outputs/duplicate_report.pdf."
+notes: "Replace /uploads/data.csv in read_csv with your actual file path. The generated PDF file is available as {{duplicateReportPdf}}."
 `;

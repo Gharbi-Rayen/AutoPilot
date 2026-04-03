@@ -5,7 +5,7 @@ import {
   ExecutionDetailError,
   ExecutionDetailLoading,
 } from "@/features/executions/components/execution-detail";
-import { prefetchExecution } from "@/features/executions/server/prefetch";
+import { prefetchExecutionSummary } from "@/features/executions/server/prefetch";
 import { requireAuth } from "@/lib/auth-utils";
 import { HydrateClient } from "@/trpc/server";
 
@@ -20,7 +20,7 @@ const page = async ({ params }: PageProps) => {
 
   const { executionId } = await params;
 
-  prefetchExecution(executionId);
+  prefetchExecutionSummary(executionId);
 
   return (
     <HydrateClient>

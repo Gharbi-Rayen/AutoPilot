@@ -35,17 +35,14 @@ export type ConversationMessage =
 export const conversationAtom = atom<ConversationMessage[]>([]);
 
 // ── Draft workflow (last generated, pending user confirmation) ────────────────
-export const aiDraftAtom = atom<
-  | {
-      type: "workflow";
-      workflowName: string;
-      explanation: string;
-      notes: string;
-      nodes: unknown[];
-      edges: unknown[];
-    }
-  | null
->(null);
+export const aiDraftAtom = atom<{
+  type: "workflow";
+  workflowName: string;
+  explanation: string;
+  notes: string;
+  nodes: unknown[];
+  edges: unknown[];
+} | null>(null);
 
 // ── Generation loading state (shared with canvas indicator) ──────────────────
 export const aiGeneratingAtom = atom<boolean>(false);

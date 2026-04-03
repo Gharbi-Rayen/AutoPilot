@@ -3,6 +3,10 @@
 import { createId } from "@paralleldrive/cuid2";
 import { useReactFlow } from "@xyflow/react";
 import {
+  ArrowLeftRight,
+  ArrowUpDown,
+  BarChart3,
+  Copy,
   Download,
   File,
   FileText,
@@ -218,6 +222,30 @@ const executionNodes: NodeTypeOption[] = [
     label: "CSV Join",
     description: "Join two CSV datasets",
     icon: "/logos/csv-join.svg",
+  },
+  {
+    type: NodeType.CSV_SORT,
+    label: "CSV Sort",
+    description: "Sort CSV rows by a field",
+    icon: ArrowUpDown,
+  },
+  {
+    type: NodeType.CSV_DEDUPLICATE,
+    label: "CSV Deduplicate",
+    description: "Remove duplicate CSV rows",
+    icon: Copy,
+  },
+  {
+    type: NodeType.CSV_COLUMN_STATS,
+    label: "CSV Column Stats",
+    description: "Generate per-column statistics",
+    icon: BarChart3,
+  },
+  {
+    type: NodeType.CSV_COMPARE,
+    label: "CSV Compare",
+    description: "Compare two CSV datasets",
+    icon: ArrowLeftRight,
   },
   {
     type: NodeType.READ_EXCEL,

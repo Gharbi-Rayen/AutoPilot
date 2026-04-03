@@ -60,7 +60,7 @@ export const CsvParseDialog = ({
       csvVariable: defaultValues.csvVariable || "",
       variableName: defaultValues.variableName || "",
       hasHeader: defaultValues.hasHeader ?? true,
-      delimiter: defaultValues.delimiter || ",",
+      delimiter: defaultValues.delimiter || "auto",
     },
   });
 
@@ -77,7 +77,7 @@ export const CsvParseDialog = ({
         csvVariable: defaultValues.csvVariable || "",
         variableName: defaultValues.variableName || "",
         hasHeader: defaultValues.hasHeader ?? true,
-        delimiter: defaultValues.delimiter || ",",
+        delimiter: defaultValues.delimiter || "auto",
       });
     }
   }, [open, defaultValues, form]);
@@ -119,11 +119,11 @@ export const CsvParseDialog = ({
                   <FormItem>
                     <FormLabel>Delimiter</FormLabel>
                     <FormControl>
-                      <Input placeholder="," maxLength={1} {...field} />
+                      <Input placeholder="auto" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Character used to separate columns (comma, semicolon, tab,
-                      etc.)
+                      Leave empty (or use "auto") for auto-detect. Supports
+                      comma, semicolon, tab, pipe, and colon.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

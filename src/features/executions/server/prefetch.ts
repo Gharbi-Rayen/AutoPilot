@@ -7,6 +7,12 @@ export const prefetchExecutions = (params: Input) => {
   return prefetch(trpc.executions.getMany.queryOptions(params));
 };
 
-export const prefetchExecution = (id: string) => {
+export const prefetchExecutionSummary = (id: string) => {
   return prefetch(trpc.executions.getOne.queryOptions({ id }));
 };
+
+export const prefetchExecutionRawOutput = (id: string) => {
+  return prefetch(trpc.executions.getOneRawOutput.queryOptions({ id }));
+};
+
+export const prefetchExecution = prefetchExecutionSummary;

@@ -4,16 +4,24 @@ import { useAtom } from "jotai";
 import { useTheme } from "next-themes";
 import { useState } from "react";
 import { toast } from "sonner";
-import { localeAtom, type Locale } from "@/features/settings/store/language-atom";
-import { useTranslations } from "@/features/settings/hooks/use-translations";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/features/settings/hooks/use-translations";
+import {
+  type Locale,
+  localeAtom,
+} from "@/features/settings/store/language-atom";
 import { authClient } from "@/lib/auth-client";
 
 // Language options shown in the selector
-const LANGUAGES: { value: Locale; label: string; nativeLabel: string; flag: string }[] = [
-  { value: "en", label: "English",  nativeLabel: "English", flag: "🇺🇸" },
-  { value: "fr", label: "French",   nativeLabel: "Français", flag: "🇫🇷" },
-  { value: "ar", label: "Arabic",   nativeLabel: "العربية",  flag: "🇸🇦" },
+const LANGUAGES: {
+  value: Locale;
+  label: string;
+  nativeLabel: string;
+  flag: string;
+}[] = [
+  { value: "en", label: "English", nativeLabel: "English", flag: "🇺🇸" },
+  { value: "fr", label: "French", nativeLabel: "Français", flag: "🇫🇷" },
+  { value: "ar", label: "Arabic", nativeLabel: "العربية", flag: "🇸🇦" },
 ];
 
 const THEMES = ["light", "dark", "system"] as const;
@@ -61,8 +69,11 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-6">
           {/* Display name */}
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium">{t("settings.displayName")}</label>
+            <label className="text-sm font-medium" htmlFor="display-name">
+              {t("settings.displayName")}
+            </label>
             <input
+              id="display-name"
               type="text"
               defaultValue={user?.name ?? ""}
               className="w-full rounded-md border bg-background px-3 py-2 text-sm
@@ -72,15 +83,20 @@ export default function SettingsPage() {
 
           {/* Email — read-only */}
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium">{t("settings.email")}</label>
+            <label className="text-sm font-medium" htmlFor="email">
+              {t("settings.email")}
+            </label>
             <input
+              id="email"
               type="email"
               value={user?.email ?? ""}
               readOnly
               className="w-full rounded-md border bg-muted px-3 py-2 text-sm
                          text-muted-foreground cursor-not-allowed"
             />
-            <p className="text-xs text-muted-foreground">{t("settings.emailReadOnly")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("settings.emailReadOnly")}
+            </p>
           </div>
 
           <Button onClick={handleSave} className="self-start">
@@ -92,10 +108,9 @@ export default function SettingsPage() {
       {/* ── General tab ─────────────────────────────────────────────── */}
       {activeTab === "general" && (
         <div className="flex flex-col gap-8">
-
           {/* Language selector */}
           <div className="flex flex-col gap-3">
-            <label className="text-sm font-medium">{t("settings.language")}</label>
+            <p className="text-sm font-medium">{t("settings.language")}</p>
             <div className="flex flex-col gap-2">
               {LANGUAGES.map((lang) => (
                 <button
@@ -125,7 +140,7 @@ export default function SettingsPage() {
 
           {/* Theme selector */}
           <div className="flex flex-col gap-3">
-            <label className="text-sm font-medium">{t("settings.theme")}</label>
+            <p className="text-sm font-medium">{t("settings.theme")}</p>
             <div className="flex gap-2">
               {THEMES.map((themeOption) => (
                 <button
@@ -139,7 +154,9 @@ export default function SettingsPage() {
                       : "border-border bg-background text-muted-foreground hover:bg-muted",
                   ].join(" ")}
                 >
-                  {t(`settings.theme${themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}`)}
+                  {t(
+                    `settings.theme${themeOption.charAt(0).toUpperCase() + themeOption.slice(1)}`,
+                  )}
                 </button>
               ))}
             </div>

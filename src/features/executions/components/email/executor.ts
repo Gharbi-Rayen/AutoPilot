@@ -147,7 +147,6 @@ export const EmailExecutor: NodeExecutor<EmailData> = async ({
     await updateStatePublish("success");
 
     return {
-      ...context,
       [data.variableName]: result,
     };
   } catch (error) {

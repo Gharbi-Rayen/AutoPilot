@@ -15,6 +15,45 @@ type UploadFileData = {
   };
 };
 
+type UploadedFilePayload = {
+  name?: unknown;
+  mimeType?: unknown;
+  size?: unknown;
+  buffer?: unknown;
+};
+
+const toUploadedFilePayload = (value: unknown): UploadedFilePayload | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as UploadedFilePayload;
+};
+
+const toBuffer = (value: unknown): Buffer | null => {
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { data?: unknown }).data)
+  ) {
+    return Buffer.from((value as { data: number[] }).data);
+  }
+
+  if (Array.isArray(value) && value.every((item) => typeof item === "number")) {
+    return Buffer.from(value as number[]);
+  }
+
+  if (typeof value === "string") {
+    return Buffer.from(value, "utf-8");
+  }
+
+  return null;
+};
+
 export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
   data,
   nodeId,
@@ -55,7 +94,7 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
               size: data.file.size,
               buffer: Buffer.from(data.file.contentBase64, "base64"),
             }
-          : (context["_uploadedFile"] as any);
+          : toUploadedFilePayload(context._uploadedFile);
 
       if (data.file && !hasPersistedBase64) {
         throw new NonRetriableError(
@@ -78,10 +117,23 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
         );
       }
 
+      const fileBuffer = toBuffer(uploadedFile.buffer);
+      if (!fileBuffer) {
+        throw new NonRetriableError(
+          "Uploaded file payload is missing binary content.",
+        );
+      }
+
+      const uploadedFileSize =
+        typeof uploadedFile.size === "number" &&
+        Number.isFinite(uploadedFile.size)
+          ? uploadedFile.size
+          : undefined;
+
       // Validate file size if specified
-      if (data.maxSizeMB && uploadedFile.size) {
+      if (data.maxSizeMB && uploadedFileSize !== undefined) {
         const maxBytes = data.maxSizeMB * 1024 * 1024;
-        if (uploadedFile.size > maxBytes) {
+        if (uploadedFileSize > maxBytes) {
           throw new NonRetriableError(
             `File size exceeds maximum allowed (${data.maxSizeMB}MB)`,
           );
@@ -117,10 +169,17 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
       }
 
       return {
-        name: uploadedFile.name || data.fileName || "uploaded-file",
-        mimeType: uploadedFile.mimeType || "application/octet-stream",
-        size: uploadedFile.size || 0,
-        buffer: uploadedFile.buffer,
+        name:
+          (typeof uploadedFile.name === "string" && uploadedFile.name.length > 0
+            ? uploadedFile.name
+            : data.fileName) || "uploaded-file",
+        mimeType:
+          typeof uploadedFile.mimeType === "string" &&
+          uploadedFile.mimeType.length > 0
+            ? uploadedFile.mimeType
+            : "application/octet-stream",
+        size: uploadedFileSize ?? 0,
+        buffer: fileBuffer,
         uploadedAt: new Date().toISOString(),
       };
     });

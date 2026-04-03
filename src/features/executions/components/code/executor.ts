@@ -144,7 +144,6 @@ export const CodeExecutor: NodeExecutor<CodeData> = async ({
     await updateStatePublish("success");
 
     return {
-      ...context,
       [data.variableName]: result,
     };
   } catch (error) {

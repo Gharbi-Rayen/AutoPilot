@@ -3,8 +3,8 @@
 // This component sets the lang and dir attributes on <html>
 // whenever the user changes language. It renders nothing visible.
 
-import { useEffect } from "react";
 import { useAtomValue } from "jotai";
+import { useEffect } from "react";
 import { localeAtom } from "@/features/settings/store/language-atom";
 
 const RTL_LOCALES = new Set(["ar"]);

@@ -4,10 +4,14 @@ import { InitialNode } from "@/components/initial-node";
 import { AnthropicNode } from "@/features/executions/components/anthropic/node";
 import { CodeNode } from "@/features/executions/components/code/node";
 import { CsvAggregateNode } from "@/features/executions/components/csv-aggregate/node";
+import { CsvColumnStatsNode } from "@/features/executions/components/csv-column-stats/node";
+import { CsvCompareNode } from "@/features/executions/components/csv-compare/node";
+import { CsvDeduplicateNode } from "@/features/executions/components/csv-deduplicate/node";
 import { CsvFilterNode } from "@/features/executions/components/csv-filter/node";
 import { CsvGenerateNode } from "@/features/executions/components/csv-generate/node";
 import { CsvJoinNode } from "@/features/executions/components/csv-join/node";
 import { CsvParseNode } from "@/features/executions/components/csv-parse/node";
+import { CsvSortNode } from "@/features/executions/components/csv-sort/node";
 import { DiscordNode } from "@/features/executions/components/discord/node";
 import { DownloadFileNode } from "@/features/executions/components/download-file/node";
 import { EmailNode } from "@/features/executions/components/email/node";
@@ -16,8 +20,13 @@ import { GeminiNode } from "@/features/executions/components/gemini/node";
 import { HttpRequestNode } from "@/features/executions/components/http-request/node";
 import { MergeNode } from "@/features/executions/components/merge/node";
 import { OpenAINode } from "@/features/executions/components/openai/node";
+import { PdfExtractTablesNode } from "@/features/executions/components/pdf-extract-tables/node";
 import { PdfExtractTextNode } from "@/features/executions/components/pdf-extract-text/node";
+import { PdfFillFormNode } from "@/features/executions/components/pdf-fill-form/node";
 import { PdfGenerateNode } from "@/features/executions/components/pdf-generate/node";
+import { PdfMergeNode } from "@/features/executions/components/pdf-merge/node";
+import { PdfSignNode } from "@/features/executions/components/pdf-sign/node";
+import { PdfSplitNode } from "@/features/executions/components/pdf-split/node";
 import { ReadFileNode } from "@/features/executions/components/read-file/node";
 import { SlackNode } from "@/features/executions/components/slack/node";
 import { SplitNode } from "@/features/executions/components/split/node";
@@ -37,11 +46,6 @@ import {
   LocalStorageNode,
   LoopNode,
   OcrImageNode,
-  PdfExtractTablesNode,
-  PdfFillFormNode,
-  PdfMergeNode,
-  PdfSignNode,
-  PdfSplitNode,
   ReadExcelNode,
   ResizeImageNode,
   S3DownloadNode,
@@ -90,6 +94,10 @@ export const nodeComponents: NodeTypes = {
   [NodeType.CSV_FILTER]: CsvFilterNode,
   [NodeType.CSV_AGGREGATE]: CsvAggregateNode,
   [NodeType.CSV_JOIN]: CsvJoinNode,
+  [NodeType.CSV_SORT]: CsvSortNode,
+  [NodeType.CSV_DEDUPLICATE]: CsvDeduplicateNode,
+  [NodeType.CSV_COLUMN_STATS]: CsvColumnStatsNode,
+  [NodeType.CSV_COMPARE]: CsvCompareNode,
   [NodeType.READ_EXCEL]: ReadExcelNode,
   [NodeType.WRITE_EXCEL]: WriteExcelNode,
   [NodeType.APPEND_ROW]: AppendRowNode,

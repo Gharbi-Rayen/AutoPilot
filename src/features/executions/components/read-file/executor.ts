@@ -8,6 +8,50 @@ type ReadFileData = {
   encoding?: string;
 };
 
+type ReadableFilePayload = {
+  buffer?: unknown;
+  url?: unknown;
+  name?: unknown;
+  mimeType?: unknown;
+  size?: unknown;
+};
+
+const toBuffer = (value: unknown): Buffer | null => {
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as { data?: unknown }).data)
+  ) {
+    return Buffer.from((value as { data: number[] }).data);
+  }
+
+  if (Array.isArray(value) && value.every((item) => typeof item === "number")) {
+    return Buffer.from(value as number[]);
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return Buffer.from(value);
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  }
+
+  return null;
+};
+
+const toReadableFilePayload = (value: unknown): ReadableFilePayload | null => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as ReadableFilePayload;
+};
+
 export const ReadFileExecutor: NodeExecutor<ReadFileData> = async ({
   data,
   nodeId,
@@ -48,7 +92,10 @@ export const ReadFileExecutor: NodeExecutor<ReadFileData> = async ({
         );
       }
 
-      const file = fileObj as any;
+      const file = toReadableFilePayload(fileObj);
+      if (!file) {
+        throw new NonRetriableError("File input payload is invalid");
+      }
 
       if (!file.buffer && !file.url) {
         throw new NonRetriableError("File object must have a buffer or URL");
@@ -56,11 +103,18 @@ export const ReadFileExecutor: NodeExecutor<ReadFileData> = async ({
 
       let content: string;
 
-      if (file.buffer) {
-        content = Buffer.isBuffer(file.buffer)
-          ? file.buffer.toString(encoding as BufferEncoding)
-          : file.buffer;
-      } else if (file.url) {
+      if (file.buffer !== undefined) {
+        if (typeof file.buffer === "string") {
+          content = file.buffer;
+        } else {
+          const normalizedBuffer = toBuffer(file.buffer);
+          if (!normalizedBuffer) {
+            throw new NonRetriableError("Unsupported file buffer format");
+          }
+
+          content = normalizedBuffer.toString(encoding as BufferEncoding);
+        }
+      } else if (typeof file.url === "string" && file.url.length > 0) {
         const response = await fetch(file.url);
         if (!response.ok) {
           throw new NonRetriableError(
@@ -74,9 +128,12 @@ export const ReadFileExecutor: NodeExecutor<ReadFileData> = async ({
 
       return {
         content,
-        fileName: file.name,
-        mimeType: file.mimeType,
-        size: file.size,
+        fileName: typeof file.name === "string" ? file.name : undefined,
+        mimeType: typeof file.mimeType === "string" ? file.mimeType : undefined,
+        size:
+          typeof file.size === "number" && Number.isFinite(file.size)
+            ? file.size
+            : undefined,
       };
     });
 

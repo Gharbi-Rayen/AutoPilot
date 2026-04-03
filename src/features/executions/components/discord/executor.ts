@@ -127,7 +127,6 @@ export const DiscordExecutor: NodeExecutor<DiscordData> = async ({
     await updateStatePublish("success");
 
     return {
-      ...context,
       [data.variableName]: result,
     };
   } catch (error) {

@@ -142,3 +142,23 @@ export const useExecuteWorkflow = () => {
     }),
   );
 };
+
+export const usePauseExecution = () => {
+  const trpc = useTRPC();
+
+  return useMutation(
+    trpc.workflows.pauseExecution.mutationOptions({
+      onSuccess: (data) => {
+        if (data.paused) {
+          toast.success(`Workflow "${data.workflow.name}" paused.`);
+          return;
+        }
+
+        toast.info(`Workflow "${data.workflow.name}" is already finished.`);
+      },
+      onError: (error) => {
+        toast.error(`Failed to pause workflow: ${error.message}`);
+      },
+    }),
+  );
+};

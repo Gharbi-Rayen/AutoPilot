@@ -36,7 +36,14 @@ const formSchema = z.object({
   rightVariable: z.string().min(1, { message: "Right variable is required" }),
   leftKey: z.string().min(1, { message: "Left key is required" }),
   rightKey: z.string().min(1, { message: "Right key is required" }),
-  joinType: z.enum(["inner", "left"]),
+  joinType: z.enum([
+    "inner",
+    "left",
+    "right",
+    "full",
+    "left_exclusive",
+    "right_exclusive",
+  ]),
   variableName: z
     .string()
     .min(1, { message: "Variable name is required" })
@@ -183,10 +190,19 @@ export const CsvJoinDialog = ({
                       <SelectContent>
                         <SelectItem value="inner">Inner Join</SelectItem>
                         <SelectItem value="left">Left Join</SelectItem>
+                        <SelectItem value="right">Right Join</SelectItem>
+                        <SelectItem value="full">Full Outer Join</SelectItem>
+                        <SelectItem value="left_exclusive">
+                          Left Exclusive Join
+                        </SelectItem>
+                        <SelectItem value="right_exclusive">
+                          Right Exclusive Join
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Inner keeps matches only. Left keeps all left rows.
+                      Inner, left, right, full, and exclusive joins are
+                      supported.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

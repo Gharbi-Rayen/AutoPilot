@@ -4,12 +4,14 @@ import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowLeftIcon,
   CheckCircle2Icon,
+  Clock3Icon,
   ClockIcon,
   DownloadIcon,
   Loader2Icon,
   XCircleIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,9 +22,19 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { useSuspenseExecution } from "../hooks/use-executions";
+import {
+  useExecutionRawOutput,
+  useSuspenseExecutionSummary,
+} from "../hooks/use-executions";
+import { ExecutionDatasetViewer } from "./execution-dataset-viewer";
 
 const statusConfig = {
+  QUEUED: {
+    label: "Queued",
+    icon: Clock3Icon,
+    className: "bg-amber-100 text-amber-700 border-amber-200",
+    iconClassName: "",
+  },
   RUNNING: {
     label: "Running",
     icon: Loader2Icon,
@@ -134,8 +146,38 @@ const ExecutionOutputFiles = ({
 };
 
 export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
-  const { data: execution } = useSuspenseExecution(executionId);
-  const config = statusConfig[execution.status];
+  const { data: execution } = useSuspenseExecutionSummary(executionId);
+  const [isRawOutputRequested, setIsRawOutputRequested] = useState(false);
+  const rawOutputQuery = useExecutionRawOutput(
+    executionId,
+    isRawOutputRequested,
+  );
+
+  const output = rawOutputQuery.data?.output;
+  const outputRecord =
+    typeof output === "object" && output !== null
+      ? (output as Record<string, unknown>)
+      : null;
+
+  const datasetVariable = outputRecord
+    ? Object.entries(outputRecord).find(([, value]) => {
+        if (typeof value !== "object" || value === null) {
+          return false;
+        }
+
+        const candidate = value as { kind?: unknown };
+        return (
+          candidate.kind === "dataset" || candidate.kind === "dataset-summary"
+        );
+      })?.[0]
+    : undefined;
+
+  const statusKey =
+    execution.status === "RUNNING" && execution.queueState === "QUEUED"
+      ? "QUEUED"
+      : execution.status;
+
+  const config = statusConfig[statusKey];
   const StatusIcon = config.icon;
 
   const duration =
@@ -231,9 +273,13 @@ export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
                 </p>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+                  {statusKey === "QUEUED" ? (
+                    <Clock3Icon className="size-4 text-muted-foreground" />
+                  ) : (
+                    <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+                  )}
                   <span className="text-sm text-muted-foreground">
-                    Running...
+                    {statusKey === "QUEUED" ? "Queued..." : "Running..."}
                   </span>
                 </div>
               )}
@@ -264,24 +310,63 @@ export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
           </Card>
         )}
 
-        {execution.output && (
-          <ExecutionOutputFiles
-            output={execution.output as Record<string, unknown>}
-          />
-        )}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Output</CardTitle>
+            <CardDescription>
+              Raw output is loaded only when requested.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!isRawOutputRequested ? (
+              <Button
+                variant="outline"
+                onClick={() => setIsRawOutputRequested(true)}
+              >
+                <DownloadIcon className="size-3.5" />
+                Load raw output
+              </Button>
+            ) : rawOutputQuery.isFetching ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2Icon className="size-4 animate-spin" />
+                Loading output...
+              </div>
+            ) : rawOutputQuery.isError ? (
+              <p className="text-sm text-destructive">
+                Failed to load raw output for this execution.
+              </p>
+            ) : output ? (
+              <>
+                {datasetVariable && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Dataset Preview</CardTitle>
+                      <CardDescription className="text-xs">
+                        Variable: {datasetVariable}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ExecutionDatasetViewer
+                        executionId={executionId}
+                        variable={datasetVariable}
+                        enabled={isRawOutputRequested}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
 
-        {execution.output && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Output</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="text-sm whitespace-pre-wrap break-words bg-muted p-4 rounded-md overflow-auto max-h-96">
-                {JSON.stringify(execution.output, null, 2)}
-              </pre>
-            </CardContent>
-          </Card>
-        )}
+                {outputRecord && <ExecutionOutputFiles output={outputRecord} />}
+                <pre className="text-sm whitespace-pre-wrap break-words bg-muted p-4 rounded-md overflow-auto max-h-96">
+                  {JSON.stringify(output, null, 2)}
+                </pre>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No output was produced for this execution.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

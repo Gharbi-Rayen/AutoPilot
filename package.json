@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "biome check",
     "format": "biome format --write",
+    "bench:execution": "tsx scripts/bench/execution-400mb-benchmark.ts",
     "inngest:dev": "inngest-cli dev",
     "dev:all": "mprocs"
   },
@@ -80,6 +81,7 @@
     "nuqs": "^2.8.6",
     "papaparse": "^5.5.3",
     "pdf-lib": "^1.17.1",
+    "pdf2json": "^4.0.2",
     "pdf-parse": "^2.4.5",
     "pdfjs-dist": "^5.5.207",
     "pptxgenjs": "^4.0.1",

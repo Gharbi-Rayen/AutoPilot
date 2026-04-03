@@ -14,7 +14,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useState } from "react";
-import { useTranslations } from "@/features/settings/hooks/use-translations";
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +26,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { useTranslations } from "@/features/settings/hooks/use-translations";
 import { useHasActiveSubscription } from "@/features/subscriptions/hooks/use-subscription";
 import { authClient } from "@/lib/auth-client";
 
@@ -141,7 +141,9 @@ export const AppSidebar = () => {
                           ) : (
                             <item.icon className="size-4" />
                           )}
-                          <span className="capitalize">{t(`nav.${item.title}`)}</span>
+                          <span className="capitalize">
+                            {t(`nav.${item.title}`)}
+                          </span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -183,7 +185,9 @@ export const AppSidebar = () => {
                   ) : (
                     <StarIcon className="size-4" />
                   )}
-                  <span>{isUpgrading ? t("nav.loading") : t("nav.upgradeToPro")}</span>
+                  <span>
+                    {isUpgrading ? t("nav.loading") : t("nav.upgradeToPro")}
+                  </span>
                 </button>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -216,7 +220,9 @@ export const AppSidebar = () => {
                 ) : (
                   <CreditCardIcon className="size-4" />
                 )}
-                <span>{isBilling ? t("nav.loading") : t("nav.billingPortal")}</span>
+                <span>
+                  {isBilling ? t("nav.loading") : t("nav.billingPortal")}
+                </span>
               </button>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -246,7 +252,9 @@ export const AppSidebar = () => {
                 ) : (
                   <LogOutIcon className="size-4" />
                 )}
-                <span>{isLoggingOut ? t("nav.loggingOut") : t("nav.logOut")}</span>
+                <span>
+                  {isLoggingOut ? t("nav.loggingOut") : t("nav.logOut")}
+                </span>
               </button>
             </SidebarMenuButton>
           </SidebarMenuItem>

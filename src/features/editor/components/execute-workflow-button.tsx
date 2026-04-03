@@ -1,4 +1,4 @@
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { FlaskConicalIcon, Loader2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -6,6 +6,13 @@ import {
   useUpdateWorkflow,
 } from "@/features/workflows/hooks/use-workflows";
 import type { NodeType } from "@/generated/prisma";
+import {
+  activeExecutionIdAtom,
+  resetWorkflowExecutionStateAtom,
+  workflowExecutionErrorAtom,
+  workflowExecutionStateAtom,
+  workflowProgressPanelOpenAtom,
+} from "@/store/execution-status";
 import { editorAtom } from "../store/atoms";
 
 export const ExecuteWorkflowButton = ({
@@ -14,6 +21,15 @@ export const ExecuteWorkflowButton = ({
   workflowId: string;
 }) => {
   const editor = useAtomValue(editorAtom);
+  const resetWorkflowExecutionState = useSetAtom(
+    resetWorkflowExecutionStateAtom,
+  );
+  const setWorkflowExecutionState = useSetAtom(workflowExecutionStateAtom);
+  const setWorkflowExecutionError = useSetAtom(workflowExecutionErrorAtom);
+  const setActiveExecutionId = useSetAtom(activeExecutionIdAtom);
+  const setWorkflowProgressPanelOpen = useSetAtom(
+    workflowProgressPanelOpenAtom,
+  );
   const saveWorkflow = useUpdateWorkflow();
   const executeWorkflow = useExecuteWorkflow();
 
@@ -21,6 +37,9 @@ export const ExecuteWorkflowButton = ({
     if (!editor) {
       return;
     }
+
+    resetWorkflowExecutionState();
+    setWorkflowProgressPanelOpen(true);
 
     const nodes = editor.getNodes().map((node) => ({
       id: node.id,
@@ -36,13 +55,26 @@ export const ExecuteWorkflowButton = ({
       targetHandle: edge.targetHandle,
     }));
 
-    await saveWorkflow.mutateAsync({
-      id: workflowId,
-      nodes,
-      edges,
-    });
+    try {
+      await saveWorkflow.mutateAsync({
+        id: workflowId,
+        nodes,
+        edges,
+      });
 
-    executeWorkflow.mutate({ id: workflowId });
+      setWorkflowExecutionState("running");
+
+      const workflowExecution = await executeWorkflow.mutateAsync({
+        id: workflowId,
+      });
+
+      setActiveExecutionId(workflowExecution.executionId);
+    } catch (error) {
+      setWorkflowExecutionState("error");
+      setWorkflowExecutionError(
+        error instanceof Error ? error.message : "Failed to execute workflow.",
+      );
+    }
   };
 
   const isPending = executeWorkflow.isPending || saveWorkflow.isPending;

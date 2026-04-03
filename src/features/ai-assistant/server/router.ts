@@ -28,9 +28,9 @@ import { applyDagreLayout } from "../lib/layout";
 import { NODE_CATALOG } from "../lib/system-prompt";
 import {
   type AIWorkflowNode,
-  validateNodeParameters,
-  TopLevelSchema,
   type TopLevelResult,
+  TopLevelSchema,
+  validateNodeParameters,
 } from "../lib/workflow-schema";
 
 const google = createGoogleGenerativeAI({
