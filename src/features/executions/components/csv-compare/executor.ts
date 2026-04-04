@@ -125,15 +125,9 @@ export const CsvCompareExecutor: NodeExecutor<CsvCompareData> = async ({
       : parseCommaList(data.compareFields);
 
     const minRows = Math.min(leftRows, rightRows);
-    if (!keyField && minRows > DATASET_STORAGE.COMPARE_MAX_INDEX_ROWS) {
+    if (keyField && minRows > DATASET_STORAGE.COMPARE_MAX_INDEX_ROWS) {
       throw new NonRetriableError(
-        "Compare without keyField is blocked for large datasets. Provide keyField or reduce dataset size.",
-      );
-    }
-
-    if (minRows > DATASET_STORAGE.COMPARE_MAX_INDEX_ROWS) {
-      throw new NonRetriableError(
-        "Compare blocked because the index side exceeds the safe threshold. Reduce input size or compare in partitions.",
+        "Keyed compare blocked because the index side exceeds the safe memory threshold. Reduce input size or compare in partitions.",
       );
     }
 
@@ -261,64 +255,89 @@ export const CsvCompareExecutor: NodeExecutor<CsvCompareData> = async ({
           }
         }
       } else {
-        const buildSource = buildLeft ? leftSource : rightSource;
-        const probeSource = buildLeft ? rightSource : leftSource;
+        const leftIterator = streamContextRows(leftSource)[Symbol.asyncIterator]();
+        const rightIterator = streamContextRows(rightSource)[Symbol.asyncIterator]();
+        let rowIndex = 0;
 
-        const buildCounts = new Map<
-          string,
-          { row: Record<string, unknown>; count: number }
-        >();
+        while (true) {
+          rowIndex += 1;
+          const leftResult = await leftIterator.next();
+          const rightResult = await rightIterator.next();
 
-        for await (const row of streamContextRows(buildSource)) {
-          const key = stableStringify(row);
-          const existing = buildCounts.get(key);
-          buildCounts.set(key, {
-            row,
-            count: (existing?.count ?? 0) + 1,
-          });
-        }
-
-        for await (const probeRow of streamContextRows(probeSource)) {
-          const key = stableStringify(probeRow);
-          const existing = buildCounts.get(key);
-
-          if (existing && existing.count > 0) {
-            existing.count -= 1;
-            unchangedCount += 1;
-            continue;
+          if (leftResult.done && rightResult.done) {
+            break;
           }
 
-          if (buildLeft) {
-            addedCount += 1;
-            if (!pushBounded(added, probeRow, sampleLimit)) {
-              addedTruncated = true;
-            }
-          } else {
+          if (!leftResult.done && rightResult.done) {
             removedCount += 1;
-            if (!pushBounded(removed, probeRow, sampleLimit)) {
+            if (!pushBounded(removed, leftResult.value, sampleLimit)) {
               removedTruncated = true;
             }
-          }
-        }
+          } else if (leftResult.done && !rightResult.done) {
+            addedCount += 1;
+            if (!pushBounded(added, rightResult.value, sampleLimit)) {
+              addedTruncated = true;
+            }
+          } else if (!leftResult.done && !rightResult.done) {
+            const leftRow = leftResult.value;
+            const rightRow = rightResult.value;
 
-        for (const entry of buildCounts.values()) {
-          for (let index = 0; index < entry.count; index += 1) {
-            if (buildLeft) {
-              removedCount += 1;
-              if (!pushBounded(removed, entry.row, sampleLimit)) {
-                removedTruncated = true;
+            if (requestedFields.length === 0) {
+              for (const field of Object.keys(leftRow)) {
+                compareFieldSet.add(field);
               }
+              for (const field of Object.keys(rightRow)) {
+                compareFieldSet.add(field);
+              }
+            }
+
+            const compareFields = Array.from(compareFieldSet);
+            const differences = compareFields
+              .map((field) => ({
+                field,
+                before: leftRow[field],
+                after: rightRow[field],
+              }))
+              .filter((entry) => !valuesEqual(entry.before, entry.after));
+
+            if (differences.length === 0) {
+              unchangedCount += 1;
             } else {
-              addedCount += 1;
-              if (!pushBounded(added, entry.row, sampleLimit)) {
-                addedTruncated = true;
+              changedCount += 1;
+              if (
+                !pushBounded(
+                  changed,
+                  {
+                    key: `Line ${rowIndex}`,
+                    before: leftRow,
+                    after: rightRow,
+                    differences,
+                  },
+                  sampleLimit,
+                )
+              ) {
+                changedTruncated = true;
               }
             }
           }
         }
       }
 
+      const isIdentical =
+        addedCount === 0 && removedCount === 0 && changedCount === 0;
+
+      let summary = "Datasets are completely identical.";
+      if (!isIdentical) {
+        const changes = [];
+        if (addedCount > 0) changes.push(`+${addedCount} lines added`);
+        if (removedCount > 0) changes.push(`-${removedCount} lines removed`);
+        if (changedCount > 0) changes.push(`~${changedCount} lines changed`);
+        summary = `Datasets differ: ${changes.join(", ")}. Check the 'compareFields' array for columns that had values updated.`;
+      }
+
       return {
+        isIdentical,
+        summary,
         keyField: keyField ?? null,
         compareFields: Array.from(compareFieldSet),
         added,

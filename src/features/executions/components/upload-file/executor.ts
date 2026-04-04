@@ -109,14 +109,21 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
         const uploadedFile =
           hasPersistedFileRef && data.file
             ? (() => {
-                return loadWorkflowFileAsset(data.file.fileRef as string).then(
-                  (storedFile) => ({
+                return loadWorkflowFileAsset(data.file.fileRef as string)
+                  .then((storedFile) => ({
                     name: storedFile.name,
                     mimeType: storedFile.mimeType,
                     size: storedFile.size,
                     buffer: storedFile.buffer,
-                  }),
-                );
+                  }))
+                  .catch((err: any) => {
+                    if (err.code === "ENOENT" || err.message.includes("ENOENT")) {
+                      throw new NonRetriableError(
+                        "The uploaded file is missing from the server or has expired. Please click 'Click to replace file' in the Upload File node to re-upload it.",
+                      );
+                    }
+                    throw err;
+                  });
               })()
             : hasPersistedBase64 && data.file
               ? {

@@ -269,6 +269,8 @@ This keeps pressure propagation explicit and prevents silent collect-all pattern
 
 ## 7. CSV Node Execution Strategies
 
+All downstream CSV nodes consume data using a unified AsyncGenerator `streamContextRows(source)`. They process rows line-by-line natively without loading the entire dataset into memory, saving results back to chunked storage via `datasetService.persistRowsFromStream()`.
+
 ### 7.1 Parse
 
 - Input sources: string, buffer, URL, content fields
@@ -295,6 +297,11 @@ This keeps pressure propagation explicit and prevents silent collect-all pattern
 - Stream row scan over selected fields
 - Tracks null/non-null/numeric/frequency/unique counts
 - Emits dataset of column statistics + summary map
+- **Memory risk:** Maintains `Set<string>` (for unique values) and `Map<string, number>` (for frequencies). If the target column has extremely high cardinality (e.g. UUIDs), all string values will remain in memory simultaneously, posing a severe OOM risk.
+
+### 7.5 Deduplicate
+
+- **Not yet implemented:** Currently mapped to `stubExecutor`. Requires a distinct memory-safe design (e.g. bloom filters or disk-based hashing) to prevent high-cardinality OOM issues.
 
 Design note:
 
@@ -447,11 +454,12 @@ Current defaults:
 
 Guardrails fail fast with user-readable errors when:
 
-- In-memory arrays exceed threshold
-- Buffering limits exceeded
-- Global disk/temp/pipeline memory budgets exceeded
-- Join planner rejects unsafe shapes
-- Compare index size exceeds safe threshold
+- **Per-step inline arrays checked:** Every execution node outputs through an `assertNoLargeArrayOutput` wrapper bounding the payload limit to `MAX_INLINE_DATASET_ROWS` (5,000 units), which intercepts inline array leaks.
+- In-memory arrays exceed threshold limit during operations
+- Buffering limits exceeded globally
+- Global disk/temp/pipeline memory budgets exceeded (monitored proactively via tracking)
+- Join planner rejects unsafe shapes (e.g. extremely skewed datasets)
+- Compare index size exceeds safe threshold limits
 
 ---
 

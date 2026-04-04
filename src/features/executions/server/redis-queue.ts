@@ -90,6 +90,14 @@ export const acquireExecutionSlot = async ({
   const deadline = Date.now() + policy.maxQueueWaitMs;
 
   while (true) {
+    // If this step is a retry, it might already be in the active set
+    const isAlreadyRunning = await redis.sismember(HEAVY_EXECUTIONS_KEY, executionId);
+    if (isAlreadyRunning) {
+      return {
+        release: () => releaseExecutionSlot(executionId),
+      };
+    }
+
     // Check current running count
     const runningCount = await redis.scard(HEAVY_EXECUTIONS_KEY);
     const hasCapacity = runningCount < policy.maxConcurrentHeavyExecutions;

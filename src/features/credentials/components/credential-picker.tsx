@@ -25,48 +25,6 @@ const credentialConfig: Record<
   string,
   { label: string; credentialLabel: string; logo: string; color: string }
 > = {
-  [CredentialType.OPENAI]: {
-    label: "OpenAI",
-    credentialLabel: "API key",
-    logo: "/logos/openai.svg",
-    color: "emerald",
-  },
-  [CredentialType.ANTHROPIC]: {
-    label: "Anthropic",
-    credentialLabel: "API key",
-    logo: "/logos/anthropic.svg",
-    color: "amber",
-  },
-  [CredentialType.GEMINI]: {
-    label: "Gemini",
-    credentialLabel: "API key",
-    logo: "/logos/gemini.svg",
-    color: "blue",
-  },
-  [CredentialType.DISCORD_WEBHOOK]: {
-    label: "Discord Webhook",
-    credentialLabel: "webhook URL",
-    logo: "/logos/discord.svg",
-    color: "indigo",
-  },
-  [CredentialType.SLACK_WEBHOOK]: {
-    label: "Slack Webhook",
-    credentialLabel: "webhook URL",
-    logo: "/logos/slack.svg",
-    color: "purple",
-  },
-  [CredentialType.TELEGRAM_BOT]: {
-    label: "Telegram Bot",
-    credentialLabel: "bot token",
-    logo: "/logos/telegram.svg",
-    color: "sky",
-  },
-  [CredentialType.EMAIL_SMTP]: {
-    label: "Email (SMTP)",
-    credentialLabel: "app password",
-    logo: "/logos/gmail.svg",
-    color: "red",
-  },
   [CredentialType.WHATSAPP_TOKEN]: {
     label: "WhatsApp",
     credentialLabel: "access token",

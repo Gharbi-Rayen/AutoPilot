@@ -1,4 +1,6 @@
-import { manualTriggerExecutor } from "@/features/triggers/components/manual-trigger/executor";
+const fs = require("node:fs");
+
+const content = `import { manualTriggerExecutor } from "@/features/triggers/components/manual-trigger/executor";
 import { NodeType } from "@/generated/prisma";
 import { CsvAggregateExecutor } from "../csv-aggregate/executor";
 import { CsvColumnStatsExecutor } from "../csv-column-stats/executor";
@@ -7,13 +9,11 @@ import { CsvFilterExecutor } from "../csv-filter/executor";
 import { CsvJoinExecutor } from "../csv-join/executor";
 import { CsvParseExecutor } from "../csv-parse/executor";
 import { CsvSortExecutor } from "../csv-sort/executor";
-import type { NodeExecutor, NodeExecutorParams } from "../types";
 import { UploadFileExecutor } from "../upload-file/executor";
 import { WhatsAppExecutor } from "../whatsapp/executor";
+import type { NodeExecutor, NodeExecutorParams } from "../types";
 
-export const stubExecutor: NodeExecutor<unknown> = async (
-  params: NodeExecutorParams<unknown>,
-) => {
+export const stubExecutor: NodeExecutor<any> = async (params: NodeExecutorParams<any>) => {
   return params.context;
 };
 
@@ -29,7 +29,7 @@ export const executorRegistry: Partial<Record<NodeType, NodeExecutor>> = {
   [NodeType.CSV_SORT]: CsvSortExecutor,
   [NodeType.CSV_COLUMN_STATS]: CsvColumnStatsExecutor,
   [NodeType.CSV_COMPARE]: CsvCompareExecutor,
-
+  
   [NodeType.CSV_GENERATE]: stubExecutor,
   [NodeType.CSV_DEDUPLICATE]: stubExecutor,
   [NodeType.PDF_EXTRACT_TEXT]: stubExecutor,
@@ -52,6 +52,14 @@ const fusionCompatibleNodeTypes = new Set<NodeType>([
   NodeType.CSV_AGGREGATE,
 ]);
 
-export const isFusionCompatibleNodeType = (type: NodeType): boolean => {
+export const isFusionCompatibleNodeType = (type: NodeType): boolean => {        
   return fusionCompatibleNodeTypes.has(type);
 };
+`;
+
+fs.writeFileSync(
+  "src/features/executions/components/lib/executor-registry.ts",
+  content,
+);
+
+console.log("Done");

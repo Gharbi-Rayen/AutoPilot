@@ -7,7 +7,7 @@ import { memo, useState } from "react";
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
-import { fetchFileRealTimeToken } from "../download-file/actions";
+import { fetchFileRealTimeToken } from "../upload-file/actions";
 import { CsvParseDialog, type CsvParseFormValues } from "./dialog";
 
 interface CsvParseNodeData extends Record<string, unknown> {

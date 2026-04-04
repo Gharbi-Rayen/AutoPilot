@@ -3,6 +3,7 @@ import { useAtomValue } from "jotai";
 import { Loader2Icon, SaveIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -150,11 +151,9 @@ export const EditorSaveButtons = ({ workflowId }: { workflowId: string }) => {
   return (
     <div className="ml-auto">
       <Button size="sm" onClick={handleSave} disabled={saveWorkflow.isPending}>
-        {saveWorkflow.isPending ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <SaveIcon className="size-4" />
-        )}
+        <SaveIcon
+          className={cn("size-4", saveWorkflow.isPending && "animate-spin")}
+        />
         {saveWorkflow.isPending ? "Saving..." : "Save"}
       </Button>
     </div>

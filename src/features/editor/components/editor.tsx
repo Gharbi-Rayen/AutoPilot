@@ -46,17 +46,6 @@ const WorkflowProgressPanel = dynamic(
   { ssr: false },
 );
 
-import { AiAssistantTrigger } from "@/features/ai-assistant/components/ai-assistant-trigger";
-import { AiGenerationIndicator } from "@/features/ai-assistant/components/ai-generation-indicator";
-
-const AiAssistantPanel = dynamic(
-  () =>
-    import("@/features/ai-assistant/components/ai-assistant-panel").then(
-      (m) => m.AiAssistantPanel,
-    ),
-  { ssr: false },
-);
-
 export const EditorLoading = () => {
   return <LoadingView message="Loading Editor ... " />;
 };
@@ -262,10 +251,8 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
           <Controls />
           <MiniMap />
           <Panel position="top-right" className="flex gap-2">
-            <AiAssistantTrigger />
             <AddNodeButton />
           </Panel>
-          <AiAssistantPanel />
           {hasManualTrigger && (
             <Panel
               position="bottom-center"
@@ -307,8 +294,6 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
           />
         </div>
       )}
-
-      <AiGenerationIndicator />
     </div>
   );
 };

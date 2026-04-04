@@ -115,13 +115,6 @@ export const CredentialsEmpty = () => {
 };
 
 const credentialLogos: Record<CredentialType, string> = {
-  [CredentialType.OPENAI]: "/logos/openai.svg",
-  [CredentialType.ANTHROPIC]: "/logos/anthropic.svg",
-  [CredentialType.GEMINI]: "/logos/gemini.svg",
-  [CredentialType.DISCORD_WEBHOOK]: "/logos/discord.svg",
-  [CredentialType.SLACK_WEBHOOK]: "/logos/slack.svg",
-  [CredentialType.TELEGRAM_BOT]: "/logos/telegram.svg",
-  [CredentialType.EMAIL_SMTP]: "/logos/gmail.svg",
   [CredentialType.WHATSAPP_TOKEN]: "/logos/whatsapp.svg",
 };
 

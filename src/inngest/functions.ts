@@ -32,18 +32,8 @@ import {
 } from "@/features/executions/server/resource-budget";
 import { NodeType } from "@/generated/prisma";
 import prisma from "@/lib/db";
-import { AnthropicChannel } from "./channels/anthropic";
-import { CodeChannel } from "./channels/code";
-import { DiscordChannel } from "./channels/discord";
-import { EmailChannel } from "./channels/email";
-import { GeminiChannel } from "./channels/gemini";
-import { GoogleFormTriggerChannel } from "./channels/google-form-trigger";
-import { HttpRequestChannel } from "./channels/http-request";
+import { FileChannel } from "./channels/file";
 import { ManualTriggerChannel } from "./channels/manual-triggers";
-import { OpenAIChannel } from "./channels/openai";
-import { SlackChannel } from "./channels/slack";
-import { StripeTriggerChannel } from "./channels/stripe-trigger";
-import { TelegramChannel } from "./channels/telegram";
 import { WhatsAppChannel } from "./channels/whatsapp";
 import { inngest } from "./client";
 import { topologicalSort } from "./utils";
@@ -68,16 +58,8 @@ type LargeArrayOutputDetail = {
 };
 
 const inferTriggerTypesFromContext = (
-  initialContext: ExecutionContext,
+  _initialContext: ExecutionContext,
 ): NodeType[] => {
-  if ("googleFormData" in initialContext) {
-    return [NodeType.GOOGLE_FORM_TRIGGER];
-  }
-
-  if ("stripeData" in initialContext) {
-    return [NodeType.STRIPE_TRIGGER];
-  }
-
   return [NodeType.MANUAL_TRIGGER];
 };
 
@@ -269,21 +251,7 @@ export const executeWorkflow = inngest.createFunction(
   },
   {
     event: "workflows/execute.workflow",
-    channels: [
-      HttpRequestChannel(),
-      ManualTriggerChannel(),
-      GoogleFormTriggerChannel(),
-      StripeTriggerChannel(),
-      GeminiChannel(),
-      OpenAIChannel(),
-      AnthropicChannel(),
-      DiscordChannel(),
-      SlackChannel(),
-      TelegramChannel(),
-      EmailChannel(),
-      WhatsAppChannel(),
-      CodeChannel(),
-    ],
+    channels: [ManualTriggerChannel(), WhatsAppChannel(), FileChannel()],
   },
   async ({ event, step, publish }) => {
     console.log("[Inngest] executeWorkflow triggered with event:", {
@@ -339,41 +307,71 @@ export const executeWorkflow = inngest.createFunction(
 
     initializeExecutionBudget(executionId);
 
-    const workflowData = await step.run("prepare-workflow", async () => {
-      console.log("[Inngest] Fetching workflow:", workflowId);
+    // Fetch the workflow directly without wrapping in a step.run
+    // This prevents massive workflow properties (e.g. 5MB base64 JSON in node data)
+    // from being serialized and passed continuously through the Inngest HTTP pipeline,
+    // which caused Next.js 4MB body size limits to slice the JSON and crash with "Unexpected end of JSON input".
+    console.log("[Inngest] Fetching workflow:", workflowId);
 
-      const workflow = await prisma.workflow.findUnique({
-        where: { id: workflowId },
-        include: {
-          nodes: true,
-          connections: true,
-        },
-      });
-
-      if (!workflow) {
-        console.error("[Inngest] Workflow not found:", workflowId);
-        throw new NonRetriableError(`Workflow not found: ${workflowId}`);
-      }
-
-      console.log("[Inngest] Workflow found:", {
-        id: workflow.id,
-        name: workflow.name,
-        nodeCount: workflow.nodes.length,
-        connectionCount: workflow.connections.length,
-      });
-
-      return {
-        userId: workflow.userId,
-        connections: workflow.connections,
-        sortedNodes: topologicalSort(workflow.nodes, workflow.connections),
-      };
+    const workflow = await prisma.workflow.findUnique({
+      where: { id: workflowId },
+      include: {
+        nodes: true,
+        connections: true,
+      },
     });
+
+    if (!workflow) {
+      console.error("[Inngest] Workflow not found:", workflowId);
+      throw new NonRetriableError(`Workflow not found: ${workflowId}`);
+    }
+
+    console.log("[Inngest] Workflow found:", {
+      id: workflow.id,
+      name: workflow.name,
+      nodeCount: workflow.nodes.length,
+      connectionCount: workflow.connections.length,
+    });
+
+    const workflowData = {
+      userId: workflow.userId,
+      connections: workflow.connections,
+      sortedNodes: topologicalSort(workflow.nodes, workflow.connections),
+    };
 
     const executionNodes = resolveExecutionNodes({
       sortedNodes: workflowData.sortedNodes,
       connections: workflowData.connections,
       initialContext,
+    }).map((node) => {
+      const cleanData = isRecord(node.data)
+        ? { ...node.data }
+        : (node.data as Record<string, unknown>) || {};
+
+      for (const key of Object.keys(cleanData)) {
+        const val = cleanData[key];
+        if (typeof val === "string" && val.length > 10_000) {
+          delete cleanData[key];
+        }
+      }
+
+      return { ...node, data: cleanData };
     });
+
+    // Strip unneeded nodes from closure to prevent Inngest from serializing huge workflow blobs
+    delete (workflow as any).nodes;
+    delete (workflowData as any).sortedNodes;
+
+    const totalPayloadSize = JSON.stringify(executionNodes).length;
+    console.log(
+      `[Inngest] executionNodes payload: ${(totalPayloadSize / 1024).toFixed(1)}KB`,
+    );
+    if (totalPayloadSize > 500_000) {
+      throw new Error(
+        `[Inngest] executionNodes payload too large (${totalPayloadSize} bytes). ` +
+          `A node contains an inline blob that was not scrubbed. Check node data fields.`,
+      );
+    }
 
     const executionProfileFromEvent =
       event.data.executionProfile === "heavy" ||
@@ -396,7 +394,7 @@ export const executeWorkflow = inngest.createFunction(
 
     let context: ExecutionContext = initialContext;
     const nodeMetrics: NodeExecutionMetric[] = [];
-    console.log("[Inngest] Initial context:", JSON.stringify(context, null, 2));
+    console.log("[Inngest] Initial context keys:", Object.keys(context));
 
     try {
       await step.run("acquire-execution-slot", async () => {
@@ -663,6 +661,23 @@ export const executeWorkflow = inngest.createFunction(
             errorStack: error instanceof Error ? error.stack : undefined,
           },
         });
+
+        // Clean up any heavy dataset files generated before failure to save disk space
+        const { getExecutionDatasetsDirectory } = await import(
+          "@/features/executions/server/datasets/paths"
+        );
+        const { rm } = await import("node:fs/promises");
+        try {
+          await rm(getExecutionDatasetsDirectory(executionId), {
+            recursive: true,
+            force: true,
+          });
+        } catch (cleanupError) {
+          console.warn(
+            "[Inngest] Failed to cleanup execution directory on failure:",
+            cleanupError,
+          );
+        }
 
         await releaseExecutionSlot(executionId);
         clearExecutionBudget(executionId);

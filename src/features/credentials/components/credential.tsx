@@ -62,53 +62,11 @@ type FormValues = z.infer<typeof formSchema>;
 
 const credentialTypeOptions = [
   {
-    value: CredentialType.OPENAI,
-    label: "OpenAI",
-    logo: "/logos/openai.svg",
-    valueLabel: "API Key",
-    valuePlaceholder: "sk-...",
-  },
-  {
-    value: CredentialType.ANTHROPIC,
-    label: "Anthropic",
-    logo: "/logos/anthropic.svg",
-    valueLabel: "API Key",
-    valuePlaceholder: "sk-ant-...",
-  },
-  {
-    value: CredentialType.GEMINI,
-    label: "Gemini",
-    logo: "/logos/gemini.svg",
-    valueLabel: "API Key",
-    valuePlaceholder: "AIza...",
-  },
-  {
-    value: CredentialType.DISCORD_WEBHOOK,
-    label: "Discord Webhook",
-    logo: "/logos/discord.svg",
-    valueLabel: "Webhook URL",
-    valuePlaceholder: "https://discord.com/api/webhooks/...",
-  },
-  {
-    value: CredentialType.SLACK_WEBHOOK,
-    label: "Slack Webhook",
-    logo: "/logos/slack.svg",
-    valueLabel: "Webhook URL",
-    valuePlaceholder: "https://hooks.slack.com/services/...",
-  },
-  {
-    value: CredentialType.TELEGRAM_BOT,
-    label: "Telegram Bot",
-    logo: "/logos/telegram.svg",
-    valueLabel: "Bot Token",
-    valuePlaceholder: "123456:ABC-DEF1234ghIkl-zyx57W2v...",
-  },
-  {
-    value: CredentialType.EMAIL_SMTP,
-    label: "Email (SMTP)",
-    logo: "/logos/gmail.svg",
-    valueLabel: "App Password",
-    valuePlaceholder: "xxxx xxxx xxxx xxxx",
+    value: CredentialType.WHATSAPP_TOKEN,
+    label: "WhatsApp",
+    logo: "/logos/whatsapp.svg",
+    valueLabel: "Token",
+    valuePlaceholder: "EAAX...",
   },
 ];
 
@@ -140,7 +98,7 @@ export const CredentialForm = ({
   const resolvedDefaultType =
     defaultType && credentialTypeOptions.some((o) => o.value === defaultType)
       ? (defaultType as CredentialType)
-      : CredentialType.OPENAI;
+      : CredentialType.WHATSAPP_TOKEN;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),

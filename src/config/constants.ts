@@ -119,11 +119,11 @@ export const DATASET_STORAGE = {
   ),
   JOIN_MAX_BUILD_SIDE_ROWS: toPositiveInteger(
     process.env.DATASET_JOIN_MAX_BUILD_SIDE_ROWS,
-    500_000,
+    15_000_000,
   ),
   JOIN_REQUIRE_PARTITIONED_ABOVE_ROWS: toPositiveInteger(
     process.env.DATASET_JOIN_REQUIRE_PARTITIONED_ABOVE_ROWS,
-    250_000,
+    10_000_000,
   ),
   JOIN_CARDINALITY_SAMPLE_ROWS: toPositiveInteger(
     process.env.DATASET_JOIN_CARDINALITY_SAMPLE_ROWS,
@@ -147,7 +147,7 @@ export const DATASET_STORAGE = {
   ),
   COMPARE_MAX_INDEX_ROWS: toPositiveInteger(
     process.env.DATASET_COMPARE_MAX_INDEX_ROWS,
-    200_000,
+    15_000_000,
   ),
   COMPARE_MAX_DIFF_SAMPLES: toPositiveInteger(
     process.env.DATASET_COMPARE_MAX_DIFF_SAMPLES,

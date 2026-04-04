@@ -3,8 +3,20 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",
-  serverExternalPackages: ["pdf-parse", "pdf2json", "@napi-rs/canvas"],
+  distDir: process.env.NODE_ENV === "development" ? ".next-dev" : ".next",  webpack: (config, { dev }) => {
+    if (dev) {
+      const existingIgnored = config.watchOptions?.ignored || [];
+      const ignoredArray = Array.isArray(existingIgnored)
+        ? existingIgnored
+        : [existingIgnored];
+      
+      config.watchOptions = {
+        ...config.watchOptions,
+        ignored: [...ignoredArray, "**/node_modules/**", "**/.autopilot-data/**"],
+      };
+    }
+    return config;
+  },  serverExternalPackages: ["pdf-parse", "pdf2json", "@napi-rs/canvas", "bullmq", "ioredis"],
   /* config options here */
   async redirects() {
     return [

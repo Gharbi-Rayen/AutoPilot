@@ -1,4 +1,5 @@
 import { createId } from "@paralleldrive/cuid2";
+import { TRPCError } from "@trpc/server";
 import type { Edge, Node } from "@xyflow/react";
 import { generateSlug } from "random-word-slugs";
 import z from "zod";
@@ -41,6 +42,28 @@ export const workflowsRouter = createTRPCRouter({
       // Create execution record BEFORE sending event to ensure user sees it immediately
       const executionId = createId();
       const inngestId = createId();
+
+      // Implement cleanup BEFORE creating the new execution:
+      // Wipe the heavy disk files of older failed/canceled/finished executions for THIS workflow
+      // to keep the local environment crisp after rerunning.
+      const previousExecutions = await prisma.execution.findMany({
+        where: { workflowId: input.id, status: { not: "RUNNING" } },
+        select: { id: true },
+      });
+
+      if (previousExecutions.length > 0) {
+        import("@/features/executions/server/datasets/cleanup").then(
+          ({ cleanupExecutionDatasets }) => {
+            cleanupExecutionDatasets({
+              executionIds: previousExecutions.map((e) => e.id),
+              completedTtlMs: 0, // 0 = delete immediately
+              orphanTtlMs: 0,
+            }).catch((err) =>
+              console.warn("[Router] Failed previous execution cleanup:", err),
+            );
+          },
+        );
+      }
 
       await prisma.execution.create({
         data: {
@@ -122,6 +145,23 @@ export const workflowsRouter = createTRPCRouter({
         },
       });
 
+      // Clean up any heavy dataset files to instantly free disk space when canceled
+      const { getExecutionDatasetsDirectory } = await import(
+        "@/features/executions/server/datasets/paths"
+      );
+      const { rm } = await import("node:fs/promises");
+      try {
+        await rm(getExecutionDatasetsDirectory(execution.id), {
+          recursive: true,
+          force: true,
+        });
+      } catch (cleanupError) {
+        console.warn(
+          "[Router] Failed to cleanup execution directory on pause:",
+          cleanupError,
+        );
+      }
+
       return {
         ...execution,
         status: "FAILED" as const,
@@ -186,6 +226,21 @@ export const workflowsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { id, nodes, edges } = input;
+
+      for (const node of nodes) {
+        if (
+          node.data?.contentBase64 &&
+          typeof node.data.contentBase64 === "string" &&
+          node.data.contentBase64.length > 1_000
+        ) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "contentBase64 must not be persisted for files larger than 1KB. " +
+              "Store the file on disk and save only the fileRef pointer.",
+          });
+        }
+      }
 
       // Verify the workflow exists and belongs to the user
       await prisma.workflow.findUniqueOrThrow({

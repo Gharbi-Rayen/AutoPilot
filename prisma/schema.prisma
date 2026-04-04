@@ -4,6 +4,7 @@ generator client {
 }
 
 datasource db {
+  url = env("DATABASE_URL")
   provider = "postgresql"
 }
 
@@ -90,13 +91,6 @@ model Credentials {
 }
 
 enum CredentialType {
-  OPENAI
-  ANTHROPIC
-  GEMINI
-  DISCORD_WEBHOOK
-  SLACK_WEBHOOK
-  TELEGRAM_BOT
-  EMAIL_SMTP
   WHATSAPP_TOKEN
 }
 
@@ -119,25 +113,8 @@ model Workflow {
 enum NodeType {
   INITIAL
   MANUAL_TRIGGER
-  HTTP_REQUEST
-  GOOGLE_FORM_TRIGGER
-  STRIPE_TRIGGER
-  ANTHROPIC
-  GEMINI
-  OPENAI
-  DISCORD
-  SLACK
-  TELEGRAM
-  EMAIL_SMTP
   WHATSAPP
-  CODE
-  // File Processing Nodes
   UPLOAD_FILE
-  DOWNLOAD_FILE
-  READ_FILE
-  WRITE_FILE
-  CONVERT_FILE
-  // PDF Nodes
   PDF_EXTRACT_TEXT
   PDF_EXTRACT_TABLES
   PDF_SPLIT
@@ -145,7 +122,6 @@ enum NodeType {
   PDF_FILL_FORM
   PDF_GENERATE
   PDF_SIGN
-  // CSV Nodes
   CSV_PARSE
   CSV_GENERATE
   CSV_FILTER
@@ -155,34 +131,6 @@ enum NodeType {
   CSV_DEDUPLICATE
   CSV_COLUMN_STATS
   CSV_COMPARE
-  // Spreadsheet Nodes
-  READ_EXCEL
-  WRITE_EXCEL
-  APPEND_ROW
-  SHEET_TRANSFORM
-  // PowerPoint Nodes
-  CREATE_PRESENTATION
-  ADD_SLIDE
-  FILL_TEMPLATE
-  // Image Processing Nodes
-  RESIZE_IMAGE
-  CROP_IMAGE
-  CONVERT_IMAGE
-  OCR_IMAGE
-  // Data Transformation Nodes
-  JSON_TRANSFORM
-  FILTER
-  LOOP
-  CONDITION
-  DELAY
-  MERGE
-  SPLIT
-  // Storage Nodes
-  S3_UPLOAD
-  S3_DOWNLOAD
-  GOOGLE_DRIVE
-  DROPBOX
-  LOCAL_STORAGE
 }
 
 model Node {

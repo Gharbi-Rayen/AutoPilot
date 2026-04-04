@@ -1,14 +1,12 @@
 "use client";
 
 import {
-  CreditCardIcon,
   FolderOpenIcon,
   HistoryIcon,
   KeyIcon,
   Loader2Icon,
   LogOutIcon,
   SettingsIcon,
-  StarIcon,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -27,15 +25,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { useTranslations } from "@/features/settings/hooks/use-translations";
-import { useHasActiveSubscription } from "@/features/subscriptions/hooks/use-subscription";
 import { authClient } from "@/lib/auth-client";
-
-type PolarAuthClient = {
-  checkout?: (input: { slug: string }) => Promise<unknown>;
-  customer?: {
-    portal?: () => Promise<unknown>;
-  };
-};
 
 const menuItems = [
   {
@@ -67,13 +57,9 @@ const menuItems = [
 
 export const AppSidebar = () => {
   const { t } = useTranslations();
-  const polarAuthClient = authClient as PolarAuthClient;
   const router = useRouter();
   const pathname = usePathname();
-  const { hasActiveSubscription, isLoading } = useHasActiveSubscription();
   const { setOpenMobile } = useSidebar();
-  const [isUpgrading, setIsUpgrading] = useState(false);
-  const [isBilling, setIsBilling] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
 
@@ -157,75 +143,6 @@ export const AppSidebar = () => {
 
       <SidebarFooter>
         <SidebarMenu>
-          {!hasActiveSubscription && !isLoading && (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                asChild
-                tooltip={t("nav.upgradeToPro")}
-                isActive={false}
-                className="gap-x-4 h-10 px-4"
-              >
-                <button
-                  type="button"
-                  disabled={isUpgrading || !polarAuthClient.checkout}
-                  onClick={async () => {
-                    if (!polarAuthClient.checkout) {
-                      return;
-                    }
-                    setIsUpgrading(true);
-                    try {
-                      await polarAuthClient.checkout({ slug: "pro" });
-                    } finally {
-                      setIsUpgrading(false);
-                    }
-                  }}
-                >
-                  {isUpgrading ? (
-                    <Loader2Icon className="size-4 animate-spin" />
-                  ) : (
-                    <StarIcon className="size-4" />
-                  )}
-                  <span>
-                    {isUpgrading ? t("nav.loading") : t("nav.upgradeToPro")}
-                  </span>
-                </button>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
-
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              tooltip={t("nav.billingPortal")}
-              isActive={false}
-              className="gap-x-4 h-10 px-4"
-            >
-              <button
-                type="button"
-                disabled={isBilling || !polarAuthClient.customer?.portal}
-                onClick={async () => {
-                  if (!polarAuthClient.customer?.portal) {
-                    return;
-                  }
-                  setIsBilling(true);
-                  try {
-                    await polarAuthClient.customer.portal();
-                  } finally {
-                    setIsBilling(false);
-                  }
-                }}
-              >
-                {isBilling ? (
-                  <Loader2Icon className="size-4 animate-spin" />
-                ) : (
-                  <CreditCardIcon className="size-4" />
-                )}
-                <span>
-                  {isBilling ? t("nav.loading") : t("nav.billingPortal")}
-                </span>
-              </button>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild

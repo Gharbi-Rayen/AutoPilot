@@ -12,6 +12,7 @@ import {
   CopyIcon,
   DownloadIcon,
   Loader2Icon,
+  Maximize2Icon,
   PauseIcon,
   PlayIcon,
   XCircleIcon,
@@ -21,6 +22,7 @@ import toposort from "toposort";
 import type { NodeStatus } from "@/components/react-flow/node-status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ExecutionDatasetViewer } from "@/features/executions/components/execution-dataset-viewer";
 import {
   useExecuteWorkflow,
@@ -479,23 +481,32 @@ const TraceStatusIcon = ({
   };
 
   if (status === "success") {
-    return <CheckCircle2Icon className={cn(colorMap[status])} size={size} />;
-  }
-
-  if (status === "error") {
-    return <XCircleIcon className={cn(colorMap[status])} size={size} />;
-  }
-
-  if (status === "loading") {
     return (
-      <Loader2Icon
-        className={cn("animate-spin", colorMap[status])}
+      <CheckCircle2Icon
+        className={cn("shrink-0", colorMap[status])}
         size={size}
       />
     );
   }
 
-  return <Clock3Icon className={cn(colorMap[status])} size={size} />;
+  if (status === "error") {
+    return (
+      <XCircleIcon className={cn("shrink-0", colorMap[status])} size={size} />
+    );
+  }
+
+  if (status === "loading") {
+    return (
+      <Loader2Icon
+        className={cn("shrink-0 animate-spin", colorMap[status])}
+        size={size}
+      />
+    );
+  }
+
+  return (
+    <Clock3Icon className={cn("shrink-0", colorMap[status])} size={size} />
+  );
 };
 
 export const WorkflowProgressPanel = ({
@@ -519,7 +530,8 @@ export const WorkflowProgressPanel = ({
   const [traceSelection, setTraceSelection] = useState<TraceSelection>(null);
   const [activeTab, setActiveTab] = useState<InspectorTab>("error");
   const [isMetadataCollapsed, setIsMetadataCollapsed] = useState(true);
-  const [isRawOutputRequested, setIsRawOutputRequested] = useState(false);
+  const [isOutputExpanded, setIsOutputExpanded] = useState(false);
+
   const [splitPercent, setSplitPercent] = useState(38);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
   const [copiedState, setCopiedState] = useState<"output" | "error" | null>(
@@ -655,7 +667,7 @@ export const WorkflowProgressPanel = ({
     ...trpc.executions.getOneRawOutput.queryOptions({
       id: activeExecutionId ?? "",
     }),
-    enabled: Boolean(activeExecutionId) && isRawOutputRequested,
+    enabled: Boolean(activeExecutionId),
     retry: false,
   });
 
@@ -665,7 +677,6 @@ export const WorkflowProgressPanel = ({
       return;
     }
 
-    setIsRawOutputRequested(false);
     setExecutionResult(null);
   }, [activeExecutionId, setExecutionResult]);
 
@@ -711,13 +722,8 @@ export const WorkflowProgressPanel = ({
   ]);
 
   useEffect(() => {
-    if (!isRawOutputRequested) {
-      return;
-    }
-
     setExecutionResult(executionRawOutputQuery.data?.output ?? null);
-  }, [executionRawOutputQuery.data, isRawOutputRequested, setExecutionResult]);
-
+  }, [executionRawOutputQuery.data, setExecutionResult]);
   const stateConfig = workflowStateConfig[executionState];
 
   const outputPreview =
@@ -959,9 +965,10 @@ export const WorkflowProgressPanel = ({
     ? safeStringify(selectedOutputPayload)
     : "";
 
+  const isOutputTooLargeToRender = outputPayloadText.length > 500000;
   const isOutputPayloadLarge =
-    outputPayloadText.length > 12000 ||
-    outputPayloadText.split("\n").length > 220;
+    outputPayloadText.length > 24000 ||
+    outputPayloadText.split("\n").length > 400;
 
   const outputPayloadPreview = isOutputPayloadLarge
     ? `${outputPayloadText.slice(0, 1200)}\n\n... (output truncated)`
@@ -1061,14 +1068,6 @@ export const WorkflowProgressPanel = ({
     anchor.click();
     document.body.removeChild(anchor);
     URL.revokeObjectURL(downloadUrl);
-  };
-
-  const handleLoadRawOutput = () => {
-    if (!activeExecutionId) {
-      return;
-    }
-
-    setIsRawOutputRequested(true);
   };
 
   const handleSelectRunnerStep = (step: RunnerTraceStep) => {
@@ -1747,24 +1746,8 @@ export const WorkflowProgressPanel = ({
                     </div>
                   ) : (
                     <div>
-                      {requiresRawOutputForSelection &&
-                      !isRawOutputRequested &&
-                      activeExecutionId ? (
-                        <div className="rounded-md border border-dashed border-border bg-muted/30 p-4 text-xs text-muted-foreground">
-                          <p>
-                            Load raw output to inspect node payload details.
-                          </p>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="mt-3 h-8 text-xs"
-                            onClick={handleLoadRawOutput}
-                          >
-                            <DownloadIcon className="size-3.5" />
-                            Load output
-                          </Button>
-                        </div>
-                      ) : executionRawOutputQuery.isFetching ? (
+                      \n{" "}
+                      {executionRawOutputQuery.isFetching ? (
                         <div className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                           <Loader2Icon className="size-4 animate-spin" />
                           Loading output...
@@ -1779,7 +1762,7 @@ export const WorkflowProgressPanel = ({
                           <ExecutionDatasetViewer
                             executionId={activeExecutionId}
                             variable={selectedDatasetVariable}
-                            enabled={isRawOutputRequested}
+                            enabled={true}
                           />
                         </div>
                       ) : outputPayloadText ? (
@@ -1790,6 +1773,15 @@ export const WorkflowProgressPanel = ({
                             </span>
 
                             <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setIsOutputExpanded(true)}
+                                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                              >
+                                <Maximize2Icon className="size-3" />
+                                Expand
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1814,9 +1806,30 @@ export const WorkflowProgressPanel = ({
                             </div>
                           </div>
 
-                          <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-6 text-muted-foreground">
-                            {outputPayloadPreview}
-                          </pre>
+                          {isOutputTooLargeToRender ? (
+                            <div className="flex flex-col items-center justify-center p-8 border-t border-border/80 text-amber-500 bg-amber-950/10">
+                              <div className="flex items-center gap-2 mb-4">
+                                <AlertTriangleIcon className="size-5 shrink-0" />
+                                <span className="text-[13px] font-medium text-amber-600 dark:text-amber-400">
+                                  Output size is too large to render ( &gt; 1MB
+                                  )
+                                </span>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDownloadOutput}
+                                className="h-8 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                              >
+                                <DownloadIcon className="mr-1.5 size-3.5" />
+                                Download Raw Data
+                              </Button>
+                            </div>
+                          ) : (
+                            <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-6 text-muted-foreground">
+                              {outputPayloadPreview}
+                            </pre>
+                          )}
                         </div>
                       ) : (
                         <div className="flex h-[180px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/20 text-xs text-muted-foreground">
@@ -1832,6 +1845,60 @@ export const WorkflowProgressPanel = ({
           </div>
         </div>
       </div>
+      <Dialog open={isOutputExpanded} onOpenChange={setIsOutputExpanded}>
+        <DialogContent className="max-w-[80vw] w-[1000px] h-[80vh] flex flex-col p-0 gap-0">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3 bg-muted/30">
+            <DialogTitle className="text-sm font-medium m-0 p-0">
+              Output Payload
+            </DialogTitle>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCopy(outputPayloadText, "output")}
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <CopyIcon className="size-3.5" />
+                {copiedState === "output" ? "Copied" : "Copy"}
+              </button>
+              {isOutputPayloadLarge && (
+                <button
+                  type="button"
+                  onClick={handleDownloadOutput}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <DownloadIcon className="size-3.5" />
+                  Download
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto bg-background p-4 flex">
+            {isOutputTooLargeToRender ? (
+              <div className="m-auto flex flex-col items-center justify-center p-8 text-amber-500 bg-amber-950/10 rounded-md border border-amber-900/20">
+                <div className="flex items-center gap-2 mb-4">
+                  <AlertTriangleIcon className="size-5 shrink-0" />
+                  <span className="text-[13px] font-medium text-amber-600 dark:text-amber-400">
+                    Output size is too large to render ( &gt; 1MB )
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadOutput}
+                  className="h-8 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                >
+                  <DownloadIcon className="mr-1.5 size-3.5" />
+                  Download Raw Data
+                </Button>
+              </div>
+            ) : (
+              <pre className="font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words">
+                {outputPayloadText}
+              </pre>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

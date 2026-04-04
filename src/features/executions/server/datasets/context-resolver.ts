@@ -145,6 +145,10 @@ export const summarizeContextValueForOutput = (value: unknown): unknown => {
     };
   }
 
+  if (typeof value === "string" && value.length > 500000) {
+    return `${value.slice(0, 1000)}... (truncated ${value.length} length string)`;
+  }
+
   return value;
 };
 
