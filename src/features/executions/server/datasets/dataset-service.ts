@@ -128,7 +128,10 @@ export class DatasetService {
     if (!this.startupCleanupPromise) {
       this.startupCleanupPromise = (async () => {
         await cleanupStaleWriteTransactions();
-        await cleanupExecutionDatasets();
+
+        if (DATASET_STORAGE.RUN_STARTUP_CLEANUP) {
+          await cleanupExecutionDatasets();
+        }
       })();
     }
 

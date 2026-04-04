@@ -397,12 +397,13 @@ export const executeWorkflow = inngest.createFunction(
     let context: ExecutionContext = initialContext;
     const nodeMetrics: NodeExecutionMetric[] = [];
     console.log("[Inngest] Initial context:", JSON.stringify(context, null, 2));
-    let queueLease: { release: () => Promise<void> } | null = null;
 
     try {
-      queueLease = await acquireExecutionSlot({
-        executionId,
-        profile: executionProfile,
+      await step.run("acquire-execution-slot", async () => {
+        await acquireExecutionSlot({
+          executionId,
+          profile: executionProfile,
+        });
       });
 
       //execute each node
@@ -631,6 +632,9 @@ export const executeWorkflow = inngest.createFunction(
             output: persistedOutput,
           },
         });
+
+        await releaseExecutionSlot(executionId);
+        clearExecutionBudget(executionId);
       });
     } catch (error) {
       console.error("[Inngest] Workflow execution failed:", {
@@ -659,16 +663,12 @@ export const executeWorkflow = inngest.createFunction(
             errorStack: error instanceof Error ? error.stack : undefined,
           },
         });
+
+        await releaseExecutionSlot(executionId);
+        clearExecutionBudget(executionId);
       });
 
       throw error; // Re-throw to allow Inngest retries if configured (though retries=0 currently)
-    } finally {
-      if (queueLease) {
-        await queueLease.release();
-      } else {
-        await releaseExecutionSlot(executionId);
-      }
-      clearExecutionBudget(executionId);
     }
 
     return {

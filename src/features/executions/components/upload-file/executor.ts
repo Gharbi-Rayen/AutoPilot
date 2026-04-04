@@ -1,5 +1,6 @@
 import { NonRetriableError } from "inngest";
 import type { NodeExecutor } from "@/features/executions/components/types";
+import { loadWorkflowFileAsset } from "@/features/executions/server/workflow-file-assets";
 import { FileChannel } from "@/inngest/channels/file";
 
 type UploadFileData = {
@@ -11,7 +12,9 @@ type UploadFileData = {
     name: string;
     mimeType: string;
     size: number;
-    contentBase64: string;
+    fileRef?: string;
+    contentBase64?: string;
+    lastModified?: number;
   };
 };
 
@@ -60,6 +63,7 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
   context,
   step,
   publish,
+  executionId,
 }) => {
   const updateStatePublish = async (state: "loading" | "error" | "success") => {
     return await publish(
@@ -77,117 +81,176 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
     throw new NonRetriableError("Variable name is required");
   }
 
+  if (!executionId) {
+    await updateStatePublish("error");
+    throw new NonRetriableError(
+      "Execution context is missing executionId for file upload",
+    );
+  }
+
+  const variableName = data.variableName;
+
   try {
-    const fileData = await step.run("process-uploaded-file", async () => {
-      // The file data comes from the workflow context, which should contain
-      // file information uploaded via the workflow UI
-      const hasPersistedBase64 =
-        !!data.file &&
-        typeof data.file.contentBase64 === "string" &&
-        data.file.contentBase64.length > 0;
+    const persistedData = await step.run(
+      "process-and-persist-uploaded-file",
+      async () => {
+        // The file data comes from the workflow context, which should contain
+        // file information uploaded via the workflow UI
+        const hasPersistedFileRef =
+          !!data.file &&
+          typeof data.file.fileRef === "string" &&
+          data.file.fileRef.length > 0;
 
-      const uploadedFile =
-        hasPersistedBase64 && data.file
-          ? {
-              name: data.file.name,
-              mimeType: data.file.mimeType,
-              size: data.file.size,
-              buffer: Buffer.from(data.file.contentBase64, "base64"),
-            }
-          : toUploadedFilePayload(context._uploadedFile);
+        const hasPersistedBase64 =
+          !!data.file &&
+          typeof data.file.contentBase64 === "string" &&
+          data.file.contentBase64.length > 0;
 
-      if (data.file && !hasPersistedBase64) {
-        throw new NonRetriableError(
-          "Upload File node has invalid saved file data. Re-open node settings, select the file again, save workflow, then execute.",
-        );
-      }
+        const uploadedFile =
+          hasPersistedFileRef && data.file
+            ? (() => {
+                return loadWorkflowFileAsset(data.file.fileRef as string).then(
+                  (storedFile) => ({
+                    name: storedFile.name,
+                    mimeType: storedFile.mimeType,
+                    size: storedFile.size,
+                    buffer: storedFile.buffer,
+                  }),
+                );
+              })()
+            : hasPersistedBase64 && data.file
+              ? {
+                  name: data.file.name,
+                  mimeType: data.file.mimeType,
+                  size: data.file.size,
+                  buffer: Buffer.from(
+                    data.file.contentBase64 as string,
+                    "base64",
+                  ),
+                }
+              : toUploadedFilePayload(context._uploadedFile);
 
-      const allowedTypes = Array.isArray(data.allowedTypes)
-        ? data.allowedTypes
-        : data.allowedTypes
+        const resolvedUploadedFile = await uploadedFile;
+
+        if (data.file && !hasPersistedFileRef && !hasPersistedBase64) {
+          throw new NonRetriableError(
+            "Upload File node has invalid saved file data. Re-open node settings, select the file again, save workflow, then execute.",
+          );
+        }
+
+        const allowedTypes = Array.isArray(data.allowedTypes)
           ? data.allowedTypes
-              .split(",")
-              .map((type) => type.trim())
-              .filter(Boolean)
-          : [];
+          : data.allowedTypes
+            ? data.allowedTypes
+                .split(",")
+                .map((type) => type.trim())
+                .filter(Boolean)
+            : [];
 
-      if (!uploadedFile) {
-        throw new NonRetriableError(
-          "No file uploaded. Please select a file in the Upload File node.",
-        );
-      }
-
-      const fileBuffer = toBuffer(uploadedFile.buffer);
-      if (!fileBuffer) {
-        throw new NonRetriableError(
-          "Uploaded file payload is missing binary content.",
-        );
-      }
-
-      const uploadedFileSize =
-        typeof uploadedFile.size === "number" &&
-        Number.isFinite(uploadedFile.size)
-          ? uploadedFile.size
-          : undefined;
-
-      // Validate file size if specified
-      if (data.maxSizeMB && uploadedFileSize !== undefined) {
-        const maxBytes = data.maxSizeMB * 1024 * 1024;
-        if (uploadedFileSize > maxBytes) {
+        if (!resolvedUploadedFile) {
           throw new NonRetriableError(
-            `File size exceeds maximum allowed (${data.maxSizeMB}MB)`,
+            "No file uploaded. Please select a file in the Upload File node.",
           );
         }
-      }
 
-      // Validate file type if specified
-      if (allowedTypes.length > 0 && uploadedFile.mimeType) {
-        const fileName = String(uploadedFile.name || "").toLowerCase();
-        const mimeType = String(uploadedFile.mimeType || "").toLowerCase();
-
-        const isAllowed = allowedTypes.some((rawType) => {
-          const type = rawType.toLowerCase();
-
-          if (type.startsWith(".")) {
-            return fileName.endsWith(type);
-          }
-
-          if (type.endsWith("/*")) {
-            // Handle wildcards like image/*
-            const prefix = type.replace("/*", "");
-            return mimeType.startsWith(prefix);
-          }
-
-          return mimeType === type;
-        });
-
-        if (!isAllowed) {
+        const fileBuffer = toBuffer(resolvedUploadedFile.buffer);
+        if (!fileBuffer) {
           throw new NonRetriableError(
-            `File type not allowed. Accepted types: ${allowedTypes.join(", ")}`,
+            "Uploaded file payload is missing binary content.",
           );
         }
-      }
 
-      return {
-        name:
-          (typeof uploadedFile.name === "string" && uploadedFile.name.length > 0
-            ? uploadedFile.name
-            : data.fileName) || "uploaded-file",
-        mimeType:
-          typeof uploadedFile.mimeType === "string" &&
-          uploadedFile.mimeType.length > 0
-            ? uploadedFile.mimeType
-            : "application/octet-stream",
-        size: uploadedFileSize ?? 0,
-        buffer: fileBuffer,
-        uploadedAt: new Date().toISOString(),
-      };
-    });
+        const uploadedFileSize =
+          typeof resolvedUploadedFile.size === "number" &&
+          Number.isFinite(resolvedUploadedFile.size)
+            ? resolvedUploadedFile.size
+            : undefined;
+
+        // Validate file size if specified
+        if (data.maxSizeMB && uploadedFileSize !== undefined) {
+          const maxBytes = data.maxSizeMB * 1024 * 1024;
+          if (uploadedFileSize > maxBytes) {
+            throw new NonRetriableError(
+              `File size exceeds maximum allowed (${data.maxSizeMB}MB)`,
+            );
+          }
+        }
+
+        // Validate file type if specified
+        if (allowedTypes.length > 0 && resolvedUploadedFile.mimeType) {
+          const fileName = String(
+            resolvedUploadedFile.name || "",
+          ).toLowerCase();
+          const mimeType = String(
+            resolvedUploadedFile.mimeType || "",
+          ).toLowerCase();
+
+          const isAllowed = allowedTypes.some((rawType) => {
+            const type = rawType.toLowerCase();
+
+            if (type.startsWith(".")) {
+              return fileName.endsWith(type);
+            }
+
+            if (type.endsWith("/*")) {
+              // Handle wildcards like image/*
+              const prefix = type.replace("/*", "");
+              return mimeType.startsWith(prefix);
+            }
+
+            return mimeType === type;
+          });
+
+          if (!isAllowed) {
+            throw new NonRetriableError(
+              `File type not allowed. Accepted types: ${allowedTypes.join(", ")}`,
+            );
+          }
+        }
+
+        const name =
+          (typeof resolvedUploadedFile.name === "string" &&
+          resolvedUploadedFile.name.length > 0
+            ? resolvedUploadedFile.name
+            : data.fileName) || "uploaded-file";
+        const mimeType =
+          typeof resolvedUploadedFile.mimeType === "string" &&
+          resolvedUploadedFile.mimeType.length > 0
+            ? resolvedUploadedFile.mimeType
+            : "application/octet-stream";
+        const size = uploadedFileSize ?? 0;
+        const uploadedAt = new Date().toISOString();
+
+        // Write raw buffer directly to disk to avoid 3GB+ JSON serialization arrays for 500MB buffers
+        const { getExecutionDatasetsDirectory, ensureDirectory } = await import(
+          "@/features/executions/server/datasets/paths"
+        );
+        const { join } = await import("node:path");
+        const { writeFile } = await import("node:fs/promises");
+        const { randomUUID } = await import("node:crypto");
+
+        const fileId = `file-${randomUUID()}`;
+        const executionDir = getExecutionDatasetsDirectory(executionId);
+        await ensureDirectory(executionDir);
+
+        const fileBlobPath = join(executionDir, `${fileId}.bin`);
+        await writeFile(fileBlobPath, fileBuffer);
+
+        return {
+          type: "blob",
+          fileBlobPath,
+          name,
+          mimeType,
+          size,
+          uploadedAt,
+        };
+      },
+    );
 
     await updateStatePublish("success");
 
     return {
-      [data.variableName]: fileData,
+      [variableName]: persistedData,
     };
   } catch (error) {
     await updateStatePublish("error");

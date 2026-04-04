@@ -90,12 +90,13 @@ export const DATASET_STORAGE = {
   ),
   MAX_CONCURRENT_HEAVY_EXECUTIONS: toPositiveInteger(
     process.env.DATASET_MAX_CONCURRENT_HEAVY_EXECUTIONS,
-    1,
+    2,
   ),
   EXECUTION_QUEUE_POLL_INTERVAL_MS: toPositiveInteger(
     process.env.DATASET_EXECUTION_QUEUE_POLL_INTERVAL_MS,
-    500,
+    150,
   ),
+  RUN_STARTUP_CLEANUP: process.env.DATASET_RUN_STARTUP_CLEANUP === "true",
   EXECUTION_QUEUE_MAX_WAIT_MS: toPositiveInteger(
     process.env.DATASET_EXECUTION_QUEUE_MAX_WAIT_MS,
     30 * 60 * 1000,

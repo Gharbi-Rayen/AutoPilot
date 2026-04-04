@@ -6,3 +6,7 @@ procs:
   inngest:
     cwd: .
     cmd: ["npm", "run", "inngest:dev"]
+
+  redis:
+    cwd: .
+    cmd: ["docker", "run", "--rm", "-p", "6379:6379", "redis:7-alpine"]

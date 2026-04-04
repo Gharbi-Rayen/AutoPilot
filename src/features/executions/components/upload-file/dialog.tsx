@@ -44,7 +44,8 @@ export interface SerializedUploadFile {
   mimeType: string;
   size: number;
   lastModified: number;
-  contentBase64: string;
+  fileRef?: string;
+  contentBase64?: string;
 }
 
 interface UploadFileDialogProps {
@@ -82,21 +83,32 @@ export const UploadFileDialog = ({
 
   const hasPersistedFile =
     !!defaultValues.file &&
-    typeof defaultValues.file.contentBase64 === "string" &&
-    defaultValues.file.contentBase64.length > 0;
+    ((typeof defaultValues.file.fileRef === "string" &&
+      defaultValues.file.fileRef.length > 0) ||
+      (typeof defaultValues.file.contentBase64 === "string" &&
+        defaultValues.file.contentBase64.length > 0));
 
-  const fileToBase64 = async (file: File): Promise<string> => {
-    const arrayBuffer = await file.arrayBuffer();
-    let binary = "";
-    const bytes = new Uint8Array(arrayBuffer);
-    const chunkSize = 0x8000;
+  const persistSelectedFile = async (
+    file: File,
+  ): Promise<SerializedUploadFile> => {
+    const formData = new FormData();
+    formData.append("file", file);
 
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      const chunk = bytes.subarray(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
+    const response = await fetch("/api/workflow-file-assets", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = (await response.json()) as {
+      error?: string;
+      asset?: SerializedUploadFile;
+    };
+
+    if (!response.ok || !payload.asset) {
+      throw new Error(payload.error ?? "Failed to store uploaded file.");
     }
 
-    return btoa(binary);
+    return payload.asset;
   };
 
   const handleFileSelect = (file: File) => {
@@ -129,17 +141,23 @@ export const UploadFileDialog = ({
       return;
     }
 
-    const filePayload = selectedFile
-      ? {
-          name: selectedFile.name,
-          mimeType: selectedFile.type || "application/octet-stream",
-          size: selectedFile.size,
-          lastModified: selectedFile.lastModified,
-          contentBase64: await fileToBase64(selectedFile),
-        }
-      : hasPersistedFile
-        ? defaultValues.file
-        : undefined;
+    let filePayload: SerializedUploadFile | undefined;
+
+    if (selectedFile) {
+      try {
+        filePayload = await persistSelectedFile(selectedFile);
+      } catch (error) {
+        form.setError("fileName", {
+          message:
+            error instanceof Error
+              ? error.message
+              : "Failed to store uploaded file.",
+        });
+        return;
+      }
+    } else if (hasPersistedFile) {
+      filePayload = defaultValues.file;
+    }
 
     const allowedTypes = values.allowedTypes
       ?.split(",")
@@ -189,14 +207,15 @@ export const UploadFileDialog = ({
                 onChange={handleFileInputChange}
               />
 
-              <Button
-                type="button"
-                variant="ghost"
-                className={`relative rounded-lg border-2 border-dashed transition-colors ${
+              {/* biome-ignore lint/a11y/useSemanticElements: Drag and drop region requires div container */}
+              <div
+                role="button"
+                tabIndex={0}
+                className={`relative w-full rounded-lg border-2 border-dashed transition-colors ${
                   isDragging
                     ? "border-primary bg-primary/5"
                     : "border-muted-foreground/25 bg-muted/50"
-                } p-6 cursor-pointer hover:border-primary/50`}
+                } p-6 cursor-pointer hover:border-primary/50 flex flex-col items-center justify-center min-h-[160px]`}
                 onDragOver={(e) => {
                   e.preventDefault();
                   setIsDragging(true);
@@ -204,6 +223,11 @@ export const UploadFileDialog = ({
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    fileInputRef.current?.click();
+                  }
+                }}
               >
                 {selectedFile ? (
                   <div className="flex items-center gap-3">
@@ -258,7 +282,7 @@ export const UploadFileDialog = ({
                     )}
                   </div>
                 )}
-              </Button>
+              </div>
 
               {selectedFile ? (
                 <Button

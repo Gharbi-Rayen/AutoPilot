@@ -37,7 +37,25 @@ export const commitWriteTransaction = async (
 ) => {
   await ensureDirectory(dirname(transaction.finalDirectory));
   await rm(transaction.finalDirectory, { recursive: true, force: true });
-  await rename(transaction.tempDirectory, transaction.finalDirectory);
+
+  let retries = 5;
+  while (retries > 0) {
+    try {
+      await rename(transaction.tempDirectory, transaction.finalDirectory);
+      break;
+    } catch (error) {
+      if (
+        (error as NodeJS.ErrnoException).code === "EPERM" ||
+        (error as NodeJS.ErrnoException).code === "EBUSY"
+      ) {
+        retries -= 1;
+        if (retries === 0) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // wait slightly longer for Windows AV
+      } else {
+        throw error;
+      }
+    }
+  }
 };
 
 export const rollbackWriteTransaction = async (

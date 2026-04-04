@@ -25,6 +25,7 @@ import {
   inferDatasetSchema,
 } from "@/features/executions/server/datasets/schema-inference";
 import type { DatasetSchema } from "@/features/executions/server/datasets/schema-types";
+import { loadWorkflowFileAsset } from "@/features/executions/server/workflow-file-assets";
 import { FileChannel } from "@/inngest/channels/file";
 import { CsvParseExecutor } from "../csv-parse/executor";
 import { PdfExtractTextExecutor } from "../pdf-extract-text/executor";
@@ -193,6 +194,7 @@ const resolveFilePayload = async (
     const sourceObj = source as {
       buffer?: unknown;
       url?: unknown;
+      fileRef?: unknown;
       contentBase64?: unknown;
       fileName?: unknown;
       name?: unknown;
@@ -219,6 +221,16 @@ const resolveFilePayload = async (
         buffer: directBuffer,
         name,
         mimeType,
+      };
+    }
+
+    if (typeof sourceObj.fileRef === "string" && sourceObj.fileRef.length > 0) {
+      const storedFile = await loadWorkflowFileAsset(sourceObj.fileRef);
+
+      return {
+        buffer: storedFile.buffer,
+        name: storedFile.name || name,
+        mimeType: storedFile.mimeType || mimeType,
       };
     }
 

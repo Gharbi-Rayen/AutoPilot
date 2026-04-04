@@ -197,35 +197,163 @@ export const workflowsRouter = createTRPCRouter({
 
       //transaction to ensure consistency
       return await prisma.$transaction(async (tsx) => {
-        //Delete existing nodes and connections
-        await tsx.node.deleteMany({
-          where: {
-            workflowId: id,
+        const existingNodes = await tsx.node.findMany({
+          where: { workflowId: id },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            position: true,
+            data: true,
           },
         });
 
-        //Create new nodes
-        await tsx.node.createMany({
-          data: nodes.map((node) => ({
-            id: node.id,
+        const existingNodeById = new Map(
+          existingNodes.map((node) => [node.id, node]),
+        );
+        const incomingNodeById = new Map(nodes.map((node) => [node.id, node]));
+        const incomingNodeIds = Array.from(incomingNodeById.keys());
+
+        await tsx.node.deleteMany({
+          where: {
             workflowId: id,
-            name: node.type,
-            type: node.type,
-            position: node.position,
-            data: node.data || {},
-          })),
+            id: {
+              notIn: incomingNodeIds,
+            },
+          },
         });
 
-        // create connections
-        await tsx.connection.createMany({
-          data: edges.map((edge) => ({
-            workflowId: id,
-            fromNodeId: edge.source,
-            toNodeId: edge.target,
-            fromOutput: edge.sourceHandle || "main",
-            toInput: edge.targetHandle || "main",
-          })),
+        const nodesToCreate = nodes.filter(
+          (node) => !existingNodeById.has(node.id),
+        );
+        if (nodesToCreate.length > 0) {
+          await tsx.node.createMany({
+            data: nodesToCreate.map((node) => ({
+              id: node.id,
+              workflowId: id,
+              name: node.type,
+              type: node.type,
+              position: node.position,
+              data: node.data || {},
+            })),
+          });
+        }
+
+        for (const existingNode of existingNodes) {
+          const incomingNode = incomingNodeById.get(existingNode.id);
+          if (!incomingNode) {
+            continue;
+          }
+
+          const nextData = incomingNode.data || {};
+          const hasNodeChanged =
+            existingNode.name !== incomingNode.type ||
+            existingNode.type !== incomingNode.type ||
+            JSON.stringify(existingNode.position) !==
+              JSON.stringify(incomingNode.position) ||
+            JSON.stringify(existingNode.data) !== JSON.stringify(nextData);
+
+          if (!hasNodeChanged) {
+            continue;
+          }
+
+          await tsx.node.update({
+            where: { id: existingNode.id },
+            data: {
+              name: incomingNode.type,
+              type: incomingNode.type,
+              position: incomingNode.position,
+              data: nextData,
+            },
+          });
+        }
+
+        const toConnectionKey = (connection: {
+          source: string;
+          target: string;
+          sourceHandle?: string | null;
+          targetHandle?: string | null;
+        }) => {
+          return [
+            connection.source,
+            connection.target,
+            connection.sourceHandle || "main",
+            connection.targetHandle || "main",
+          ].join("|");
+        };
+
+        const normalizedIncomingEdges = Array.from(
+          new Map(edges.map((edge) => [toConnectionKey(edge), edge])).values(),
+        );
+
+        const existingConnections = await tsx.connection.findMany({
+          where: { workflowId: id },
+          select: {
+            id: true,
+            fromNodeId: true,
+            toNodeId: true,
+            fromOutput: true,
+            toInput: true,
+          },
         });
+
+        const existingConnectionByKey = new Map(
+          existingConnections.map((connection) => [
+            toConnectionKey({
+              source: connection.fromNodeId,
+              target: connection.toNodeId,
+              sourceHandle: connection.fromOutput,
+              targetHandle: connection.toInput,
+            }),
+            connection,
+          ]),
+        );
+
+        const incomingConnectionKeys = new Set(
+          normalizedIncomingEdges.map((edge) => toConnectionKey(edge)),
+        );
+
+        const connectionIdsToDelete = existingConnections
+          .filter(
+            (connection) =>
+              !incomingConnectionKeys.has(
+                toConnectionKey({
+                  source: connection.fromNodeId,
+                  target: connection.toNodeId,
+                  sourceHandle: connection.fromOutput,
+                  targetHandle: connection.toInput,
+                }),
+              ),
+          )
+          .map((connection) => connection.id);
+
+        if (connectionIdsToDelete.length > 0) {
+          await tsx.connection.deleteMany({
+            where: {
+              workflowId: id,
+              id: {
+                in: connectionIdsToDelete,
+              },
+            },
+          });
+        }
+
+        const connectionsToCreate = normalizedIncomingEdges.filter(
+          (edge) => !existingConnectionByKey.has(toConnectionKey(edge)),
+        );
+
+        if (connectionsToCreate.length > 0) {
+          await tsx.connection.createMany({
+            data: connectionsToCreate.map((edge) => ({
+              workflowId: id,
+              fromNodeId: edge.source,
+              toNodeId: edge.target,
+              fromOutput: edge.sourceHandle || "main",
+              toInput: edge.targetHandle || "main",
+            })),
+          });
+        }
+
         // update workflow's updateAt timestamp
         await tsx.workflow.update({
           where: {

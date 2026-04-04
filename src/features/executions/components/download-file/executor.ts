@@ -15,6 +15,7 @@ export const DownloadFileExecutor: NodeExecutor<DownloadFileData> = async ({
   context,
   step,
   publish,
+  executionId,
 }) => {
   const updateStatePublish = async (state: "loading" | "error" | "success") => {
     return await publish(
@@ -37,11 +38,17 @@ export const DownloadFileExecutor: NodeExecutor<DownloadFileData> = async ({
     throw new NonRetriableError("File URL is required");
   }
 
+  if (!executionId) {
+    await updateStatePublish("error");
+    throw new NonRetriableError("Execution context is missing executionId");
+  }
+
   const fileUrl = Handlebars.compile(data.fileUrl)(context);
-  const fileName = data.fileName || "downloaded-file";
+  const _fileName = data.fileName || "downloaded-file";
+  const variableName = data.variableName;
 
   try {
-    const fileData = await step.run("download-file", async () => {
+    const fileData = await step.run("download-file-and-persist", async () => {
       const response = await fetch(fileUrl);
       if (!response.ok) {
         throw new NonRetriableError(
@@ -49,23 +56,35 @@ export const DownloadFileExecutor: NodeExecutor<DownloadFileData> = async ({
         );
       }
 
-      const buffer = await response.arrayBuffer();
-      const mimeType =
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const _mimeType =
         response.headers.get("content-type") || "application/octet-stream";
 
+      // Write raw buffer directly to disk to avoid 3GB+ JSON serialization arrays for 500MB buffers
+      const { getExecutionDatasetsDirectory, ensureDirectory } = await import(
+        "@/features/executions/server/datasets/paths"
+      );
+      const { join } = await import("node:path");
+      const { writeFile } = await import("node:fs/promises");
+      const { randomUUID } = await import("node:crypto");
+
+      const fileId = `file-${randomUUID()}`;
+      const executionDir = getExecutionDatasetsDirectory(executionId);
+      await ensureDirectory(executionDir);
+
+      const fileBlobPath = join(executionDir, `${fileId}.bin`);
+      await writeFile(fileBlobPath, buffer);
+
       return {
-        name: fileName,
-        mimeType,
-        size: buffer.byteLength,
-        url: fileUrl,
-        buffer: Buffer.from(buffer),
+        type: "blob",
+        fileBlobPath,
       };
     });
 
     await updateStatePublish("success");
 
     return {
-      [data.variableName]: fileData,
+      [variableName]: fileData,
     };
   } catch (error) {
     await updateStatePublish("error");

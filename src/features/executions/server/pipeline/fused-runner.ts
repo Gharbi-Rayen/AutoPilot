@@ -14,6 +14,7 @@ import type {
   StepTools,
   workflowContext,
 } from "@/features/executions/components/types";
+import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
 import { datasetService } from "@/features/executions/server/datasets/dataset-service";
 import {
   applySchemaToRow,
@@ -258,9 +259,47 @@ const resolveCsvSource = async (
     };
   }
 
+  if (isDatasetRef(value)) {
+    const firstRow = await datasetService.getDatasetRows(
+      value.executionId,
+      value.datasetId,
+      0,
+      0,
+      1,
+    );
+    if (firstRow.rows.length === 0) {
+      throw new NonRetriableError("Source dataset is empty");
+    }
+    const rowData = firstRow.rows[0] as Record<string, unknown>;
+    if (!rowData.buffer) {
+      throw new NonRetriableError(
+        "Dataset row does not contain buffer field from UPLOAD_FILE",
+      );
+    }
+    const buffer = toBuffer(rowData.buffer);
+    if (!buffer) {
+      throw new NonRetriableError("Failed to convert dataset buffer");
+    }
+    let fileName = "data.csv";
+    let mimeType = "";
+    if (rowData.fileName && typeof rowData.fileName === "string") {
+      fileName = rowData.fileName;
+    } else if (rowData.name && typeof rowData.name === "string") {
+      fileName = rowData.name;
+    }
+    if (rowData.mimeType && typeof rowData.mimeType === "string") {
+      mimeType = rowData.mimeType;
+    }
+    return {
+      csvText: buffer.toString("utf-8"),
+      fileName,
+      mimeType,
+    };
+  }
+
   if (typeof value !== "object" || value === null) {
     throw new NonRetriableError(
-      "CSV object must have a buffer, URL, content, or be a string",
+      "CSV object must have a buffer, URL, content, DatasetRef, or be a string",
     );
   }
 
@@ -283,6 +322,14 @@ const resolveCsvSource = async (
       throw new NonRetriableError("Unsupported CSV buffer format");
     }
     csvText = buffer.toString("utf-8");
+  } else if (
+    typeof (csv as { fileBlobPath: string }).fileBlobPath === "string"
+  ) {
+    const { readFile } = await import("node:fs/promises");
+    const buffer = await readFile(
+      (csv as { fileBlobPath: string }).fileBlobPath,
+    );
+    csvText = buffer.toString("utf-8");
   } else if (typeof csv.url === "string" && csv.url.length > 0) {
     const response = await fetch(csv.url);
     if (!response.ok) {
@@ -295,7 +342,7 @@ const resolveCsvSource = async (
     csvText = csv.content;
   } else {
     throw new NonRetriableError(
-      "CSV object must have a buffer, URL, content, or be a string",
+      "CSV object must have a buffer, URL, content, DatasetRef, or be a string",
     );
   }
 

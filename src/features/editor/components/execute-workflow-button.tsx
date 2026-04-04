@@ -1,5 +1,7 @@
+import stableStringify from "fast-json-stable-stringify";
 import { useAtomValue, useSetAtom } from "jotai";
 import { FlaskConicalIcon, Loader2Icon } from "lucide-react";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   useExecuteWorkflow,
@@ -32,6 +34,7 @@ export const ExecuteWorkflowButton = ({
   );
   const saveWorkflow = useUpdateWorkflow();
   const executeWorkflow = useExecuteWorkflow();
+  const lastSavedSignatureRef = useRef<string | null>(null);
 
   const handleExecute = async () => {
     if (!editor) {
@@ -55,12 +58,20 @@ export const ExecuteWorkflowButton = ({
       targetHandle: edge.targetHandle,
     }));
 
+    const graphSignature = stableStringify({
+      nodes,
+      edges,
+    });
+
     try {
-      await saveWorkflow.mutateAsync({
-        id: workflowId,
-        nodes,
-        edges,
-      });
+      if (graphSignature !== lastSavedSignatureRef.current) {
+        await saveWorkflow.mutateAsync({
+          id: workflowId,
+          nodes,
+          edges,
+        });
+        lastSavedSignatureRef.current = graphSignature;
+      }
 
       setWorkflowExecutionState("running");
 

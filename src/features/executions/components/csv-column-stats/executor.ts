@@ -92,7 +92,9 @@ export const CsvColumnStatsExecutor: NodeExecutor<CsvColumnStatsData> = async ({
           ? requestedFields
           : !isDatasetRef(source)
             ? collectFieldNames(inlineRows)
-            : [];
+            : source.schema
+              ? Object.keys(source.schema)
+              : [];
 
       if (fields.length === 0) {
         throw new NonRetriableError(

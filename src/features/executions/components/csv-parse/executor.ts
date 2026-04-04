@@ -3,6 +3,7 @@ import { parse } from "csv-parse";
 import { NonRetriableError } from "inngest";
 import { EXECUTION_LIMITS } from "@/config/constants";
 import type { NodeExecutor } from "@/features/executions/components/types";
+import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
 import { datasetService } from "@/features/executions/server/datasets/dataset-service";
 import {
   applySchemaToRow,
@@ -257,11 +258,49 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
 
       if (typeof csvObj === "string") {
         csvText = csvObj;
+      } else if (isDatasetRef(csvObj)) {
+        const firstRow = await datasetService.getDatasetRows(
+          csvObj.executionId,
+          csvObj.datasetId,
+          0,
+          0,
+          1,
+        );
+        if (firstRow.rows.length === 0) {
+          throw new NonRetriableError("Source dataset is empty");
+        }
+        const rowData = firstRow.rows[0] as Record<string, unknown>;
+        if (!rowData.buffer) {
+          throw new NonRetriableError(
+            "Dataset row does not contain buffer field from UPLOAD_FILE",
+          );
+        }
+        const buffer = toBuffer(rowData.buffer);
+        if (!buffer) {
+          throw new NonRetriableError("Failed to convert dataset buffer");
+        }
+        csvText = buffer.toString("utf-8");
+        if (rowData.fileName && typeof rowData.fileName === "string") {
+          fileName = rowData.fileName;
+        } else if (rowData.name && typeof rowData.name === "string") {
+          fileName = rowData.name;
+        }
+        if (rowData.mimeType && typeof rowData.mimeType === "string") {
+          mimeType = rowData.mimeType;
+        }
       } else if (csv.buffer !== undefined) {
         const buffer = toBuffer(csv.buffer);
         if (!buffer) {
           throw new NonRetriableError("Unsupported CSV buffer format");
         }
+        csvText = buffer.toString("utf-8");
+      } else if (
+        typeof (csv as { fileBlobPath: string }).fileBlobPath === "string"
+      ) {
+        const { readFile } = await import("node:fs/promises");
+        const buffer = await readFile(
+          (csv as { fileBlobPath: string }).fileBlobPath,
+        );
         csvText = buffer.toString("utf-8");
       } else if (typeof csv.url === "string" && csv.url.length > 0) {
         const response = await fetch(csv.url);
@@ -275,7 +314,7 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
         csvText = csv.content;
       } else {
         throw new NonRetriableError(
-          "CSV object must have a buffer, URL, content, or be a string",
+          "CSV object must have a buffer, URL, content, DatasetRef, or be a string",
         );
       }
 
