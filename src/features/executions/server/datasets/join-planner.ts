@@ -1,5 +1,6 @@
 import { DATASET_STORAGE } from "@/config/constants";
 import type { JoinCardinalityEstimate } from "./cardinality-estimator";
+import type { OutputColumnSpec } from "./project-row";
 
 export type JoinType =
   | "inner"
@@ -7,7 +8,13 @@ export type JoinType =
   | "right"
   | "full"
   | "left_exclusive"
-  | "right_exclusive";
+  | "right_exclusive"
+  | "cross"
+  | "semi"
+  | "anti"
+  | "natural"
+  | "union"
+  | "union_all";
 
 export type JoinBuildSide = "left" | "right";
 
@@ -17,6 +24,9 @@ export type JoinPlan =
       buildSide: JoinBuildSide;
       reason: string;
       requiresPartitionedFlag: boolean;
+      caseInsensitive: boolean;
+      outputColumns?: OutputColumnSpec[];
+      sharedColumns?: string[];
     }
   | {
       strategy: "reject";
@@ -26,11 +36,13 @@ export type JoinPlan =
 interface PlanJoinInput {
   leftRows: number;
   rightRows: number;
-  leftKey: string;
-  rightKey: string;
+  leftKeys: string[];
+  rightKeys: string[];
   joinType: JoinType;
   allowPartitionedLargeJoin?: boolean;
   estimate?: JoinCardinalityEstimate;
+  caseInsensitive?: boolean;
+  outputColumns?: OutputColumnSpec[];
 }
 
 const KEY_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -50,25 +62,37 @@ const validateJoinKey = (label: "leftKey" | "rightKey", value: string) => {
 };
 
 export const planJoinStrategy = (input: PlanJoinInput): JoinPlan => {
-  const leftKeyError = validateJoinKey("leftKey", input.leftKey);
-  if (leftKeyError) {
-    return {
-      strategy: "reject",
-      reason: leftKeyError,
-    };
+  if (input.joinType === "union" || input.joinType === "union_all") {
+    throw new Error("Union types must be routed before reaching the planner.");
+  }
+  if (
+    input.joinType !== "cross" &&
+    input.joinType !== "natural" &&
+    (!input.leftKeys || input.leftKeys.length === 0)
+  ) {
+    return { strategy: "reject", reason: "leftKeys must be provided" };
+  }
+  if (
+    input.joinType !== "cross" &&
+    input.joinType !== "natural" &&
+    (!input.rightKeys || input.rightKeys.length === 0)
+  ) {
+    return { strategy: "reject", reason: "rightKeys must be provided" };
   }
 
-  const rightKeyError = validateJoinKey("rightKey", input.rightKey);
-  if (rightKeyError) {
-    return {
-      strategy: "reject",
-      reason: rightKeyError,
-    };
+  if (input.joinType !== "cross" && input.joinType !== "natural") {
+    for (const key of input.leftKeys) {
+      const leftKeyError = validateJoinKey("leftKey", key);
+      if (leftKeyError) return { strategy: "reject", reason: leftKeyError };
+    }
+    for (const key of input.rightKeys) {
+      const rightKeyError = validateJoinKey("rightKey", key);
+      if (rightKeyError) return { strategy: "reject", reason: rightKeyError };
+    }
   }
 
   const leftRows = Math.max(0, input.leftRows);
   const rightRows = Math.max(0, input.rightRows);
-  const minSideRows = Math.min(leftRows, rightRows);
 
   const leftIsLarge = leftRows > DATASET_STORAGE.JOIN_SMALL_SIDE_MAX_ROWS;
   const rightIsLarge = rightRows > DATASET_STORAGE.JOIN_SMALL_SIDE_MAX_ROWS;
@@ -87,7 +111,19 @@ export const planJoinStrategy = (input: PlanJoinInput): JoinPlan => {
     };
   }
 
-  if (minSideRows > DATASET_STORAGE.JOIN_MAX_BUILD_SIDE_ROWS) {
+  const buildSide: JoinBuildSide =
+    input.joinType === "semi" || input.joinType === "anti"
+      ? "right"
+      : (input.estimate?.recommendedBuildSide ??
+        (leftRows <= rightRows ? "left" : "right"));
+
+  const buildSideRows = buildSide === "left" ? leftRows : rightRows;
+  const isFilteredJoin = input.joinType === "semi" || input.joinType === "anti";
+
+  if (
+    !isFilteredJoin &&
+    buildSideRows > DATASET_STORAGE.JOIN_MAX_BUILD_SIDE_ROWS
+  ) {
     return {
       strategy: "reject",
       reason:
@@ -96,24 +132,25 @@ export const planJoinStrategy = (input: PlanJoinInput): JoinPlan => {
   }
 
   if (input.estimate?.riskLevel === "high") {
-    return {
-      strategy: "reject",
-      reason: `Join blocked by cardinality estimator: ${input.estimate.guidance}`,
-    };
+    if (!input.estimate.warnings) {
+      input.estimate.warnings = [];
+    }
+    input.estimate.warnings.push(`Join cardinality warning: ${input.estimate.guidance}`);
+    // Instead of rejecting the join, we allow it to proceed with a severe warning.
   }
-
-  const buildSide: JoinBuildSide =
-    input.estimate?.recommendedBuildSide ??
-    (leftRows <= rightRows ? "left" : "right");
 
   return {
     strategy: "hash",
     buildSide,
     reason: largeLarge
       ? "Large-large join allowed via explicit partitioned strategy flag; executing guarded hash join on the smaller side."
-      : input.estimate?.riskLevel === "medium"
-        ? `Hash join selected with skew warning: ${input.estimate.guidance}`
-        : "Hash join on the smaller side.",
+      : input.estimate?.riskLevel === "high"
+        ? `Hash join selected despite severe skew warning: ${input.estimate.guidance}`
+        : input.estimate?.riskLevel === "medium"
+          ? `Hash join selected with skew warning: ${input.estimate.guidance}`
+          : "Hash join on the smaller side.",
     requiresPartitionedFlag: largeLarge,
+    caseInsensitive: input.caseInsensitive ?? false,
+    outputColumns: input.outputColumns,
   };
 };

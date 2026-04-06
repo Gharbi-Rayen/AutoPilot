@@ -116,8 +116,9 @@ export const UploadFileExecutor: NodeExecutor<UploadFileData> = async ({
                     size: storedFile.size,
                     buffer: storedFile.buffer,
                   }))
-                  .catch((err: any) => {
-                    if (err.code === "ENOENT" || err.message.includes("ENOENT")) {
+                  .catch((err: unknown) => {
+                    const e = err as Error & { code?: string };
+                    if (e.code === "ENOENT" || e.message?.includes("ENOENT")) {
                       throw new NonRetriableError(
                         "The uploaded file is missing from the server or has expired. Please click 'Click to replace file' in the Upload File node to re-upload it.",
                       );

@@ -1,9 +1,8 @@
 "use client";
 import { useAtomValue } from "jotai";
-import { Loader2Icon, SaveIcon } from "lucide-react";
+import { SaveIcon } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,6 +19,7 @@ import {
   useUpdateWorkflowName,
 } from "@/features/workflows/hooks/use-workflows";
 import type { NodeType } from "@/generated/prisma";
+import { cn } from "@/lib/utils";
 import { editorAtom } from "../store/atoms";
 
 export const EditorHeaderNameInput = ({

@@ -1,0 +1,65 @@
+  describe("natural join", () => {
+    const natLeftRows = [
+      { id: 1, name: "Alice", age: 30 },
+      { id: 2, name: "Bob", age: 40 },
+    ];
+    const natRightRows = [
+      { id: 1, name: "Alice_Right", age: 30, salary: 5000 },
+      { id: 3, name: "Charlie", age: 50, salary: 6000 },
+    ];
+
+    it("should handle Natural join with 2 shared columns", async () => {
+      const generator = hashJoinRows({
+        leftRows: natLeftRows,
+        rightRows: natRightRows,
+        leftKeys: ["id", "age"],
+        rightKeys: ["id", "age"],
+        joinType: "natural",
+        buildSide: "right",
+      });
+
+      const results = [];
+      for await (const row of generator) {
+        results.push(row);
+      }
+      expect(results).toEqual([
+        { id: 1, name: "Alice", age: 30, right_id: 1, right_name: "Alice_Right", right_age: 30, salary: 5000 },
+      ]);
+    });
+
+    it("should handle Natural join with 0 shared columns (acts as cartesian product)", async () => {
+      const generator = hashJoinRows({
+        leftRows: natLeftRows,
+        rightRows: natRightRows,
+        leftKeys: [],
+        rightKeys: [],
+        joinType: "natural",
+        buildSide: "right",
+      });
+
+      const results = [];
+      for await (const row of generator) {
+        results.push(row);
+      }
+      expect(results).toHaveLength(4); // cartesian
+    });
+
+    it("should handle Natural join with 1 shared column and a collision value", async () => {
+      const generator = hashJoinRows({
+        leftRows: natLeftRows,
+        rightRows: natRightRows,
+        leftKeys: ["id"],
+        rightKeys: ["id"],
+        joinType: "natural",
+        buildSide: "right",
+      });
+
+      const results = [];
+      for await (const row of generator) {
+        results.push(row);
+      }
+      expect(results).toEqual([
+        { id: 1, name: "Alice", age: 30, right_id: 1, right_name: "Alice_Right", right_age: 30, salary: 5000 },
+      ]);
+    });
+  });

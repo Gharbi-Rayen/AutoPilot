@@ -54,7 +54,7 @@ export const DATASET_STORAGE = {
     process.env.DATASET_COLUMNAR_PROTOTYPE_MODE !== "false",
   DEFAULT_CHUNK_SIZE_ROWS: toPositiveInteger(
     process.env.DATASET_CHUNK_SIZE_ROWS,
-    1000,
+    25_000,
   ),
   CHUNK_OFFSET_STRIDE_ROWS: toPositiveInteger(
     process.env.DATASET_CHUNK_OFFSET_STRIDE_ROWS,
@@ -166,3 +166,5 @@ export const DATASET_STORAGE = {
     2 * 24 * 60 * 60 * 1000,
   ),
 };
+
+export const UNION_DEDUP_MAX_ROWS = 500_000;

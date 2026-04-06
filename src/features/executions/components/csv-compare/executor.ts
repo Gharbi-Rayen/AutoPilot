@@ -255,8 +255,10 @@ export const CsvCompareExecutor: NodeExecutor<CsvCompareData> = async ({
           }
         }
       } else {
-        const leftIterator = streamContextRows(leftSource)[Symbol.asyncIterator]();
-        const rightIterator = streamContextRows(rightSource)[Symbol.asyncIterator]();
+        const leftIterator =
+          streamContextRows(leftSource)[Symbol.asyncIterator]();
+        const rightIterator =
+          streamContextRows(rightSource)[Symbol.asyncIterator]();
         let rowIndex = 0;
 
         while (true) {

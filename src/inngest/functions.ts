@@ -359,8 +359,8 @@ export const executeWorkflow = inngest.createFunction(
     });
 
     // Strip unneeded nodes from closure to prevent Inngest from serializing huge workflow blobs
-    delete (workflow as any).nodes;
-    delete (workflowData as any).sortedNodes;
+    delete (workflow as Record<string, unknown>).nodes;
+    delete (workflowData as Record<string, unknown>).sortedNodes;
 
     const totalPayloadSize = JSON.stringify(executionNodes).length;
     console.log(

@@ -1269,7 +1269,7 @@ export const WorkflowProgressPanel = ({
   const inspectorHeaderStatus: TraceStatus =
     selectedRunnerStep?.status ?? selectedWorkflowNode?.status ?? "initial";
 
-  const requiresRawOutputForSelection =
+  const _requiresRawOutputForSelection =
     traceSelection?.kind === "workflow-node";
 
   return (

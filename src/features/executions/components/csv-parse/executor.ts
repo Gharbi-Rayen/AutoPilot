@@ -79,16 +79,28 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
     const { randomUUID } = await import("node:crypto");
     const datasetId = randomUUID();
 
-    // 1. Enqueue job
+    // 1. Register the step.waitForEvent before enqueuing so we don't miss the event
+    // if the BullMQ worker finishes extremely quickly (e.g. for a 1MB file).
+    const parseResultPromise = step.waitForEvent("wait-for-csv-parse", {
+      event: "csv/parse.complete",
+      match: "data.executionId",
+      timeout: "30m",
+    });
+
+    // 2. Enqueue job
     await step.run("enqueue-csv-parse", async () => {
       const { Queue } = await import("bullmq");
-      const { getRedisConnection } = await import(
-        "@/features/executions/server/redis-queue"
+      const { default: Redis } = await import("ioredis");
+
+      // Create a DEDICATED connection for this queue instance
+      const connection = new Redis(
+        process.env.REDIS_URL || "redis://localhost:6379",
+        {
+          maxRetriesPerRequest: null,
+        },
       );
 
-      const queue = new Queue("csv-parse", {
-        connection: getRedisConnection(),
-      });
+      const queue = new Queue("csv-parse", { connection });
 
       await queue.add(
         `parse:${executionId}`,
@@ -103,15 +115,13 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
         { jobId: `${executionId}-${datasetId}` },
       );
 
+      await queue.close();
+
       return { enqueued: true };
     });
 
-    // 2. Wait for the worker to signal back
-    const parseResult = await step.waitForEvent("wait-for-csv-parse", {
-      event: "csv/parse.complete",
-      match: "data.executionId",
-      timeout: "30m",
-    });
+    // 3. Wait for the worker to signal back
+    const parseResult = await parseResultPromise;
 
     if (!parseResult) {
       throw new NonRetriableError(

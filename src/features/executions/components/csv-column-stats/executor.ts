@@ -102,6 +102,8 @@ export const CsvColumnStatsExecutor: NodeExecutor<CsvColumnStatsData> = async ({
         );
       }
 
+      const MAX_UNIQUE_VALUES_TRACKED = 10_000;
+
       const stats = new Map<
         string,
         {
@@ -114,6 +116,7 @@ export const CsvColumnStatsExecutor: NodeExecutor<CsvColumnStatsData> = async ({
           max: number | null;
           uniqueValues: Set<string>;
           frequencies: Map<string, number>;
+          frequencyTableTruncated: boolean;
         }
       >();
 
@@ -128,6 +131,7 @@ export const CsvColumnStatsExecutor: NodeExecutor<CsvColumnStatsData> = async ({
           max: null,
           uniqueValues: new Set<string>(),
           frequencies: new Map<string, number>(),
+          frequencyTableTruncated: false,
         });
       }
 
@@ -157,11 +161,19 @@ export const CsvColumnStatsExecutor: NodeExecutor<CsvColumnStatsData> = async ({
           entry.nonNull += 1;
 
           const serialized = String(value);
-          entry.uniqueValues.add(serialized);
-          entry.frequencies.set(
-            serialized,
-            (entry.frequencies.get(serialized) || 0) + 1,
-          );
+          
+          if (
+            entry.uniqueValues.size < MAX_UNIQUE_VALUES_TRACKED ||
+            entry.uniqueValues.has(serialized)
+          ) {
+            entry.uniqueValues.add(serialized);
+            entry.frequencies.set(
+              serialized,
+              (entry.frequencies.get(serialized) || 0) + 1,
+            );
+          } else {
+            entry.frequencyTableTruncated = true;
+          }
 
           const numericValue = parseNumber(value);
           if (numericValue !== null) {
@@ -195,18 +207,24 @@ export const CsvColumnStatsExecutor: NodeExecutor<CsvColumnStatsData> = async ({
           .slice(0, 5)
           .map(([value, count]) => ({ value, count }));
 
+        const isTruncated = entry.frequencyTableTruncated;
+        const uniqueCountValue = isTruncated
+          ? `${MAX_UNIQUE_VALUES_TRACKED}+`
+          : String(entry.uniqueValues.size);
+
         return {
           field,
           total: entry.total,
           nonNull: entry.nonNull,
           nullCount: entry.nullCount,
-          uniqueCount: entry.uniqueValues.size,
+          uniqueCount: uniqueCountValue,
           numericCount: entry.numericCount,
           min: entry.min,
           max: entry.max,
           sum: entry.numericCount > 0 ? entry.sum : null,
-          avg: entry.numericCount > 0 ? entry.sum / entry.numericCount : null,
+          avg: entry.numericCount > 0 ? entry.sum / entry.numericCount : null,  
           topValues,
+          frequencyTableTruncated: isTruncated,
         };
       });
 

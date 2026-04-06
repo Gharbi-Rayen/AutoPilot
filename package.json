@@ -10,7 +10,9 @@
     "format": "biome format --write",
     "bench:execution": "tsx scripts/bench/execution-400mb-benchmark.ts",
     "inngest:dev": "inngest-cli dev",
-    "dev:all": "mprocs"
+    "worker:parse": "tsx watch src/workers/csv-parse.worker.ts",
+    "worker:join": "tsx watch src/workers/csv-join.worker.ts",
+    "dev:all": "concurrently --names \"next,parse,join,inngest\" --prefix-colors \"cyan,green,yellow,magenta\" \"npm run dev\" \"npm run worker:parse\" \"npm run worker:join\" \"npm run inngest:dev\""
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.58",
@@ -71,7 +73,7 @@
     "fast-json-stable-stringify": "^2.1.0",
     "formidable": "^3.5.4",
     "handlebars": "^4.7.8",
-    "inngest": "^3.44.1",
+    "inngest": "3.52.7",
     "input-otp": "^1.4.2",
     "ioredis": "^5.10.1",
     "jotai": "^2.18.1",
@@ -113,11 +115,13 @@
     "@biomejs/biome": "2.2.0",
     "@tailwindcss/postcss": "^4",
     "@types/dagre": "^0.7.54",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/toposort": "^2.0.7",
     "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
     "inngest-cli": "^1.12.1",
     "mprocs": "^0.8.2",
     "prisma": "^6.16.3",

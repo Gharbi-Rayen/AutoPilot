@@ -91,7 +91,10 @@ export const acquireExecutionSlot = async ({
 
   while (true) {
     // If this step is a retry, it might already be in the active set
-    const isAlreadyRunning = await redis.sismember(HEAVY_EXECUTIONS_KEY, executionId);
+    const isAlreadyRunning = await redis.sismember(
+      HEAVY_EXECUTIONS_KEY,
+      executionId,
+    );
     if (isAlreadyRunning) {
       return {
         release: () => releaseExecutionSlot(executionId),
@@ -242,5 +245,32 @@ export const closeRedisConnections = async () => {
   if (redisConnection) {
     await redisConnection.quit();
     redisConnection = null;
+  }
+};
+
+/**
+ * Sweeps all orphaned logic locks when the Next.js development server boots.
+ * Useful to prevent `concurrently` restarts and force-kills from indefinitely hanging
+ * the pipeline at `acquireExecutionSlot` due to missed `releaseExecutionSlot()` events.
+ */
+export const purgeDevQueues = async () => {
+  if (process.env.NODE_ENV !== "development") return;
+  const redis = getRedisConnection();
+  try {
+    await redis.del(HEAVY_EXECUTIONS_KEY);
+    await redis.del(HEAVY_QUEUE_KEY);
+
+    let cursor = "0";
+    do {
+      const result = await redis.scan(cursor, "MATCH", `${EXECUTION_STATE_KEY}*`);
+      cursor = result[0];
+      const keys = result[1];
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+    } while (cursor !== "0");
+    console.log("[Redis Queue] Developer environment detected: Cleared all ghost execution locks successfully.");
+  } catch (error) {
+    console.error("[Redis Queue] Failed to clear dev queues on boot:", error);
   }
 };

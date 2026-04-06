@@ -11,6 +11,9 @@ export async function fetchFileRealTimeToken(): Promise<FileToken> {
   const token = await getSubscriptionToken(inngest, {
     channel: FileChannel(),
     topics: ["status"],
+    ...(process.env.NODE_ENV === "development"
+      ? { apiBaseUrl: "http://127.0.0.1:8288/" }
+      : {}),
   });
   return token;
 }

@@ -3,6 +3,7 @@ import { NodeType } from "@/generated/prisma";
 import { CsvAggregateExecutor } from "../csv-aggregate/executor";
 import { CsvColumnStatsExecutor } from "../csv-column-stats/executor";
 import { CsvCompareExecutor } from "../csv-compare/executor";
+import { CsvDeduplicateExecutor } from "../csv-deduplicate/executor";
 import { CsvFilterExecutor } from "../csv-filter/executor";
 import { CsvJoinExecutor } from "../csv-join/executor";
 import { CsvParseExecutor } from "../csv-parse/executor";
@@ -31,7 +32,7 @@ export const executorRegistry: Partial<Record<NodeType, NodeExecutor>> = {
   [NodeType.CSV_COMPARE]: CsvCompareExecutor,
 
   [NodeType.CSV_GENERATE]: stubExecutor,
-  [NodeType.CSV_DEDUPLICATE]: stubExecutor,
+  [NodeType.CSV_DEDUPLICATE]: CsvDeduplicateExecutor,
   [NodeType.PDF_EXTRACT_TEXT]: stubExecutor,
   [NodeType.PDF_EXTRACT_TABLES]: stubExecutor,
   [NodeType.PDF_SPLIT]: stubExecutor,

@@ -2,20 +2,39 @@ import { DATASET_STORAGE } from "@/config/constants";
 import type { AsyncOrSyncIterable } from "./async-batch-iterator";
 import { toAsyncIterable } from "./async-batch-iterator";
 import type { JoinBuildSide, JoinType } from "./join-planner";
+import { type OutputColumnSpec, projectRow } from "./project-row";
 
 interface HashJoinOptions {
   leftRows: AsyncOrSyncIterable<Record<string, unknown>>;
   rightRows: AsyncOrSyncIterable<Record<string, unknown>>;
-  leftKey: string;
-  rightKey: string;
+  leftKeys: string[];
+  rightKeys: string[];
   joinType: JoinType;
   buildSide: JoinBuildSide;
   maxMatchesPerKey?: number;
+  caseInsensitive?: boolean;
+  outputColumns?: OutputColumnSpec[];
 }
 
 type IndexedRow = {
   row: Record<string, unknown>;
   matched: boolean;
+};
+
+const normalizeVal = (val: string, ci: boolean) =>
+  ci ? val.toLowerCase() : val;
+
+export const buildMatchKey = (
+  row: Record<string, unknown>,
+  keyFields: string[],
+  caseInsensitive: boolean = false,
+): string => {
+  return keyFields
+    .map((field) => {
+      const val = normalizeVal(String(row[field] ?? ""), caseInsensitive);
+      return `${val.length}:${val}`;
+    })
+    .join("|");
 };
 
 const collectFieldNames = (rows: Array<Record<string, unknown>>): string[] =>
@@ -24,12 +43,12 @@ const collectFieldNames = (rows: Array<Record<string, unknown>>): string[] =>
 const mergeRows = (
   leftRow: Record<string, unknown>,
   rightRow: Record<string, unknown>,
-  rightKey: string,
+  rightKeys: string[],
 ): Record<string, unknown> => {
   const merged: Record<string, unknown> = { ...leftRow };
 
   for (const [field, value] of Object.entries(rightRow)) {
-    if (Object.hasOwn(merged, field) && field !== rightKey) {
+    if (Object.hasOwn(merged, field) && !rightKeys.includes(field)) {
       merged[`right_${field}`] = value;
     } else {
       merged[field] = value;
@@ -42,12 +61,12 @@ const mergeRows = (
 const withRightNulls = (
   leftRow: Record<string, unknown>,
   rightFields: string[],
-  rightKey: string,
+  rightKeys: string[],
 ): Record<string, unknown> => {
   const merged: Record<string, unknown> = { ...leftRow };
 
   for (const field of rightFields) {
-    if (Object.hasOwn(merged, field) && field !== rightKey) {
+    if (Object.hasOwn(merged, field) && !rightKeys.includes(field)) {
       merged[`right_${field}`] = null;
     } else if (!Object.hasOwn(merged, field)) {
       merged[field] = null;
@@ -60,7 +79,7 @@ const withRightNulls = (
 const withLeftNulls = (
   rightRow: Record<string, unknown>,
   leftFields: string[],
-  rightKey: string,
+  rightKeys: string[],
 ): Record<string, unknown> => {
   const merged: Record<string, unknown> = {};
 
@@ -69,7 +88,7 @@ const withLeftNulls = (
   }
 
   for (const [field, value] of Object.entries(rightRow)) {
-    if (Object.hasOwn(merged, field) && field !== rightKey) {
+    if (Object.hasOwn(merged, field) && !rightKeys.includes(field)) {
       merged[`right_${field}`] = value;
     } else {
       merged[field] = value;
@@ -83,6 +102,9 @@ const requiresProbeUnmatchedOutput = (
   joinType: JoinType,
   probeSide: JoinBuildSide,
 ): boolean => {
+  if (joinType === "anti") return true;
+  if (joinType === "semi") return false;
+
   if (probeSide === "left") {
     return (
       joinType === "left" ||
@@ -102,6 +124,8 @@ const requiresBuildUnmatchedOutput = (
   joinType: JoinType,
   buildSide: JoinBuildSide,
 ): boolean => {
+  if (joinType === "semi" || joinType === "anti") return false;
+
   if (buildSide === "left") {
     return (
       joinType === "left" ||
@@ -122,18 +146,20 @@ const emitsMatches = (joinType: JoinType): boolean => {
     joinType === "inner" ||
     joinType === "left" ||
     joinType === "right" ||
-    joinType === "full"
+    joinType === "full" ||
+    joinType === "natural"
   );
 };
 
 const toHashIndex = (
   rows: Array<Record<string, unknown>>,
-  keyField: string,
+  keyFields: string[],
+  caseInsensitive: boolean = false,
 ): Map<string, IndexedRow[]> => {
   const index = new Map<string, IndexedRow[]>();
 
   for (const row of rows) {
-    const key = String(row[keyField] ?? "");
+    const key = buildMatchKey(row, keyFields, caseInsensitive);
     const entries = index.get(key);
     const indexedRow = {
       row,
@@ -153,12 +179,18 @@ const toHashIndex = (
 export const hashJoinRows = async function* ({
   leftRows,
   rightRows,
-  leftKey,
-  rightKey,
+  leftKeys,
+  rightKeys,
   joinType,
   buildSide,
   maxMatchesPerKey = DATASET_STORAGE.JOIN_MAX_MATCHES_PER_KEY,
+  caseInsensitive = false,
+  outputColumns,
 }: HashJoinOptions): AsyncGenerator<Record<string, unknown>, void, void> {
+  if (joinType === "natural" && (leftKeys.length === 0 || rightKeys.length === 0)) {
+    throw new Error("Natural Join requires at least one shared column name.");
+  }
+
   const buildOnLeft = buildSide === "left";
 
   const buildRows = buildOnLeft
@@ -170,8 +202,8 @@ export const hashJoinRows = async function* ({
     buildMaterialized.push(row);
   }
 
-  const buildKey = buildOnLeft ? leftKey : rightKey;
-  const buildIndex = toHashIndex(buildMaterialized, buildKey);
+  const buildKey = buildOnLeft ? leftKeys : rightKeys;
+  const buildIndex = toHashIndex(buildMaterialized, buildKey, caseInsensitive);
 
   const leftFields = buildOnLeft ? collectFieldNames(buildMaterialized) : [];
   const rightFields = buildOnLeft ? [] : collectFieldNames(buildMaterialized);
@@ -181,7 +213,7 @@ export const hashJoinRows = async function* ({
     ? toAsyncIterable(rightRows)
     : toAsyncIterable(leftRows);
 
-  const probeKey = buildOnLeft ? rightKey : leftKey;
+  const probeKey = buildOnLeft ? rightKeys : leftKeys;
 
   for await (const probeRow of probeRows) {
     if (buildOnLeft) {
@@ -198,7 +230,7 @@ export const hashJoinRows = async function* ({
       }
     }
 
-    const key = String(probeRow[probeKey] ?? "");
+    const key = buildMatchKey(probeRow, probeKey, caseInsensitive);
     const matches = buildIndex.get(key) ?? [];
 
     if (matches.length > maxMatchesPerKey) {
@@ -208,13 +240,26 @@ export const hashJoinRows = async function* ({
     }
 
     if (matches.length === 0) {
-      if (requiresProbeUnmatchedOutput(joinType, probeSide)) {
+      if (joinType === "anti" && probeSide === "left") {
+        yield probeRow;
+      } else if (requiresProbeUnmatchedOutput(joinType, probeSide)) {
         if (probeSide === "left") {
-          yield withRightNulls(probeRow, rightFields, rightKey);
+          yield projectRow(
+            withRightNulls(probeRow, rightFields, rightKeys),
+            outputColumns,
+          );
         } else {
-          yield withLeftNulls(probeRow, leftFields, rightKey);
+          yield projectRow(
+            withLeftNulls(probeRow, leftFields, rightKeys),
+            outputColumns,
+          );
         }
       }
+      continue;
+    }
+
+    if (joinType === "semi" && probeSide === "left") {
+      yield probeRow;
       continue;
     }
 
@@ -223,9 +268,15 @@ export const hashJoinRows = async function* ({
 
       if (emitsMatches(joinType)) {
         if (buildOnLeft) {
-          yield mergeRows(match.row, probeRow, rightKey);
+          yield projectRow(
+            mergeRows(match.row, probeRow, rightKeys),
+            outputColumns,
+          );
         } else {
-          yield mergeRows(probeRow, match.row, rightKey);
+          yield projectRow(
+            mergeRows(probeRow, match.row, rightKeys),
+            outputColumns,
+          );
         }
       }
     }
@@ -239,9 +290,15 @@ export const hashJoinRows = async function* ({
         }
 
         if (buildOnLeft) {
-          yield withRightNulls(match.row, rightFields, rightKey);
+          yield projectRow(
+            withRightNulls(match.row, rightFields, rightKeys),
+            outputColumns,
+          );
         } else {
-          yield withLeftNulls(match.row, leftFields, rightKey);
+          yield projectRow(
+            withLeftNulls(match.row, leftFields, rightKeys),
+            outputColumns,
+          );
         }
       }
     }

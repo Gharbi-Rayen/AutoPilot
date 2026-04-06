@@ -6,12 +6,16 @@ export async function register() {
 
     // Initialize Redis queue backend health check
     try {
-      const { healthCheckRedis } = await import(
+      const { healthCheckRedis, purgeDevQueues } = await import(
         "@/features/executions/server/redis-queue"
       );
       const isHealthy = await healthCheckRedis();
       if (isHealthy) {
         console.log("[Queue] Redis backend initialized successfully");
+        if (process.env.NODE_ENV === "development") {
+          console.log("[Queue] Dev environment detected: Purging ghost locks");
+          await purgeDevQueues();
+        }
       } else {
         console.warn(
           "[Queue] Redis health check failed - queue may not be operational",
