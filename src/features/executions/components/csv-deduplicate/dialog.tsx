@@ -31,6 +31,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const keepModes = ["first", "last"] as const;
 
@@ -55,6 +57,7 @@ interface CsvDeduplicateDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvDeduplicateFormValues) => void;
   defaultValues?: Partial<CsvDeduplicateFormValues>;
+  nodeId: string;
 }
 
 export const CsvDeduplicateDialog = ({
@@ -62,6 +65,7 @@ export const CsvDeduplicateDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvDeduplicateDialogProps) => {
   const form = useForm<CsvDeduplicateFormValues>({
     resolver: zodResolver(formSchema),
@@ -75,6 +79,9 @@ export const CsvDeduplicateDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "deduplicatedData";
+  const watchSourceVariable = form.watch("sourceVariable");
+  const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
+  const fieldSuggestions = getColumns(watchSourceVariable);
 
   const handleSubmit = (values: CsvDeduplicateFormValues) => {
     onSubmit(values);
@@ -128,7 +135,13 @@ export const CsvDeduplicateDialog = ({
                   <FormItem>
                     <FormLabel>Fields (Optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="email,phone" {...field} />
+                      <FieldSuggestionInput
+                        placeholder="email,phone"
+                        value={field.value || ""}
+                        onValueChange={field.onChange}
+                        suggestions={fieldSuggestions}
+                        mode="multi"
+                      />
                     </FormControl>
                     <FormDescription>
                       Comma-separated fields used to detect duplicates. Leave

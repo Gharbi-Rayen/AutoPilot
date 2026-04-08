@@ -8,6 +8,7 @@ import {
   BarChart3,
   Copy,
   File,
+  GitBranch,
   MousePointerIcon,
   SearchIcon,
   Table2,
@@ -150,6 +151,12 @@ const executionNodes: NodeTypeOption[] = [
     label: "CSV Column Stats",
     description: "Generate per-column statistics",
     icon: BarChart3,
+  },
+  {
+    type: NodeType.CSV_CONSECUTIVE_SEQUENCE_ANALYZER,
+    label: "Consecutive Sequence Analyzer",
+    description: "Detect consecutive numeric sequences",
+    icon: GitBranch,
   },
   {
     type: NodeType.CSV_COMPARE,

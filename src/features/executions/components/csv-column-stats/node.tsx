@@ -60,6 +60,7 @@ export const CsvColumnStatsNode = memo((props: NodeProps) => {
         onOpenChange={setDialogOpen}
         onSubmit={handleSubmit}
         defaultValues={data}
+        nodeId={props.id}
       />
       <BaseExecutionNode
         {...props}

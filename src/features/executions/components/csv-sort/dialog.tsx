@@ -30,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const sortDirections = ["asc", "desc"] as const;
 const compareModes = ["string", "number", "date"] as const;
@@ -57,6 +59,7 @@ interface CsvSortDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvSortFormValues) => void;
   defaultValues?: Partial<CsvSortFormValues>;
+  nodeId: string;
 }
 
 export const CsvSortDialog = ({
@@ -64,6 +67,7 @@ export const CsvSortDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvSortDialogProps) => {
   const form = useForm<CsvSortFormValues>({
     resolver: zodResolver(formSchema),
@@ -78,6 +82,9 @@ export const CsvSortDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "sortedData";
+  const watchSourceVariable = form.watch("sourceVariable");
+  const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
+  const fieldSuggestions = getColumns(watchSourceVariable);
 
   const handleSubmit = (values: CsvSortFormValues) => {
     onSubmit(values);
@@ -132,7 +139,13 @@ export const CsvSortDialog = ({
                   <FormItem>
                     <FormLabel>Sort Field</FormLabel>
                     <FormControl>
-                      <Input placeholder="createdAt" {...field} />
+                      <FieldSuggestionInput
+                        placeholder="createdAt"
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        suggestions={fieldSuggestions}
+                        mode="single"
+                      />
                     </FormControl>
                     <FormDescription>
                       Column used to order the rows

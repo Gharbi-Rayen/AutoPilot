@@ -30,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const operators = [
   "eq",
@@ -82,6 +84,7 @@ interface CsvFilterDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvFilterFormValues) => void;
   defaultValues?: Partial<CsvFilterFormValues>;
+  nodeId: string;
 }
 
 export const CsvFilterDialog = ({
@@ -89,6 +92,7 @@ export const CsvFilterDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvFilterDialogProps) => {
   const form = useForm<CsvFilterFormValues>({
     resolver: zodResolver(formSchema),
@@ -103,6 +107,9 @@ export const CsvFilterDialog = ({
 
   const watchVariableName = form.watch("variableName") || "filteredData";
   const watchOperator = form.watch("operator");
+  const watchSourceVariable = form.watch("sourceVariable");
+  const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
+  const fieldSuggestions = getColumns(watchSourceVariable);
 
   const handleSubmit = (values: CsvFilterFormValues) => {
     onSubmit(values);
@@ -158,7 +165,13 @@ export const CsvFilterDialog = ({
                   <FormItem>
                     <FormLabel>Field</FormLabel>
                     <FormControl>
-                      <Input placeholder="status" {...field} />
+                      <FieldSuggestionInput
+                        placeholder="status"
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        suggestions={fieldSuggestions}
+                        mode="single"
+                      />
                     </FormControl>
                     <FormDescription>
                       Record key used for filtering

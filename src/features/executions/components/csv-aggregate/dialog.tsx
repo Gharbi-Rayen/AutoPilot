@@ -30,6 +30,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const operations = ["count", "sum", "avg", "min", "max"] as const;
 
@@ -66,6 +68,7 @@ interface CsvAggregateDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvAggregateFormValues) => void;
   defaultValues?: Partial<CsvAggregateFormValues>;
+  nodeId: string;
 }
 
 export const CsvAggregateDialog = ({
@@ -73,6 +76,7 @@ export const CsvAggregateDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvAggregateDialogProps) => {
   const form = useForm<CsvAggregateFormValues>({
     resolver: zodResolver(formSchema),
@@ -87,6 +91,9 @@ export const CsvAggregateDialog = ({
 
   const watchOperation = form.watch("operation");
   const watchVariableName = form.watch("variableName") || "aggregatedData";
+  const watchSourceVariable = form.watch("sourceVariable");
+  const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
+  const fieldSuggestions = getColumns(watchSourceVariable);
 
   const handleSubmit = (values: CsvAggregateFormValues) => {
     onSubmit(values);
@@ -142,7 +149,13 @@ export const CsvAggregateDialog = ({
                   <FormItem>
                     <FormLabel>Group By Field</FormLabel>
                     <FormControl>
-                      <Input placeholder="category" {...field} />
+                      <FieldSuggestionInput
+                        placeholder="category"
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        suggestions={fieldSuggestions}
+                        mode="single"
+                      />
                     </FormControl>
                     <FormDescription>
                       Records will be grouped by this key
@@ -185,7 +198,13 @@ export const CsvAggregateDialog = ({
                     <FormItem>
                       <FormLabel>Target Field</FormLabel>
                       <FormControl>
-                        <Input placeholder="amount" {...field} />
+                        <FieldSuggestionInput
+                          placeholder="amount"
+                          value={field.value || ""}
+                          onValueChange={field.onChange}
+                          suggestions={fieldSuggestions}
+                          mode="single"
+                        />
                       </FormControl>
                       <FormDescription>
                         Numeric field used by selected operation

@@ -72,6 +72,7 @@ export const CsvFilterNode = memo((props: NodeProps) => {
         onOpenChange={setDialogOpen}
         onSubmit={handleSubmit}
         defaultValues={data}
+        nodeId={props.id}
       />
       <BaseExecutionNode
         {...props}

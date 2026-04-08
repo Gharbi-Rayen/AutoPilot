@@ -23,6 +23,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const formSchema = z.object({
   sourceVariable: z.string().min(1, { message: "Source variable is required" }),
@@ -43,6 +45,7 @@ interface CsvColumnStatsDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvColumnStatsFormValues) => void;
   defaultValues?: Partial<CsvColumnStatsFormValues>;
+  nodeId: string;
 }
 
 export const CsvColumnStatsDialog = ({
@@ -50,6 +53,7 @@ export const CsvColumnStatsDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvColumnStatsDialogProps) => {
   const form = useForm<CsvColumnStatsFormValues>({
     resolver: zodResolver(formSchema),
@@ -61,6 +65,9 @@ export const CsvColumnStatsDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "columnStats";
+  const watchSourceVariable = form.watch("sourceVariable");
+  const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
+  const fieldSuggestions = getColumns(watchSourceVariable);
 
   const handleSubmit = (values: CsvColumnStatsFormValues) => {
     onSubmit(values);
@@ -112,7 +119,13 @@ export const CsvColumnStatsDialog = ({
                   <FormItem>
                     <FormLabel>Fields (Optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="amount,category,status" {...field} />
+                      <FieldSuggestionInput
+                        placeholder="amount,category,status"
+                        value={field.value || ""}
+                        onValueChange={field.onChange}
+                        suggestions={fieldSuggestions}
+                        mode="multi"
+                      />
                     </FormControl>
                     <FormDescription>
                       Comma-separated fields. Leave empty to analyze all fields.

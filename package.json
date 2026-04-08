@@ -3,16 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "biome check",
     "format": "biome format --write",
     "bench:execution": "tsx scripts/bench/execution-400mb-benchmark.ts",
     "inngest:dev": "inngest-cli dev",
-    "worker:parse": "tsx watch src/workers/csv-parse.worker.ts",
-    "worker:join": "tsx watch src/workers/csv-join.worker.ts",
-    "dev:all": "concurrently --names \"next,parse,join,inngest\" --prefix-colors \"cyan,green,yellow,magenta\" \"npm run dev\" \"npm run worker:parse\" \"npm run worker:join\" \"npm run inngest:dev\""
+    "worker:parse": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-parse.worker.ts",
+    "worker:join": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-join.worker.ts",
+    "worker:sort": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-sort.worker.ts",
+    "worker:sequence": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-consecutive-sequence.worker.ts",
+    "dev:all": "concurrently --names \"next,parse,join,sort,sequence,inngest\" --prefix-colors \"cyan,green,yellow,blue,magenta,white\" \"npm run dev\" \"npm run worker:parse\" \"npm run worker:join\" \"npm run worker:sort\" \"npm run worker:sequence\" \"npm run inngest:dev\""
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.58",
@@ -122,6 +124,7 @@
     "@types/toposort": "^2.0.7",
     "@types/ws": "^8.18.1",
     "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
     "inngest-cli": "^1.12.1",
     "mprocs": "^0.8.2",
     "prisma": "^6.16.3",

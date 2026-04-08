@@ -1,21 +1,10 @@
 import { NonRetriableError } from "inngest";
-import { DATASET_STORAGE } from "@/config/constants";
-import { createRowComparator } from "@/features/executions/server/datasets/comparator";
 import { resolveContextSchema } from "@/features/executions/server/datasets/context-resolver";
 import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
-import { datasetService } from "@/features/executions/server/datasets/dataset-service";
-import { externalSortRows } from "@/features/executions/server/datasets/external-sort";
-import {
-  applySchemaToRows,
-  inferDatasetSchema,
-} from "@/features/executions/server/datasets/schema-inference";
-import { TempFileManager } from "@/features/executions/server/datasets/temp-file-manager";
 import {
   availableContextKeys,
   extractInlineRows,
   resolveContextValue,
-  streamContextRows,
-  toDatasetRefOutput,
   withCsvNodeStatus,
 } from "../csv-shared/executor-utils";
 import type { NodeExecutor } from "../types";
@@ -27,6 +16,31 @@ type CsvSortData = {
   direction?: "asc" | "desc";
   compareAs?: "string" | "number" | "date";
   nulls?: "first" | "last";
+};
+
+type CsvSortWorkerResult = {
+  datasetRef: {
+    kind: "dataset";
+    datasetId: string;
+    executionId: string;
+    variableName: string;
+    storage: string;
+    manifestVersion: number;
+    rowCount: number;
+    chunkCount: number;
+    byteSize: number;
+    schema?: Record<string, unknown>;
+  };
+  summary: {
+    sourceRows: number;
+    strategy: "in-memory" | "external";
+    sortField: string;
+    direction: "asc" | "desc";
+    compareAs: "string" | "number" | "date";
+    nulls: "first" | "last";
+    runCount?: number;
+    mergeFanIn?: number;
+  };
 };
 
 export const CsvSortExecutor: NodeExecutor<CsvSortData> = async ({
@@ -83,94 +97,68 @@ export const CsvSortExecutor: NodeExecutor<CsvSortData> = async ({
     const direction = data.direction ?? "asc";
     const compareAs = data.compareAs ?? "string";
     const nulls = data.nulls ?? "last";
-    const compareRows = createRowComparator({
-      field: sortField,
-      direction,
-      compareAs,
-      nulls,
-      schema: sourceSchema,
+
+    const completionPromise = step.waitForEvent("wait-for-csv-sort-complete", {
+      event: "csv/sort.complete",
+      match: "data.executionId",
+      timeout: "60m",
     });
 
-    const output = await step.run("csv-sort", async () => {
-      const useFastPath =
-        !isDatasetRef(source) &&
-        inlineRows.length > 0 &&
-        inlineRows.length <= DATASET_STORAGE.MAX_INLINE_DATASET_ROWS;
+    const { randomUUID } = await import("node:crypto");
+    const datasetId = randomUUID();
 
-      if (useFastPath) {
-        const sorted = inlineRows
-          .map((row, index) => ({ row, index }))
-          .sort((left, right) => {
-            const rowComparison = compareRows(left.row, right.row);
-            if (rowComparison !== 0) {
-              return rowComparison;
-            }
+    await step.run("enqueue-csv-sort", async () => {
+      const { Queue } = await import("bullmq");
+      const { default: Redis } = await import("ioredis");
 
-            return left.index - right.index;
-          })
-          .map((entry) => entry.row);
-
-        const schema = sourceSchema ?? inferDatasetSchema(sorted);
-        const typedRows = applySchemaToRows(sorted, schema);
-
-        const manifest = await datasetService.persistRowsFromStream({
-          executionId,
-          variableName,
-          rows: typedRows,
-          chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-          schema,
-        });
-
-        return {
-          ...toDatasetRefOutput(manifest),
-          summary: {
-            sourceRows,
-            strategy: "in-memory",
-            sortField,
-            direction,
-            compareAs,
-            nulls,
-          },
-        };
-      }
-
-      const tempManager = new TempFileManager({
-        scope: `csv-sort-${executionId}-${nodeId}`,
-        executionId,
-      });
-
-      const externalSort = await externalSortRows({
-        source: streamContextRows(source),
-        compareRows,
-        tempManager,
-        runTargetBytes: DATASET_STORAGE.EXTERNAL_SORT_RUN_TARGET_BYTES,
-        mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
-      });
-
-      const manifest = await datasetService.persistRowsFromStream({
-        executionId,
-        variableName,
-        rows: externalSort.rows,
-        chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-        schema: sourceSchema,
-      });
-
-      return {
-        ...toDatasetRefOutput(manifest),
-        summary: {
-          sourceRows,
-          strategy: "external",
-          sortField,
-          direction,
-          compareAs,
-          nulls,
-          runCount: externalSort.runCount,
-          mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
+      const connection = new Redis(
+        process.env.REDIS_URL ?? "redis://localhost:6379",
+        {
+          maxRetriesPerRequest: null,
         },
-      };
+      );
+
+      const queue = new Queue("csv-sort", { connection });
+      await queue.add("sort", {
+        executionId,
+        datasetId,
+        variableName,
+        sourceRef: source,
+        sortField,
+        direction,
+        compareAs,
+        nulls,
+        sourceRows,
+        sourceSchema,
+      });
+      await queue.close();
     });
+
+    const completion = await completionPromise;
+    const failureMessage = completion?.data?.error ?? completion?.data?.reason;
+
+    if (typeof failureMessage === "string" && failureMessage.length > 0) {
+      throw new NonRetriableError(`CSV sort failed: ${failureMessage}`);
+    }
+
+    if (!completion || !completion.data?.result) {
+      throw new NonRetriableError(
+        "Wait for csv sort timed out after 60 minutes",
+      );
+    }
+
+    const output = completion.data.result as CsvSortWorkerResult;
+
+    if (!output.datasetRef?.datasetId) {
+      throw new NonRetriableError(
+        "CSV sort worker returned an invalid dataset reference",
+      );
+    }
 
     return {
-      [variableName]: output,
+      [variableName]: {
+        ...output.datasetRef,
+        summary: output.summary,
+      },
     };
   });

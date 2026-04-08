@@ -10,7 +10,7 @@ const WORKFLOW_FILE_ASSET_DIRECTORY = join(
   "workflow-file-assets",
 );
 
-type WorkflowFileAssetMetadata = {
+type WorkflowFileAssetStoredMetadata = {
   id: string;
   ownerUserId: string;
   name: string;
@@ -23,6 +23,22 @@ type WorkflowFileAssetMetadata = {
 type WorkflowFileAssetPaths = {
   metadataPath: string;
   contentPath: string;
+};
+
+export type WorkflowFileAssetSummary = {
+  fileRef: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  lastModified: number;
+};
+
+export type WorkflowFileAssetMetadata = {
+  ownerUserId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  lastModified: number;
 };
 
 const ensureWorkflowFileAssetDirectory = async () => {
@@ -56,6 +72,34 @@ const parseWorkflowFileReference = (fileRef: string): string => {
   return assetId;
 };
 
+export const resolveWorkflowFileAssetPaths = (fileRef: string) => {
+  const assetId = parseWorkflowFileReference(fileRef);
+  return buildWorkflowFileAssetPaths(assetId);
+};
+
+export const readWorkflowFileAssetMetadata = async (
+  fileRef: string,
+): Promise<WorkflowFileAssetMetadata> => {
+  await ensureWorkflowFileAssetDirectory();
+
+  const { metadataPath } = resolveWorkflowFileAssetPaths(fileRef);
+  const metadataRaw = await readFile(metadataPath, "utf-8");
+  const metadata = JSON.parse(metadataRaw) as WorkflowFileAssetStoredMetadata;
+
+  return {
+    ownerUserId: metadata.ownerUserId,
+    name: metadata.name,
+    mimeType: metadata.mimeType,
+    size: metadata.size,
+    lastModified: metadata.lastModified,
+  };
+};
+
+export const resolveWorkflowFileAssetContentPath = async (fileRef: string) => {
+  await ensureWorkflowFileAssetDirectory();
+  return resolveWorkflowFileAssetPaths(fileRef).contentPath;
+};
+
 export const saveWorkflowFileAsset = async ({
   ownerUserId,
   file,
@@ -74,7 +118,7 @@ export const saveWorkflowFileAsset = async ({
   const assetId = createId();
   const { contentPath, metadataPath } = buildWorkflowFileAssetPaths(assetId);
 
-  const metadata: WorkflowFileAssetMetadata = {
+  const metadata: WorkflowFileAssetStoredMetadata = {
     id: assetId,
     ownerUserId,
     name: file.name,
@@ -93,7 +137,7 @@ export const saveWorkflowFileAsset = async ({
     mimeType: metadata.mimeType,
     size: metadata.size,
     lastModified: metadata.lastModified,
-  };
+  } satisfies WorkflowFileAssetSummary;
 };
 
 export const loadWorkflowFileAsset = async (fileRef: string) => {
@@ -103,7 +147,7 @@ export const loadWorkflowFileAsset = async (fileRef: string) => {
   const { contentPath, metadataPath } = buildWorkflowFileAssetPaths(assetId);
 
   const metadataRaw = await readFile(metadataPath, "utf-8");
-  const metadata = JSON.parse(metadataRaw) as WorkflowFileAssetMetadata;
+  const metadata = JSON.parse(metadataRaw) as WorkflowFileAssetStoredMetadata;
   const buffer = await readFile(contentPath);
 
   return {
@@ -114,4 +158,15 @@ export const loadWorkflowFileAsset = async (fileRef: string) => {
     lastModified: metadata.lastModified,
     buffer,
   };
+};
+
+export const deleteWorkflowFileAsset = async (fileRef: string) => {
+  await ensureWorkflowFileAssetDirectory();
+
+  const { contentPath, metadataPath } = resolveWorkflowFileAssetPaths(fileRef);
+  const { rm } = await import("node:fs/promises");
+  await Promise.all([
+    rm(contentPath, { force: true }),
+    rm(metadataPath, { force: true }),
+  ]);
 };

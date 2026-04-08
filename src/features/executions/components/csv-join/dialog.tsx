@@ -1,10 +1,8 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, Plus, Trash2, X } from "lucide-react";
-import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import z from "zod";
 import { Button } from "@/components/ui/button";
@@ -38,7 +36,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useTRPC } from "@/trpc/client";
+import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const formSchemaBase = z.object({
   leftVariable: z.string().min(1, { message: "Left variable is required" }),
@@ -108,6 +107,7 @@ interface CsvJoinDialogProps {
     leftKey?: string;
     rightKey?: string;
   };
+  nodeId: string;
 }
 
 export const CsvJoinDialog = ({
@@ -115,9 +115,8 @@ export const CsvJoinDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvJoinDialogProps) => {
-  const trpc = useTRPC();
-
   const form = useForm<CsvJoinFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -159,83 +158,52 @@ export const CsvJoinDialog = ({
   const watchRightVariable = form.watch("rightVariable");
 
   const [isOutputColumnsOpen, setIsOutputColumnsOpen] = useState(false);
+  const { getColumns, getRowCount } = useUpstreamVariableMetadata(nodeId, open);
+  const leftFieldSuggestions = getColumns(watchLeftVariable);
+  const rightFieldSuggestions = getColumns(watchRightVariable);
+  const leftRowCount = getRowCount(watchLeftVariable);
+  const rightRowCount = getRowCount(watchRightVariable);
 
-  const [dismissedWarnings, setDismissedWarnings] = useState<Set<number>>(
-    new Set(),
-  );
+  const estimateFromPreview = useMemo(() => {
+    if (typeof leftRowCount !== "number" || typeof rightRowCount !== "number") {
+      return null;
+    }
 
-  const leftVariable = form.watch("leftVariable");
-  const rightVariable = form.watch("rightVariable");
-  const joinType = form.watch("joinType");
-  const keyPairs = form.watch("keyPairs");
+    let estimatedOutputRows = 0;
+    if (watchJoinType === "cross") {
+      estimatedOutputRows = leftRowCount * rightRowCount;
+    } else if (watchJoinType === "union" || watchJoinType === "union_all") {
+      estimatedOutputRows = leftRowCount + rightRowCount;
+    } else if (
+      watchJoinType === "left" ||
+      watchJoinType === "left_exclusive" ||
+      watchJoinType === "semi" ||
+      watchJoinType === "anti"
+    ) {
+      estimatedOutputRows = leftRowCount;
+    } else if (
+      watchJoinType === "right" ||
+      watchJoinType === "right_exclusive"
+    ) {
+      estimatedOutputRows = rightRowCount;
+    } else if (watchJoinType === "full") {
+      estimatedOutputRows = Math.max(leftRowCount, rightRowCount);
+    } else {
+      estimatedOutputRows = Math.min(leftRowCount, rightRowCount);
+    }
 
-  const [debouncedInput, setDebouncedInput] = useState<{
-    leftVariable?: string;
-    rightVariable?: string;
-    joinType?:
-      | "inner"
-      | "left"
-      | "right"
-      | "full"
-      | "left_exclusive"
-      | "right_exclusive"
-      | "cross"
-      | "semi"
-      | "anti"
-      | "natural"
-      | "union"
-      | "union_all";
-    keyPairs?: { leftKey: string; rightKey: string }[];
-  }>({});
+    const riskLevel =
+      estimatedOutputRows >= 1_000_000
+        ? "high"
+        : estimatedOutputRows >= 100_000
+          ? "medium"
+          : "low";
 
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedInput({
-        leftVariable,
-        rightVariable,
-        joinType,
-        keyPairs,
-      });
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [leftVariable, rightVariable, joinType, keyPairs]);
-
-  // Using params as Record<string, string> because it's dynamic
-  const params = useParams() as Record<string, string>;
-  const workflowId = params.workflowId || params.id;
-
-  const { data: estimate } = useQuery({
-    ...trpc.csvJoin.estimateOutput.queryOptions({
-      workflowId: workflowId,
-      ...debouncedInput,
-      joinType: debouncedInput.joinType as
-        | "inner"
-        | "left"
-        | "right"
-        | "full"
-        | "cross"
-        | "natural"
-        | "union"
-        | "union_all"
-        | undefined,
-    }),
-    enabled:
-      open &&
-      !!workflowId &&
-      !!debouncedInput.leftVariable &&
-      !!debouncedInput.rightVariable,
-  });
-
-  const estimationWarnings: string[] = estimate?.warnings || [];
-  const activeWarnings = estimationWarnings.filter(
-    (_, i) => !dismissedWarnings.has(i),
-  );
-
-  const dismissWarning = (index: number) => {
-    const newDismissed = new Set(dismissedWarnings);
-    newDismissed.add(index);
-    setDismissedWarnings(newDismissed);
-  };
+    return {
+      estimatedOutputRows,
+      riskLevel,
+    };
+  }, [leftRowCount, rightRowCount, watchJoinType]);
 
   useEffect(() => {
     if (open) {
@@ -260,6 +228,11 @@ export const CsvJoinDialog = ({
     }
   }, [open, defaultValues, form]);
 
+  const handleSubmit = (values: CsvJoinFormValues) => {
+    onSubmit(values);
+    onOpenChange(false);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
@@ -269,7 +242,10 @@ export const CsvJoinDialog = ({
 
         <div className="flex-1 overflow-y-auto px-1 py-4 space-y-4">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+            <form
+              onSubmit={form.handleSubmit(handleSubmit)}
+              className="space-y-5"
+            >
               <FormField
                 control={form.control}
                 name="leftVariable"
@@ -338,9 +314,12 @@ export const CsvJoinDialog = ({
                               <FormItem>
                                 {index === 0 && <FormLabel>Left Key</FormLabel>}
                                 <FormControl>
-                                  <Input
+                                  <FieldSuggestionInput
                                     placeholder="customerId"
-                                    {...inputField}
+                                    value={inputField.value}
+                                    onValueChange={inputField.onChange}
+                                    suggestions={leftFieldSuggestions}
+                                    mode="single"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -357,7 +336,13 @@ export const CsvJoinDialog = ({
                                   <FormLabel>Right Key</FormLabel>
                                 )}
                                 <FormControl>
-                                  <Input placeholder="id" {...inputField} />
+                                  <FieldSuggestionInput
+                                    placeholder="id"
+                                    value={inputField.value}
+                                    onValueChange={inputField.onChange}
+                                    suggestions={rightFieldSuggestions}
+                                    mode="single"
+                                  />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
@@ -389,37 +374,6 @@ export const CsvJoinDialog = ({
                           {form.formState.errors.keyPairs.message as string}
                         </p>
                       )}
-
-                    {activeWarnings.length > 0 && (
-                      <div className="space-y-3 mt-4">
-                        {activeWarnings.map((warning, index) => (
-                          <div
-                            key={warning}
-                            className="flex items-start justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 pr-2 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300"
-                          >
-                            <div className="flex flex-col gap-1">
-                              <p className="font-semibold">
-                                Type Mismatch Warning
-                              </p>
-                              <p className="leading-snug opacity-90">
-                                {warning}
-                              </p>
-                            </div>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="-mt-1 -mr-1 h-6 w-6 shrink-0 text-amber-600 hover:bg-amber-100 hover:text-amber-900 dark:text-amber-400 dark:hover:bg-amber-900/50 hover:dark:text-amber-100"
-                              onClick={() => dismissWarning(index)}
-                            >
-                              <X className="h-4 w-4" />
-                              <span className="sr-only">Dismiss warning</span>
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                     <FormField
                       control={form.control}
                       name="caseInsensitive"
@@ -488,12 +442,12 @@ export const CsvJoinDialog = ({
                         field.value === "union_all" ? (
                         <span className="flex flex-col gap-1 mt-1">
                           <span className="text-muted-foreground">
-                            Stacks both datasets vertically. Columns should     
+                            Stacks both datasets vertically. Columns should
                             match in both datasets.
                           </span>
                           {field.value === "union" && (
                             <span className="font-medium text-amber-600 dark:text-amber-500 text-xs">
-                              Deduplication is limited to 500,000 rows. Use CSV 
+                              Deduplication is limited to 500,000 rows. Use CSV
                               Deduplicate for larger datasets.
                             </span>
                           )}
@@ -605,9 +559,18 @@ export const CsvJoinDialog = ({
                                       <FormLabel>Column</FormLabel>
                                     )}
                                     <FormControl>
-                                      <Input
+                                      <FieldSuggestionInput
                                         placeholder="Column Name"
-                                        {...inputField}
+                                        value={inputField.value ?? ""}
+                                        onValueChange={inputField.onChange}
+                                        suggestions={
+                                          form.watch(
+                                            `outputColumns.${index}.source`,
+                                          ) === "right"
+                                            ? rightFieldSuggestions
+                                            : leftFieldSuggestions
+                                        }
+                                        mode="single"
                                       />
                                     </FormControl>
                                   </FormItem>
@@ -667,25 +630,28 @@ export const CsvJoinDialog = ({
                   </Collapsible>
                 )}
 
-              {estimate && estimate.estimatedOutputRows >= 0 && (
-                <div className="my-4 rounded-md border p-3 flex justify-between items-center bg-muted/30">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium">
-                      Estimated Output
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      ~{estimate.estimatedOutputRows.toLocaleString()} rows
-                    </span>
-                  </div>
-                  {estimate.riskLevel !== "low" && (
-                    <div
-                      className={`px-2 py-1 rounded text-xs font-semibold border ${estimate.riskLevel === "high" ? "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300" : "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300"}`}
-                    >
-                      {estimate.riskLevel.toUpperCase()} RISK
+              {estimateFromPreview &&
+                estimateFromPreview.estimatedOutputRows >= 0 && (
+                  <div className="my-4 rounded-md border p-3 flex justify-between items-center bg-muted/30">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">
+                        Estimated Output
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ~
+                        {estimateFromPreview.estimatedOutputRows.toLocaleString()}{" "}
+                        rows
+                      </span>
                     </div>
-                  )}
-                </div>
-              )}
+                    {estimateFromPreview.riskLevel !== "low" && (
+                      <div
+                        className={`px-2 py-1 rounded text-xs font-semibold border ${estimateFromPreview.riskLevel === "high" ? "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-300" : "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300"}`}
+                      >
+                        {estimateFromPreview.riskLevel.toUpperCase()} RISK
+                      </div>
+                    )}
+                  </div>
+                )}
 
               <DialogFooter className="pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur">
                 <Button type="submit">Save</Button>

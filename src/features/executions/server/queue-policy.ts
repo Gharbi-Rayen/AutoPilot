@@ -10,6 +10,7 @@ const HEAVY_NODE_TYPES = new Set<string>([
   NodeType.CSV_COMPARE,
   NodeType.CSV_AGGREGATE,
   NodeType.CSV_COLUMN_STATS,
+  NodeType.CSV_CONSECUTIVE_SEQUENCE_ANALYZER,
 ]);
 
 export const classifyExecutionProfile = (

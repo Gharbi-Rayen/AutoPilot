@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 
@@ -23,6 +23,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const formSchema = z.object({
   leftVariable: z.string().min(1, { message: "Left variable is required" }),
@@ -45,6 +47,7 @@ interface CsvCompareDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvCompareFormValues) => void;
   defaultValues?: Partial<CsvCompareFormValues>;
+  nodeId: string;
 }
 
 export const CsvCompareDialog = ({
@@ -52,6 +55,7 @@ export const CsvCompareDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvCompareDialogProps) => {
   const form = useForm<CsvCompareFormValues>({
     resolver: zodResolver(formSchema),
@@ -65,6 +69,24 @@ export const CsvCompareDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "comparisonResult";
+  const watchLeftVariable = form.watch("leftVariable");
+  const watchRightVariable = form.watch("rightVariable");
+  const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
+
+  const leftSuggestions = getColumns(watchLeftVariable);
+  const rightSuggestions = getColumns(watchRightVariable);
+  const compareFieldSuggestions = useMemo(() => {
+    if (leftSuggestions.length === 0) {
+      return rightSuggestions;
+    }
+
+    if (rightSuggestions.length === 0) {
+      return leftSuggestions;
+    }
+
+    const rightSet = new Set(rightSuggestions);
+    return leftSuggestions.filter((column) => rightSet.has(column));
+  }, [leftSuggestions, rightSuggestions]);
 
   const handleSubmit = (values: CsvCompareFormValues) => {
     onSubmit(values);
@@ -137,7 +159,13 @@ export const CsvCompareDialog = ({
                   <FormItem>
                     <FormLabel>Key Field (Optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="id" {...field} />
+                      <FieldSuggestionInput
+                        placeholder="id"
+                        value={field.value || ""}
+                        onValueChange={field.onChange}
+                        suggestions={compareFieldSuggestions}
+                        mode="single"
+                      />
                     </FormControl>
                     <FormDescription>
                       Compare records by this field. Leave empty for full-row
@@ -155,7 +183,13 @@ export const CsvCompareDialog = ({
                   <FormItem>
                     <FormLabel>Compare Fields (Optional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="status,amount,updatedAt" {...field} />
+                      <FieldSuggestionInput
+                        placeholder="status,amount,updatedAt"
+                        value={field.value || ""}
+                        onValueChange={field.onChange}
+                        suggestions={compareFieldSuggestions}
+                        mode="multi"
+                      />
                     </FormControl>
                     <FormDescription>
                       Comma-separated fields. Leave empty to compare all shared

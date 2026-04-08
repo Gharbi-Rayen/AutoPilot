@@ -498,7 +498,7 @@ const TraceStatusIcon = ({
   if (status === "loading") {
     return (
       <Loader2Icon
-        className={cn("shrink-0 animate-spin", colorMap[status])}
+        className={cn("shrink-0 animate-spin mt-[1px]", colorMap[status])}
         size={size}
       />
     );
@@ -1280,7 +1280,7 @@ export const WorkflowProgressPanel = ({
         className={cn(
           "overflow-hidden bg-background transition-all duration-300 ease-out",
           isCollapsed
-            ? "rounded-none border-0"
+            ? "rounded-none border-0 pt-5"
             : "rounded-xl border border-border",
         )}
       >
@@ -1516,7 +1516,7 @@ export const WorkflowProgressPanel = ({
                       </span>
                     </div>
 
-                    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
+                    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-2">
                       {workflowNodes.map((node) => {
                         const statusConfig = traceStatusConfig[node.status];
                         const isSelected =
@@ -1570,6 +1570,7 @@ export const WorkflowProgressPanel = ({
                           </button>
                         );
                       })}
+                      <div className="h-3 shrink-0" aria-hidden />
                     </div>
                   </div>
                 </div>
@@ -1622,12 +1623,12 @@ export const WorkflowProgressPanel = ({
                   }}
                 >
                   <div className="min-h-0 overflow-hidden">
-                    <div className="flex flex-wrap border-b border-border bg-muted/30">
+                    <div className="flex flex-wrap gap-y-0 border-b border-border bg-muted/30">
                       {metadataEntries.map((entry, index) => (
                         <div
                           key={entry.label}
                           className={cn(
-                            "min-w-[120px] flex-1 px-3 py-2",
+                            "min-w-0 flex-[1_1_160px] px-3 py-2",
                             index < metadataEntries.length - 1 &&
                               "border-r border-border",
                           )}
@@ -1637,7 +1638,7 @@ export const WorkflowProgressPanel = ({
                           </div>
                           <div
                             className={cn(
-                              "truncate text-[12px] font-medium text-foreground",
+                              "max-w-full truncate text-[12px] font-medium text-foreground",
                               entry.danger && "text-red-600",
                               entry.mono && "font-mono text-[11px]",
                             )}
@@ -1680,7 +1681,7 @@ export const WorkflowProgressPanel = ({
                   </button>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-auto p-4">
+                <div className="min-h-0 flex-1 overflow-auto p-4 pb-12">
                   {activeTab === "error" ? (
                     <div>
                       {effectiveError ? (
@@ -1832,7 +1833,7 @@ export const WorkflowProgressPanel = ({
                           )}
                         </div>
                       ) : (
-                        <div className="flex h-[180px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/20 text-xs text-muted-foreground">
+                        <div className="flex h-[180px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/20 text-xs text-muted-foreground pb-2">
                           <Clock3Icon className="size-5" />
                           No output for this selection.
                         </div>

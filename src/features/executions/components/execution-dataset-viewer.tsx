@@ -3,7 +3,6 @@
 import { DownloadIcon, Loader2Icon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -18,6 +17,7 @@ import {
   useExecutionDatasetPage,
 } from "../hooks/use-executions";
 import { ExecutionDatasetNavigation } from "./execution-dataset-navigation";
+import { cn } from "@/lib/utils";
 
 const stringifyCell = (value: unknown) => {
   if (value === null || value === undefined) {
@@ -169,7 +169,7 @@ export const ExecutionDatasetViewer = ({
   }
 
   return (
-    <div className={className}>
+    <div className={cn("min-w-0 w-full", className)}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           {totalRows} rows, {datasetMetaQuery.data?.chunkCount ?? 0} chunk(s)
@@ -230,8 +230,8 @@ export const ExecutionDatasetViewer = ({
             No rows on this page.
           </p>
         ) : (
-          <ScrollArea className="max-h-[260px]">
-            <Table>
+          <div className="max-h-[260px] overflow-auto">
+            <Table className="min-w-max">
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[70px]">#</TableHead>
@@ -269,7 +269,7 @@ export const ExecutionDatasetViewer = ({
                 })}
               </TableBody>
             </Table>
-          </ScrollArea>
+          </div>
         )}
       </div>
     </div>

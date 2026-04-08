@@ -81,11 +81,14 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
 
     // 1. Register the step.waitForEvent before enqueuing so we don't miss the event
     // if the BullMQ worker finishes extremely quickly (e.g. for a 1MB file).
-    const parseResultPromise = step.waitForEvent("wait-for-csv-parse", {
-      event: "csv/parse.complete",
-      match: "data.executionId",
-      timeout: "30m",
-    });
+    const parseResultPromise = step.waitForEvent(
+      "wait-for-csv-parse-complete",
+      {
+        event: "csv/parse.complete",
+        match: "data.executionId",
+        timeout: "30m",
+      },
+    );
 
     // 2. Enqueue job
     await step.run("enqueue-csv-parse", async () => {
@@ -123,6 +126,15 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
     // 3. Wait for the worker to signal back
     const parseResult = await parseResultPromise;
 
+    const parseFailureMessage =
+      parseResult?.data?.error ?? parseResult?.data?.reason;
+    if (
+      typeof parseFailureMessage === "string" &&
+      parseFailureMessage.length > 0
+    ) {
+      throw new NonRetriableError(`CSV parse failed: ${parseFailureMessage}`);
+    }
+
     if (!parseResult) {
       throw new NonRetriableError(
         `[csv-parse] Timed out waiting for parse to complete — executionId=${executionId}`,
@@ -132,6 +144,19 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
     await updateStatePublish("success");
 
     const manifest = parseResult.data.result;
+    const headers = Array.isArray(manifest.headers)
+      ? manifest.headers.filter(
+          (header: unknown): header is string => typeof header === "string",
+        )
+      : [];
+    const columnCount =
+      typeof manifest.columnCount === "number"
+        ? Math.max(0, manifest.columnCount)
+        : headers.length;
+    const delimiter =
+      typeof manifest.delimiter === "string" && manifest.delimiter.length > 0
+        ? manifest.delimiter
+        : undefined;
 
     return {
       [variableName]: {
@@ -145,6 +170,15 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
         chunkCount: manifest.chunkCount,
         byteSize: manifest.byteSize || 0,
         schema: manifest.schema,
+        headers,
+        columnCount,
+        delimiter,
+        parsedMetadata: {
+          rowCount: manifest.rowCount,
+          columnCount,
+          columns: headers,
+          delimiter: delimiter ?? null,
+        },
         typePolicy: DATASET_TYPE_POLICY.id,
         fileName,
       },

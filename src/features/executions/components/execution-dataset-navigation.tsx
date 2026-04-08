@@ -31,7 +31,7 @@ export const ExecutionDatasetNavigation = ({
   const canGoNext = !isPending && totalPages > 0 && page < totalPages;
 
   return (
-    <div className="space-y-2 rounded-md border bg-background/70 p-3">
+    <div className="min-w-0 space-y-2 rounded-md border bg-background/70 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           Page {totalPages === 0 ? 0 : page} of {Math.max(totalPages, 1)}
@@ -39,7 +39,7 @@ export const ExecutionDatasetNavigation = ({
         <p className="text-xs text-muted-foreground">{totalRows} rows total</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <Button
           type="button"
           variant="outline"
@@ -63,7 +63,7 @@ export const ExecutionDatasetNavigation = ({
           <ChevronRightIcon className="size-3.5" />
         </Button>
 
-        <div className="ml-auto flex flex-wrap items-center gap-1">
+        <div className="flex w-full flex-wrap items-center gap-1 sm:ml-auto sm:w-auto sm:justify-end">
           {PAGE_SIZE_OPTIONS.map((option) => (
             <Button
               key={option}

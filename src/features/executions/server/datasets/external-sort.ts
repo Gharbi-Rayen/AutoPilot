@@ -65,7 +65,7 @@ const writeRunEntries = async <T>(
 
   try {
     for (const entry of entries) {
-      await writeLine(stream, `${JSON.stringify(entry)}\n`);
+      await writeLine(stream, `${entry.seq}\t${JSON.stringify(entry.row)}\n`);
     }
   } finally {
     stream.end();
@@ -89,8 +89,21 @@ const readRunEntries = async function* <T>(
       continue;
     }
 
-    const parsed = JSON.parse(line) as SortableEntry<T>;
-    yield parsed;
+    const separatorIndex = line.indexOf("\t");
+    if (separatorIndex <= 0) {
+      throw new Error("Malformed external-sort run line: missing tab separator");
+    }
+
+    const seq = Number(line.slice(0, separatorIndex));
+    if (!Number.isFinite(seq)) {
+      throw new Error("Malformed external-sort run line: invalid sequence number");
+    }
+
+    const row = JSON.parse(line.slice(separatorIndex + 1)) as T;
+    yield {
+      seq,
+      row,
+    };
   }
 };
 
@@ -140,7 +153,10 @@ const mergeRunGroup = async <T>({
         break;
       }
 
-      await writeLine(outputStream, `${JSON.stringify(selectedEntry)}\n`);
+      await writeLine(
+        outputStream,
+        `${selectedEntry.seq}\t${JSON.stringify(selectedEntry.row)}\n`,
+      );
       heads[selectedIndex] = await iterators[selectedIndex].next();
     }
   } finally {
