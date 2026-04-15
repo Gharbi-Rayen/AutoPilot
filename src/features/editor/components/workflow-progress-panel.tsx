@@ -23,6 +23,10 @@ import type { NodeStatus } from "@/components/react-flow/node-status-indicator";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ExecutionDatasetViewer } from "@/features/executions/components/execution-dataset-viewer";
+import {
+  ExecutionCompareViewer,
+  type CompareResult,
+} from "@/features/executions/components/execution-compare-viewer";
 import { fetchFileRealTimeToken } from "@/features/executions/components/upload-file/actions";
 import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { cn } from "@/lib/utils";
@@ -48,6 +52,7 @@ interface WorkflowTraceNode {
   status: TraceStatus;
   variableKeys: string[];
   type?: string;
+  data?: Record<string, unknown>;
 }
 
 type SortProgressSnapshot = {
@@ -516,6 +521,7 @@ export const WorkflowProgressPanel = ({
           status,
           variableKeys,
           type: String(node.type ?? ""),
+          data: nodeData,
         };
       });
   }, [nodeStatusMap, orderedNodes]);
@@ -808,6 +814,14 @@ export const WorkflowProgressPanel = ({
           : null,
     };
   }, [selectedOutputPayload]);
+
+  const selectedCompareResult = useMemo((): CompareResult | null => {
+    if (selectedWorkflowNode?.type !== "CSV_COMPARE") return null;
+    if (!isRecord(selectedOutputPayload)) return null;
+    if (selectedOutputPayload._compareResult !== true) return null;
+    if (typeof selectedOutputPayload.isIdentical !== "boolean") return null;
+    return selectedOutputPayload as unknown as CompareResult;
+  }, [selectedWorkflowNode, selectedOutputPayload]);
 
   const stackTraceText = executionQuery.data?.errorStack ?? "";
   const stackTraceLines = useMemo(
@@ -1179,6 +1193,30 @@ export const WorkflowProgressPanel = ({
                 </p>
               )}
             </div>
+          </div>
+        );
+      }
+
+      if (selectedCompareResult && activeExecutionId) {
+        const nodeData = selectedWorkflowNode.data as Record<string, unknown>;
+        const leftLabel =
+          typeof nodeData.leftVariable === "string" && nodeData.leftVariable
+            ? nodeData.leftVariable
+            : "File 1";
+        const rightLabel =
+          typeof nodeData.rightVariable === "string" && nodeData.rightVariable
+            ? nodeData.rightVariable
+            : "File 2";
+        return (
+          <div className="space-y-3">
+            {metadataView}
+            <ExecutionCompareViewer
+              result={selectedCompareResult}
+              executionId={activeExecutionId}
+              nodeId={selectedWorkflowNode.id}
+              leftLabel={leftLabel}
+              rightLabel={rightLabel}
+            />
           </div>
         );
       }

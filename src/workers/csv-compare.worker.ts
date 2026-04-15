@@ -2,6 +2,7 @@ import { type Job, UnrecoverableError, Worker } from "bullmq";
 import Redis from "ioredis";
 import { DATASET_STORAGE } from "@/config/constants";
 import { streamContextRows } from "@/features/executions/components/csv-shared/executor-utils";
+import { datasetService } from "@/features/executions/server/datasets/dataset-service";
 import { inngest } from "@/inngest/client";
 import {
   DEFAULT_WORKER_SETTINGS,
@@ -22,6 +23,21 @@ export interface CsvCompareJobData {
   rightRows: number;
   keyField?: string;
   compareFields?: string[];
+  addedDatasetId: string;
+  removedDatasetId: string;
+  changedDatasetId: string;
+}
+
+interface DatasetRef {
+  kind: "dataset";
+  datasetId: string;
+  executionId: string;
+  variableName: string;
+  storage: string;
+  manifestVersion: number;
+  rowCount: number;
+  chunkCount: number;
+  byteSize: number;
 }
 
 export interface CsvCompareJobResult {
@@ -29,63 +45,215 @@ export interface CsvCompareJobResult {
   summary: string;
   keyField: string | null;
   compareFields: string[];
-  added: Array<Record<string, unknown>>;
-  removed: Array<Record<string, unknown>>;
-  changed: Array<{
-    key: string;
-    before: Record<string, unknown>;
-    after: Record<string, unknown>;
-    differences: Array<{ field: string; before: unknown; after: unknown }>;
-  }>;
   addedCount: number;
   removedCount: number;
   changedCount: number;
   unchangedCount: number;
-  samplesTruncated: {
-    added: boolean;
-    removed: boolean;
-    changed: boolean;
-  };
+  changedDiffRowCount: number;
+  addedRef: DatasetRef | null;
+  removedRef: DatasetRef | null;
+  /** Flat diff dataset: _diff_key | _diff_field | _diff_before | _diff_after */
+  changedRef: DatasetRef | null;
 }
+
+// ── helpers ───────────────────────────────────────────────────────────────────
 
 const workerConnection = new Redis(
   process.env.REDIS_URL ?? "redis://localhost:6379",
-  {
-    maxRetriesPerRequest: null,
-  },
+  { maxRetriesPerRequest: null },
 );
 
-const stableStringify = (value: unknown): string => {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
+const stableStringify = (v: unknown): string => {
+  try { return JSON.stringify(v); } catch { return String(v); }
+};
+
+const valuesEqual = (l: unknown, r: unknown): boolean =>
+  stableStringify(l ?? null) === stableStringify(r ?? null);
+
+async function* arrayToStream<T>(arr: T[]): AsyncGenerator<T> {
+  yield* arr;
+}
+
+// ── counters shared between the diff generators and the outer scope ────────────
+
+interface Counters {
+  addedCount: number;
+  removedCount: number;
+  changedCount: number;
+  unchangedCount: number;
+  changedDiffRowCount: number;
+  compareFieldSet: Set<string>;
+  added: Array<Record<string, unknown>>;
+  removed: Array<Record<string, unknown>>;
+}
+
+const makeCounters = (requestedFields: string[]): Counters => ({
+  addedCount: 0,
+  removedCount: 0,
+  changedCount: 0,
+  unchangedCount: 0,
+  changedDiffRowCount: 0,
+  compareFieldSet: new Set<string>(requestedFields),
+  added: [],
+  removed: [],
+});
+
+// Compute per-row field diffs and yield ONE side-by-side row per changed pair.
+// Columns: _diff_key | _diff_changed | _before_<field> … | _after_<field> …
+// Also updates counter.changedCount / unchangedCount / compareFieldSet.
+function* yieldRowDiff(
+  c: Counters,
+  diffKey: string,
+  leftRow: Record<string, unknown>,
+  rightRow: Record<string, unknown>,
+  keyedField: string | undefined,
+  requestedFields: string[],
+): Generator<Record<string, unknown>> {
+  if (requestedFields.length === 0) {
+    for (const f of Object.keys(leftRow)) {
+      if (!keyedField || f !== keyedField) c.compareFieldSet.add(f);
+    }
+    for (const f of Object.keys(rightRow)) {
+      if (!keyedField || f !== keyedField) c.compareFieldSet.add(f);
+    }
   }
-};
 
-const valuesEqual = (left: unknown, right: unknown): boolean => {
-  return stableStringify(left ?? null) === stableStringify(right ?? null);
-};
+  const changedFields = Array.from(c.compareFieldSet).filter(
+    (f) => !valuesEqual(leftRow[f], rightRow[f]),
+  );
 
-const pushBounded = <T>(target: T[], value: T, limit: number): boolean => {
-  if (target.length >= limit) {
-    return false;
+  if (changedFields.length === 0) {
+    c.unchangedCount += 1;
+    return;
   }
 
-  target.push(value);
-  return true;
-};
+  c.changedCount += 1;
+  c.changedDiffRowCount += 1;
+
+  // Build one row: _diff_key, _diff_changed (CSV of changed field names),
+  // then all left values prefixed with _before_, all right values with _after_.
+  const row: Record<string, unknown> = {
+    _diff_key: diffKey,
+    _diff_changed: changedFields.join(","),
+  };
+  for (const [k, v] of Object.entries(leftRow)) {
+    row[`_before_${k}`] = v;
+  }
+  for (const [k, v] of Object.entries(rightRow)) {
+    row[`_after_${k}`] = v;
+  }
+  yield row;
+}
+
+// ── Sequential comparison ─────────────────────────────────────────────────────
+// Yields flat diff rows (changed) as they are discovered; accumulates
+// added/removed into counters.added / counters.removed (typically small).
+
+async function* sequentialChangedStream(
+  c: Counters,
+  leftSource: unknown,
+  rightSource: unknown,
+  requestedFields: string[],
+): AsyncGenerator<Record<string, unknown>> {
+  const leftIt = streamContextRows(leftSource)[Symbol.asyncIterator]();
+  const rightIt = streamContextRows(rightSource)[Symbol.asyncIterator]();
+  let rowIndex = 0;
+
+  while (true) {
+    rowIndex += 1;
+    const [L, R] = await Promise.all([leftIt.next(), rightIt.next()]);
+
+    if (L.done && R.done) break;
+
+    if (!L.done && R.done) {
+      c.removedCount += 1;
+      c.removed.push(L.value);
+    } else if (L.done && !R.done) {
+      c.addedCount += 1;
+      c.added.push(R.value);
+    } else if (!L.done && !R.done) {
+      yield* yieldRowDiff(c, `Line ${rowIndex}`, L.value, R.value, undefined, requestedFields);
+    }
+  }
+}
+
+// ── Keyed comparison ──────────────────────────────────────────────────────────
+
+async function* keyedChangedStream(
+  c: Counters,
+  leftSource: unknown,
+  rightSource: unknown,
+  leftRows: number,
+  rightRows: number,
+  keyedField: string,
+  requestedFields: string[],
+): AsyncGenerator<Record<string, unknown>> {
+  const buildLeft = leftRows <= rightRows;
+  const buildSrc = buildLeft ? leftSource : rightSource;
+  const probeSrc = buildLeft ? rightSource : leftSource;
+
+  // Build the in-memory index from the smaller side
+  const index = new Map<string, Array<Record<string, unknown>>>();
+  for await (const row of streamContextRows(buildSrc)) {
+    const key = String(row[keyedField] ?? "");
+    const entries = index.get(key);
+    if (entries) entries.push(row);
+    else index.set(key, [row]);
+  }
+
+  // Probe — stream diff rows as we go
+  for await (const probeRow of streamContextRows(probeSrc)) {
+    const key = String(probeRow[keyedField] ?? "");
+    const candidates = index.get(key) ?? [];
+    const matched = candidates.shift();
+
+    if (matched) {
+      const leftRow = buildLeft ? matched : probeRow;
+      const rightRow = buildLeft ? probeRow : matched;
+      yield* yieldRowDiff(c, key, leftRow, rightRow, keyedField, requestedFields);
+      continue;
+    }
+
+    if (buildLeft) {
+      c.addedCount += 1;
+      c.added.push(probeRow);
+    } else {
+      c.removedCount += 1;
+      c.removed.push(probeRow);
+    }
+  }
+
+  // Remaining index entries are unmatched
+  for (const rows of index.values()) {
+    for (const row of rows) {
+      if (buildLeft) {
+        c.removedCount += 1;
+        c.removed.push(row);
+      } else {
+        c.addedCount += 1;
+        c.added.push(row);
+      }
+    }
+  }
+}
+
+// ── main job handler ──────────────────────────────────────────────────────────
 
 const compareRows = async (
   job: Job<CsvCompareJobData, CsvCompareJobResult>,
 ): Promise<CsvCompareJobResult> => {
   const {
+    executionId,
+    variableName,
     leftSource,
     rightSource,
     leftRows,
     rightRows,
     keyField,
     compareFields,
+    addedDatasetId,
+    removedDatasetId,
+    changedDatasetId,
   } = job.data;
 
   if (keyField && !KEY_NAME_PATTERN.test(keyField)) {
@@ -95,224 +263,98 @@ const compareRows = async (
   }
 
   const requestedFields = Array.isArray(compareFields) ? compareFields : [];
+  const c = makeCounters(requestedFields);
+  const chunkSize = DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS;
 
-  const sampleLimit = DATASET_STORAGE.COMPARE_MAX_DIFF_SAMPLES;
-  const added: Array<Record<string, unknown>> = [];
-  const removed: Array<Record<string, unknown>> = [];
-  const changed: Array<{
-    key: string;
-    before: Record<string, unknown>;
-    after: Record<string, unknown>;
-    differences: Array<{ field: string; before: unknown; after: unknown }>;
-  }> = [];
+  const addedVarName = `${variableName}__added`;
+  const removedVarName = `${variableName}__removed`;
+  const changedVarName = `${variableName}__changed`;
 
-  let addedTruncated = false;
-  let removedTruncated = false;
-  let changedTruncated = false;
+  // ── Stream changed diff rows straight to storage (no memory accumulation) ──
+  const changedStream = keyField
+    ? keyedChangedStream(c, leftSource, rightSource, leftRows, rightRows, keyField, requestedFields)
+    : sequentialChangedStream(c, leftSource, rightSource, requestedFields);
 
-  let addedCount = 0;
-  let removedCount = 0;
-  let changedCount = 0;
-  let unchangedCount = 0;
+  const changedManifest = await datasetService.persistRowsFromStream({
+    executionId,
+    datasetId: changedDatasetId,
+    variableName: changedVarName,
+    rows: changedStream,
+    chunkSize,
+  });
 
-  const compareFieldSet = new Set<string>(requestedFields);
-  const buildLeft = leftRows <= rightRows;
+  // ── Persist added / removed from in-memory arrays (typically small) ─────────
+  const [addedManifest, removedManifest] = await Promise.all([
+    c.added.length > 0
+      ? datasetService.persistRowsFromStream({
+          executionId,
+          datasetId: addedDatasetId,
+          variableName: addedVarName,
+          rows: arrayToStream(c.added),
+          chunkSize,
+        })
+      : null,
+    c.removed.length > 0
+      ? datasetService.persistRowsFromStream({
+          executionId,
+          datasetId: removedDatasetId,
+          variableName: removedVarName,
+          rows: arrayToStream(c.removed),
+          chunkSize,
+        })
+      : null,
+  ]);
 
-  if (keyField) {
-    const keyedField = keyField;
-    const buildSource = buildLeft ? leftSource : rightSource;
-    const probeSource = buildLeft ? rightSource : leftSource;
+  // ── Build result ─────────────────────────────────────────────────────────────
 
-    const index = new Map<string, Array<Record<string, unknown>>>();
-
-    for await (const row of streamContextRows(buildSource)) {
-      const key = String(row[keyedField] ?? "");
-      const entries = index.get(key);
-      if (entries) {
-        entries.push(row);
-      } else {
-        index.set(key, [row]);
-      }
-    }
-
-    for await (const probeRow of streamContextRows(probeSource)) {
-      const key = String(probeRow[keyedField] ?? "");
-      const candidates = index.get(key) ?? [];
-      const matched = candidates.shift();
-
-      if (matched) {
-        const leftRow = buildLeft ? matched : probeRow;
-        const rightRow = buildLeft ? probeRow : matched;
-
-        if (requestedFields.length === 0) {
-          for (const field of Object.keys(leftRow)) {
-            if (field !== keyedField) {
-              compareFieldSet.add(field);
-            }
-          }
-          for (const field of Object.keys(rightRow)) {
-            if (field !== keyedField) {
-              compareFieldSet.add(field);
-            }
-          }
-        }
-
-        const activeCompareFields = Array.from(compareFieldSet);
-        const differences = activeCompareFields
-          .map((field) => ({
-            field,
-            before: leftRow[field],
-            after: rightRow[field],
-          }))
-          .filter((entry) => !valuesEqual(entry.before, entry.after));
-
-        if (differences.length === 0) {
-          unchangedCount += 1;
-        } else {
-          changedCount += 1;
-          if (
-            !pushBounded(
-              changed,
-              { key, before: leftRow, after: rightRow, differences },
-              sampleLimit,
-            )
-          ) {
-            changedTruncated = true;
-          }
-        }
-
-        continue;
-      }
-
-      if (buildLeft) {
-        addedCount += 1;
-        if (!pushBounded(added, probeRow, sampleLimit)) {
-          addedTruncated = true;
-        }
-      } else {
-        removedCount += 1;
-        if (!pushBounded(removed, probeRow, sampleLimit)) {
-          removedTruncated = true;
-        }
-      }
-    }
-
-    for (const rows of index.values()) {
-      for (const row of rows) {
-        if (buildLeft) {
-          removedCount += 1;
-          if (!pushBounded(removed, row, sampleLimit)) {
-            removedTruncated = true;
-          }
-        } else {
-          addedCount += 1;
-          if (!pushBounded(added, row, sampleLimit)) {
-            addedTruncated = true;
-          }
-        }
-      }
-    }
-  } else {
-    const leftIterator = streamContextRows(leftSource)[Symbol.asyncIterator]();
-    const rightIterator =
-      streamContextRows(rightSource)[Symbol.asyncIterator]();
-    let rowIndex = 0;
-
-    while (true) {
-      rowIndex += 1;
-      const leftResult = await leftIterator.next();
-      const rightResult = await rightIterator.next();
-
-      if (leftResult.done && rightResult.done) {
-        break;
-      }
-
-      if (!leftResult.done && rightResult.done) {
-        removedCount += 1;
-        if (!pushBounded(removed, leftResult.value, sampleLimit)) {
-          removedTruncated = true;
-        }
-      } else if (leftResult.done && !rightResult.done) {
-        addedCount += 1;
-        if (!pushBounded(added, rightResult.value, sampleLimit)) {
-          addedTruncated = true;
-        }
-      } else if (!leftResult.done && !rightResult.done) {
-        const leftRow = leftResult.value;
-        const rightRow = rightResult.value;
-
-        if (requestedFields.length === 0) {
-          for (const field of Object.keys(leftRow)) {
-            compareFieldSet.add(field);
-          }
-          for (const field of Object.keys(rightRow)) {
-            compareFieldSet.add(field);
-          }
-        }
-
-        const activeCompareFields = Array.from(compareFieldSet);
-        const differences = activeCompareFields
-          .map((field) => ({
-            field,
-            before: leftRow[field],
-            after: rightRow[field],
-          }))
-          .filter((entry) => !valuesEqual(entry.before, entry.after));
-
-        if (differences.length === 0) {
-          unchangedCount += 1;
-        } else {
-          changedCount += 1;
-          if (
-            !pushBounded(
-              changed,
-              {
-                key: `Line ${rowIndex}`,
-                before: leftRow,
-                after: rightRow,
-                differences,
-              },
-              sampleLimit,
-            )
-          ) {
-            changedTruncated = true;
-          }
-        }
-      }
-    }
-  }
+  const toRef = (
+    datasetId: string,
+    varName: string,
+    manifest: Awaited<ReturnType<typeof datasetService.persistRowsFromStream>> | null,
+  ): DatasetRef | null => {
+    if (!manifest || manifest.rowCount === 0) return null;
+    return {
+      kind: "dataset",
+      datasetId,
+      executionId,
+      variableName: varName,
+      storage: manifest.storage,
+      manifestVersion: manifest.version,
+      rowCount: manifest.rowCount,
+      chunkCount: manifest.chunkCount,
+      byteSize: manifest.byteSize,
+    };
+  };
 
   const isIdentical =
-    addedCount === 0 && removedCount === 0 && changedCount === 0;
+    c.addedCount === 0 && c.removedCount === 0 && c.changedCount === 0;
 
   let summary = "Datasets are completely identical.";
   if (!isIdentical) {
-    const changes = [];
-    if (addedCount > 0) changes.push(`+${addedCount} lines added`);
-    if (removedCount > 0) changes.push(`-${removedCount} lines removed`);
-    if (changedCount > 0) changes.push(`~${changedCount} lines changed`);
-    summary = `Datasets differ: ${changes.join(", ")}. Check the 'compareFields' array for columns that had values updated.`;
+    const parts: string[] = [];
+    if (c.addedCount > 0) parts.push(`+${c.addedCount} rows added`);
+    if (c.removedCount > 0) parts.push(`-${c.removedCount} rows removed`);
+    if (c.changedCount > 0) parts.push(`~${c.changedCount} rows changed`);
+    summary = `Datasets differ: ${parts.join(", ")}.`;
   }
 
   return {
     isIdentical,
     summary,
     keyField: keyField ?? null,
-    compareFields: Array.from(compareFieldSet),
-    added,
-    removed,
-    changed,
-    addedCount,
-    removedCount,
-    changedCount,
-    unchangedCount,
-    samplesTruncated: {
-      added: addedTruncated,
-      removed: removedTruncated,
-      changed: changedTruncated,
-    },
+    compareFields: Array.from(c.compareFieldSet),
+    addedCount: c.addedCount,
+    removedCount: c.removedCount,
+    changedCount: c.changedCount,
+    unchangedCount: c.unchangedCount,
+    changedDiffRowCount: c.changedDiffRowCount,
+    addedRef: toRef(addedDatasetId, addedVarName, addedManifest),
+    removedRef: toRef(removedDatasetId, removedVarName, removedManifest),
+    changedRef: toRef(changedDatasetId, changedVarName, changedManifest),
   };
 };
+
+// ── worker setup ──────────────────────────────────────────────────────────────
 
 const worker = new Worker<CsvCompareJobData, CsvCompareJobResult>(
   QUEUE_NAME,
@@ -359,15 +401,8 @@ worker.on("failed", async (job, error) => {
     };
 
     try {
-      await inngest.send({
-        name: "csv/compare.failed",
-        data: failurePayload,
-      });
-
-      await inngest.send({
-        name: "csv/compare.complete",
-        data: failurePayload,
-      });
+      await inngest.send({ name: "csv/compare.failed", data: failurePayload });
+      await inngest.send({ name: "csv/compare.complete", data: failurePayload });
     } catch {
       // Ignore notification failures.
     }

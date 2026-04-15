@@ -17,37 +17,37 @@ type CsvCompareData = {
   compareFields?: string | string[];
 };
 
+interface DatasetRef {
+  kind: "dataset";
+  datasetId: string;
+  executionId: string;
+  variableName: string;
+  storage: string;
+  manifestVersion: number;
+  rowCount: number;
+  chunkCount: number;
+  byteSize: number;
+}
+
 type CsvCompareWorkerResult = {
   isIdentical: boolean;
   summary: string;
   keyField: string | null;
   compareFields: string[];
-  added: Array<Record<string, unknown>>;
-  removed: Array<Record<string, unknown>>;
-  changed: Array<{
-    key: string;
-    before: Record<string, unknown>;
-    after: Record<string, unknown>;
-    differences: Array<{ field: string; before: unknown; after: unknown }>;
-  }>;
   addedCount: number;
   removedCount: number;
   changedCount: number;
   unchangedCount: number;
-  samplesTruncated: {
-    added: boolean;
-    removed: boolean;
-    changed: boolean;
-  };
+  changedDiffRowCount: number;
+  addedRef: DatasetRef | null;
+  removedRef: DatasetRef | null;
+  changedRef: DatasetRef | null;
 };
 
 const KEY_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 const parseCommaList = (value: string | undefined): string[] => {
-  if (!value) {
-    return [];
-  }
-
+  if (!value) return [];
   return value
     .split(",")
     .map((item) => item.trim())
@@ -139,6 +139,11 @@ export const CsvCompareExecutor: NodeExecutor<CsvCompareData> = async ({
       timeout: "60m",
     });
 
+    const { randomUUID } = await import("node:crypto");
+    const addedDatasetId = randomUUID();
+    const removedDatasetId = randomUUID();
+    const changedDatasetId = randomUUID();
+
     await step.run("enqueue-csv-compare", async () => {
       const { getCsvCompareQueue } = await import("@/lib/worker-queue");
       const queue = getCsvCompareQueue();
@@ -153,6 +158,9 @@ export const CsvCompareExecutor: NodeExecutor<CsvCompareData> = async ({
           rightRows,
           keyField,
           compareFields: requestedFields,
+          addedDatasetId,
+          removedDatasetId,
+          changedDatasetId,
         },
         {
           jobId: `${executionId}-${variableName}`,
@@ -177,7 +185,32 @@ export const CsvCompareExecutor: NodeExecutor<CsvCompareData> = async ({
 
     const output = completion.data.result as CsvCompareWorkerResult;
 
+    const addedVarName = `${variableName}__added`;
+    const removedVarName = `${variableName}__removed`;
+    const changedVarName = `${variableName}__changed`;
+
+    // Dataset refs go as top-level keys so resolveExecutionVariableValue can
+    // find them directly (the same pattern used by filter, sort, etc.).
     return {
-      [variableName]: output,
+      [variableName]: {
+        _compareResult: true,
+        isIdentical: output.isIdentical,
+        summary: output.summary,
+        keyField: output.keyField,
+        compareFields: output.compareFields,
+        addedCount: output.addedCount,
+        removedCount: output.removedCount,
+        changedCount: output.changedCount,
+        unchangedCount: output.unchangedCount,
+        changedDiffRowCount: output.changedDiffRowCount,
+        // Names used by the viewer to request each sub-dataset
+        addedVarName: output.addedRef ? addedVarName : null,
+        removedVarName: output.removedRef ? removedVarName : null,
+        changedVarName: output.changedRef ? changedVarName : null,
+      },
+      // Top-level dataset refs — resolved directly by the dataset API
+      ...(output.addedRef ? { [addedVarName]: output.addedRef } : {}),
+      ...(output.removedRef ? { [removedVarName]: output.removedRef } : {}),
+      ...(output.changedRef ? { [changedVarName]: output.changedRef } : {}),
     };
   });
