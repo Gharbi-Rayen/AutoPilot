@@ -1,18 +1,9 @@
 import { NonRetriableError } from "inngest";
-import { DATASET_STORAGE } from "@/config/constants";
 import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
-import { datasetService } from "@/features/executions/server/datasets/dataset-service";
-import {
-  applySchemaToRows,
-  inferDatasetSchema,
-} from "@/features/executions/server/datasets/schema-inference";
 import {
   availableContextKeys,
   extractInlineRows,
-  parseNumber,
   resolveContextValue,
-  streamContextRows,
-  toDatasetRefOutput,
   withCsvNodeStatus,
 } from "../csv-shared/executor-utils";
 import type { NodeExecutor } from "../types";
@@ -23,6 +14,25 @@ type CsvAggregateData = {
   groupBy?: string;
   operation?: "count" | "sum" | "avg" | "min" | "max";
   targetField?: string;
+};
+
+type CsvAggregateWorkerResult = {
+  kind: "dataset";
+  datasetId: string;
+  executionId: string;
+  variableName: string;
+  storage: string;
+  manifestVersion: number;
+  rowCount: number;
+  chunkCount: number;
+  byteSize: number;
+  schema?: Record<string, unknown>;
+  summary: {
+    sourceRows: number;
+    groupCount: number;
+    operation: "count" | "sum" | "avg" | "min" | "max";
+    targetField: string | null;
+  };
 };
 
 export const CsvAggregateExecutor: NodeExecutor<CsvAggregateData> = async ({
@@ -78,131 +88,54 @@ export const CsvAggregateExecutor: NodeExecutor<CsvAggregateData> = async ({
 
     const operation = data.operation ?? "count";
 
-    const output = await step.run("csv-aggregate", async () => {
-      if (operation !== "count" && !targetField) {
-        throw new NonRetriableError(
-          "targetField is required for sum/avg/min/max operations",
-        );
-      }
+    if (operation !== "count" && !targetField) {
+      throw new NonRetriableError(
+        "targetField is required for sum/avg/min/max operations",
+      );
+    }
 
-      const buckets = new Map<
-        string,
+    const completionPromise = step.waitForEvent("wait-for-csv-aggregate", {
+      event: "csv/aggregate.complete",
+      match: "data.executionId",
+      timeout: "60m",
+    });
+
+    await step.run("enqueue-csv-aggregate", async () => {
+      const { getCsvAggregateQueue } = await import("@/lib/worker-queue");
+      const queue = getCsvAggregateQueue();
+      await queue.add(
+        "aggregate",
         {
-          count: number;
-          numericCount: number;
-          sum: number;
-          min: number | null;
-          max: number | null;
-        }
-      >();
-
-      const useFastPath =
-        !isDatasetRef(source) &&
-        inlineRows.length > 0 &&
-        inlineRows.length <= DATASET_STORAGE.MAX_INLINE_DATASET_ROWS;
-
-      const consumeRow = (row: Record<string, unknown>) => {
-        const key = String(row[groupBy] ?? "");
-        const bucket = buckets.get(key) || {
-          count: 0,
-          numericCount: 0,
-          sum: 0,
-          min: null,
-          max: null,
-        };
-
-        bucket.count += 1;
-
-        if (operation !== "count" && targetField) {
-          const numberValue = parseNumber(row[targetField]);
-          if (numberValue !== null) {
-            bucket.numericCount += 1;
-            bucket.sum += numberValue;
-            bucket.min =
-              bucket.min === null
-                ? numberValue
-                : Math.min(bucket.min, numberValue);
-            bucket.max =
-              bucket.max === null
-                ? numberValue
-                : Math.max(bucket.max, numberValue);
-          }
-        }
-
-        buckets.set(key, bucket);
-      };
-
-      if (useFastPath) {
-        for (const row of inlineRows) {
-          consumeRow(row);
-        }
-      } else {
-        for await (const row of streamContextRows(source)) {
-          consumeRow(row);
-        }
-      }
-
-      const records = Array.from(buckets.entries()).map(
-        ([groupKey, bucket]) => {
-          const result: Record<string, unknown> = {
-            [groupBy]: groupKey,
-            count: bucket.count,
-            numericCount: bucket.numericCount,
-          };
-
-          if (operation === "count") {
-            result.value = bucket.count;
-            return result;
-          }
-
-          if (bucket.numericCount === 0) {
-            result.value = null;
-            return result;
-          }
-
-          if (operation === "sum") {
-            result.value = bucket.sum;
-            return result;
-          }
-
-          if (operation === "avg") {
-            result.value = bucket.sum / bucket.numericCount;
-            return result;
-          }
-
-          if (operation === "min") {
-            result.value = bucket.min;
-            return result;
-          }
-
-          result.value = bucket.max;
-          return result;
+          executionId,
+          variableName,
+          sourceRef: source,
+          sourceRows,
+          groupBy,
+          operation,
+          targetField,
+        },
+        {
+          jobId: `${executionId}-${variableName}`,
+          removeOnComplete: 50,
+          removeOnFail: 20,
         },
       );
-
-      const schema = inferDatasetSchema(records);
-      const typedRecords = applySchemaToRows(records, schema);
-
-      const manifest = await datasetService.persistRowsFromStream({
-        executionId,
-        variableName,
-        rows: typedRecords,
-        chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-        schema,
-      });
-
-      const datasetRef = toDatasetRefOutput(manifest);
-
-      return {
-        ...datasetRef,
-        summary: {
-          sourceRows,
-          groupCount: records.length,
-          operation,
-          targetField: targetField ?? null,
-        },
-      };
     });
+
+    const completion = await completionPromise;
+    const failureMessage = completion?.data?.error ?? completion?.data?.reason;
+
+    if (typeof failureMessage === "string" && failureMessage.length > 0) {
+      throw new NonRetriableError(`CSV aggregate failed: ${failureMessage}`);
+    }
+
+    if (!completion || !completion.data?.result) {
+      throw new NonRetriableError(
+        "Wait for csv aggregate timed out after 60 minutes",
+      );
+    }
+
+    const output = completion.data.result as CsvAggregateWorkerResult;
 
     return {
       [variableName]: output,

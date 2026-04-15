@@ -108,30 +108,29 @@ export const CsvSortExecutor: NodeExecutor<CsvSortData> = async ({
     const datasetId = randomUUID();
 
     await step.run("enqueue-csv-sort", async () => {
-      const { Queue } = await import("bullmq");
-      const { default: Redis } = await import("ioredis");
-
-      const connection = new Redis(
-        process.env.REDIS_URL ?? "redis://localhost:6379",
+      const { getCsvSortQueue } = await import("@/lib/worker-queue");
+      const queue = getCsvSortQueue();
+      await queue.add(
+        "sort",
         {
-          maxRetriesPerRequest: null,
+          executionId,
+          datasetId,
+          nodeId,
+          variableName,
+          sourceRef: source,
+          sortField,
+          direction,
+          compareAs,
+          nulls,
+          sourceRows,
+          sourceSchema,
+        },
+        {
+          jobId: `${executionId}-${datasetId}`,
+          removeOnComplete: 50,
+          removeOnFail: 20,
         },
       );
-
-      const queue = new Queue("csv-sort", { connection });
-      await queue.add("sort", {
-        executionId,
-        datasetId,
-        variableName,
-        sourceRef: source,
-        sortField,
-        direction,
-        compareAs,
-        nulls,
-        sourceRows,
-        sourceSchema,
-      });
-      await queue.close();
     });
 
     const completion = await completionPromise;

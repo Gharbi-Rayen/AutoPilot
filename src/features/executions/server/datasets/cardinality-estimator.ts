@@ -112,7 +112,8 @@ export const estimateJoinCardinality = async ({
   sampleSize = DATASET_STORAGE.JOIN_CARDINALITY_SAMPLE_ROWS,
 }: EstimateJoinCardinalityInput): Promise<JoinCardinalityEstimate> => {
   if (joinType === "cross") {
-    const CROSS_JOIN_MAX_OUTPUT_ROWS = 1_000_000;
+    const CROSS_JOIN_MAX_OUTPUT_ROWS =
+      DATASET_STORAGE.CROSS_JOIN_MAX_OUTPUT_ROWS;
     const estimatedOutput = leftRowCount * rightRowCount;
     if (estimatedOutput > CROSS_JOIN_MAX_OUTPUT_ROWS) {
       throw new BudgetExceededError(

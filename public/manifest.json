@@ -1,0 +1,20 @@
+{
+  "name": "AutoPilot",
+  "short_name": "AutoPilot",
+  "description": "Automated workflow execution for CSV and document processing",
+  "start_url": "/workflows",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["productivity", "utilities"]
+}

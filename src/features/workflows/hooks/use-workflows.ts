@@ -150,14 +150,14 @@ export const usePauseExecution = () => {
     trpc.workflows.pauseExecution.mutationOptions({
       onSuccess: (data) => {
         if (data.paused) {
-          toast.success(`Workflow "${data.workflow.name}" paused.`);
+          toast.success(`Workflow "${data.workflow.name}" canceled.`);
           return;
         }
 
         toast.info(`Workflow "${data.workflow.name}" is already finished.`);
       },
       onError: (error) => {
-        toast.error(`Failed to pause workflow: ${error.message}`);
+        toast.error(`Failed to cancel workflow: ${error.message}`);
       },
     }),
   );

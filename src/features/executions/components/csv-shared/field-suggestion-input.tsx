@@ -24,10 +24,8 @@ type NormalizedSuggestion = {
   type?: string;
 };
 
-interface FieldSuggestionInputProps extends Omit<
-  React.ComponentProps<typeof Input>,
-  "value" | "onChange"
-> {
+interface FieldSuggestionInputProps
+  extends Omit<React.ComponentProps<typeof Input>, "value" | "onChange"> {
   value: string;
   onValueChange: (value: string) => void;
   suggestions: SuggestionValue[];

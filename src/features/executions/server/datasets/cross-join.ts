@@ -1,3 +1,4 @@
+import { DATASET_STORAGE } from "@/config/constants";
 import type { AsyncOrSyncIterable } from "./async-batch-iterator";
 import { toAsyncIterable } from "./async-batch-iterator";
 import { BudgetExceededError } from "./cardinality-estimator";
@@ -31,7 +32,7 @@ export const crossJoinRows = async function* ({
   rightRows,
   outputColumns,
 }: CrossJoinOptions): AsyncGenerator<Record<string, unknown>, void, void> {
-  const CROSS_JOIN_MAX_RIGHT_ROWS = 10_000;
+  const CROSS_JOIN_MAX_RIGHT_ROWS = DATASET_STORAGE.CROSS_JOIN_MAX_RIGHT_ROWS;
   let rightCount = 0;
   const rightMaterialized: Array<Record<string, unknown>> = [];
   const rightIterable = await toAsyncIterable(rightRows);

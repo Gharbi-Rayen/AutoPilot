@@ -276,10 +276,10 @@ Once testing is complete:
 
 If tests still fail after following these instructions:
 
-1. **Check the diagnostic report:** [WORKFLOW_HTTP_REQUEST_DEBUG_REPORT.md](WORKFLOW_HTTP_REQUEST_DEBUG_REPORT.md)
-2. **Review the solution guide:** [SOLUTION_VARIABLE_NAME_FIX.md](SOLUTION_VARIABLE_NAME_FIX.md)
-3. **Consult the variable guide:** [VARIABLE_GUIDE.md](VARIABLE_GUIDE.md)
-4. **Gather information:**
+1. **Consult the variable guide:** [VARIABLE_GUIDE.md](VARIABLE_GUIDE.md)
+2. **Review expected node behavior:** [FEATURES_OVERVIEW.md](FEATURES_OVERVIEW.md)
+3. **Check execution panel behavior and metrics:** [WORKFLOW_EXECUTION_PANEL.md](WORKFLOW_EXECUTION_PANEL.md)
+4. **Gather information for debugging:**
    - Screenshot of Inngest execution
    - Step outputs from each step
    - Console logs
@@ -287,5 +287,5 @@ If tests still fail after following these instructions:
 
 ---
 
-**Testing Guide Version:** 1.0  
-**Last Updated:** February 7, 2026
+**Testing Guide Version:** 1.1  
+**Last Updated:** April 9, 2026

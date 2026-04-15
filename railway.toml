@@ -1,0 +1,11 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 5
+
+# Mount a Railway volume at /app/data so datasets survive redeploys.
+# Create the volume in the Railway dashboard first, then set:
+#   Mount Path: /app/data

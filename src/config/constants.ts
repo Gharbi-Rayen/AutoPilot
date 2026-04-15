@@ -107,11 +107,11 @@ export const DATASET_STORAGE = {
   ),
   EXTERNAL_SORT_RUN_TARGET_BYTES: toPositiveInteger(
     process.env.DATASET_EXTERNAL_SORT_RUN_TARGET_BYTES,
-    50 * 1024 * 1024,
+    256 * 1024 * 1024, // 256 MB — fewer runs, fewer merge passes (was 50 MB)
   ),
   EXTERNAL_SORT_MAX_FAN_IN: toPositiveInteger(
     process.env.DATASET_EXTERNAL_SORT_MAX_FAN_IN,
-    8,
+    16, // wider merge fan-in reduces passes needed (was 8)
   ),
   JOIN_SMALL_SIDE_MAX_ROWS: toPositiveInteger(
     process.env.DATASET_JOIN_SMALL_SIDE_MAX_ROWS,
@@ -164,6 +164,15 @@ export const DATASET_STORAGE = {
   ORPHAN_DATASET_TTL_MS: toPositiveInteger(
     process.env.DATASET_ORPHAN_TTL_MS,
     2 * 24 * 60 * 60 * 1000,
+  ),
+  // Cross-join limits — raise via env vars if you have the hardware for it
+  CROSS_JOIN_MAX_OUTPUT_ROWS: toPositiveInteger(
+    process.env.DATASET_CROSS_JOIN_MAX_OUTPUT_ROWS,
+    100_000_000, // 100M default; override with DATASET_CROSS_JOIN_MAX_OUTPUT_ROWS
+  ),
+  CROSS_JOIN_MAX_RIGHT_ROWS: toPositiveInteger(
+    process.env.DATASET_CROSS_JOIN_MAX_RIGHT_ROWS,
+    100_000, // right side is materialized in memory; 100K ≈ ~20 MB typical
   ),
 };
 

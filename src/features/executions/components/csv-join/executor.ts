@@ -1,8 +1,6 @@
 import { NonRetriableError } from "inngest";
-import { DATASET_STORAGE } from "@/config/constants";
 import { estimateJoinCardinality } from "@/features/executions/server/datasets/cardinality-estimator";
 import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
-import { datasetService } from "@/features/executions/server/datasets/dataset-service";
 import {
   type JoinType,
   planJoinStrategy,
@@ -12,18 +10,16 @@ import {
   extractInlineRows,
   resolveContextValue,
   streamContextRows,
-  toDatasetRefOutput,
   withCsvNodeStatus,
 } from "../csv-shared/executor-utils";
 import type { NodeExecutor } from "../types";
-import { unionAllRows, unionRows } from "./union-executor";
 
 type CsvJoinData = {
   leftVariable?: string;
   rightVariable?: string;
   keyPairs?: { leftKey: string; rightKey: string }[];
   variableName?: string;
-  joinType?: JoinType | "cross" | "natural";
+  joinType?: JoinType;
   allowPartitionedLargeJoin?: boolean;
   caseInsensitive?: boolean;
   outputColumns?: import("../../server/datasets/project-row").OutputColumnSpec[];
@@ -61,27 +57,17 @@ export const CsvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
 
     const joinType = data.joinType ?? "inner";
 
-    if (
-        joinType !== 'cross' &&
-        joinType !== 'natural' &&
-        joinType !== 'union' &&
-        joinType !== 'union_all' &&
-        keyPairs.length === 0
-      ) {
+    if (keyPairs.length === 0) {
       throw new NonRetriableError("At least one key pair is required");
     }
 
-    let leftKeys = keyPairs.map((p) => p.leftKey.trim()).filter(Boolean);
-    let rightKeys = keyPairs.map((p) => p.rightKey.trim()).filter(Boolean);
+    const leftKeys = keyPairs.map((p) => p.leftKey.trim()).filter(Boolean);
+    const rightKeys = keyPairs.map((p) => p.rightKey.trim()).filter(Boolean);
 
     if (
-        joinType !== 'cross' &&
-        joinType !== 'natural' &&
-        joinType !== 'union' &&
-        joinType !== 'union_all' &&
-        (leftKeys.length !== keyPairs.length ||
-          rightKeys.length !== keyPairs.length)
-      ) {
+      leftKeys.length !== keyPairs.length ||
+      rightKeys.length !== keyPairs.length
+    ) {
       throw new NonRetriableError(
         "All key pairs must have both leftKey and rightKey defined",
       );
@@ -119,67 +105,6 @@ export const CsvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
       );
     }
 
-    if (joinType === "union" || joinType === "union_all") {
-      const output = await step.run("csv-union", async () => {
-        const _unionRows =
-          joinType === "union_all"
-            ? unionAllRows(
-                streamContextRows(leftSource),
-                streamContextRows(rightSource),
-              )
-            : unionRows(
-                streamContextRows(leftSource),
-                streamContextRows(rightSource),
-              );
-
-        const manifest = await datasetService.persistRowsFromStream({
-          executionId,
-          variableName,
-          rows: _unionRows,
-          chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-        });
-
-        return {
-          ...toDatasetRefOutput(manifest),
-          summary: {
-            leftRows,
-            rightRows,
-            joinType,
-            strategy: "union",
-          },
-        };
-      });
-
-      return { [variableName]: output };
-    }
-
-    if (joinType === "natural") {
-      const getColumns = (
-        source: unknown,
-        inlineRows: Array<Record<string, unknown>>,
-      ) => {
-        if (isDatasetRef(source)) {
-          return source.schema ? Object.keys(source.schema) : [];
-        }
-        return inlineRows.length > 0 ? Object.keys(inlineRows[0]) : [];
-      };
-
-      const leftCols = getColumns(leftSource, leftInlineRows);
-      const rightCols = getColumns(rightSource, rightInlineRows);
-
-      const sharedColumns = leftCols.filter((col) => rightCols.includes(col));
-      if (sharedColumns.length === 0) {
-        throw new NonRetriableError(
-          `Natural Join requires at least one shared column name. Left schema: [${leftCols.join(
-            ", ",
-          )}]. Right schema: [${rightCols.join(", ")}].`,
-        );
-      }
-
-      leftKeys = sharedColumns;
-      rightKeys = sharedColumns;
-    }
-
     const { plan, estimate } = await step.run("csv-join-plan", async () => {
       const estimateResult = await estimateJoinCardinality({
         leftRows: streamContextRows(leftSource),
@@ -191,24 +116,17 @@ export const CsvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
         rightRowCount: rightRows,
       });
 
-      const isFilteredJoin = joinType === "semi" || joinType === "anti";
-
       const planResult = planJoinStrategy({
         leftRows,
         rightRows,
         leftKeys,
         rightKeys,
-        joinType: joinType as JoinType,
-        allowPartitionedLargeJoin:
-          data.allowPartitionedLargeJoin || isFilteredJoin,
+        joinType,
+        allowPartitionedLargeJoin: data.allowPartitionedLargeJoin,
         estimate: estimateResult,
         caseInsensitive: data.caseInsensitive ?? false,
         outputColumns: data.outputColumns,
       });
-
-      if (joinType === "natural" && planResult.strategy === "hash") {
-        planResult.sharedColumns = leftKeys;
-      }
 
       if (planResult.strategy === "reject") {
         throw new NonRetriableError(planResult.reason);
@@ -231,40 +149,40 @@ export const CsvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
 
     const { randomUUID } = await import("node:crypto");
     const datasetId = randomUUID();
+    const leftSourceSchema = isDatasetRef(leftSource)
+      ? leftSource.schema
+      : undefined;
 
     await step.run("enqueue-csv-join", async () => {
-      // Note: "union" and "union_all" are caught earlier entirely, so `joinType` here is strictly constrained
-      if (!leftKeys?.length && joinType !== "cross" && joinType !== "natural") {
+      if (!leftKeys?.length) {
         throw new NonRetriableError(
           `[csv-join] leftKeys is empty for joinType="${joinType}". Keys must be resolved before enqueueing.`,
         );
       }
 
-      const { Queue } = await import("bullmq");
-      const { default: Redis } = await import("ioredis");
-
-      // Create a DEDICATED connection for this queue instance
-      const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-        maxRetriesPerRequest: null,
-      });
-
-      const queue = new Queue("csv-join", { connection });
-      await queue.add("join", {
-        plan,
-        executionId,
-        datasetId,
-        variableName,
-        leftRef: leftSource,
-        rightRef: rightSource,
-        leftKeys,
-        rightKeys,
-        joinType,
-        schema: (leftSource as any).schema,
-      });
-      console.log("[csv-join] Job enqueued to Redis:", process.env.REDIS_URL ?? "redis://localhost:6379");
-      const jobCounts = await queue.getJobCounts();
-      console.log("[csv-join] Queue state:", jobCounts);
-      await queue.close();
+      const { getCsvJoinQueue } = await import("@/lib/worker-queue");
+      const queue = getCsvJoinQueue();
+      await queue.add(
+        "join",
+        {
+          plan,
+          executionId,
+          datasetId,
+          variableName,
+          leftRef: leftSource,
+          rightRef: rightSource,
+          leftKeys,
+          rightKeys,
+          joinType,
+          schema: leftSourceSchema,
+        },
+        {
+          jobId: `${executionId}-${datasetId}`,
+          removeOnComplete: 50,
+          removeOnFail: 20,
+        },
+      );
+      console.log("[csv-join] Job enqueued — executionId:", executionId);
     });
 
     const completion = await completionPromise;
@@ -275,27 +193,44 @@ export const CsvJoinExecutor: NodeExecutor<CsvJoinData> = async ({
       );
     }
 
-    const output = {
-      datasetId: completion.data.datasetId,
-      variableName: completion.data.variableName,
-      rowCount: completion.data.rowCount,
-      summary: {
-        leftRows,
-        rightRows,
-        joinType,
-        strategy: plan.strategy,
-        buildSide: "buildSide" in plan ? plan.buildSide : undefined,
-        plannerReason: plan.reason,
-        requiresPartitionedFlag:
-          "requiresPartitionedFlag" in plan
-            ? plan.requiresPartitionedFlag
-            : undefined,
-        estimate,
-        warnings: estimate.warnings,
-      },
+    const workerResult = completion.data.result as {
+      datasetRef: {
+        kind: "dataset";
+        datasetId: string;
+        executionId: string;
+        variableName: string;
+        storage: string;
+        manifestVersion: number;
+        rowCount: number;
+        chunkCount: number;
+        byteSize: number;
+        schema?: Record<string, unknown>;
+      };
     };
 
+    if (!workerResult?.datasetRef?.datasetId) {
+      throw new NonRetriableError(
+        "CSV join worker returned an invalid dataset reference",
+      );
+    }
+
     return {
-      [variableName]: output,
+      [variableName]: {
+        ...workerResult.datasetRef,
+        summary: {
+          leftRows,
+          rightRows,
+          joinType,
+          strategy: plan.strategy,
+          buildSide: "buildSide" in plan ? plan.buildSide : undefined,
+          plannerReason: plan.reason,
+          requiresPartitionedFlag:
+            "requiresPartitionedFlag" in plan
+              ? plan.requiresPartitionedFlag
+              : undefined,
+          estimate,
+          warnings: estimate.warnings,
+        },
+      },
     };
   });

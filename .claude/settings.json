@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/gghar/**)",
+      "Bash(node -e ':*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Read(//c/autopilotdata/test-fixtures/**)"
+    ]
+  }
+}

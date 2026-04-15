@@ -16,6 +16,7 @@ import {
   startNodeMetricCapture,
   summarizeNodeExecutionMetrics,
 } from "@/features/executions/server/metrics/node-execution-metrics";
+import { persistExecutionNodeOutputs } from "@/features/executions/server/node-output-store";
 import { runFusedCsvParseFilterAggregate } from "@/features/executions/server/pipeline/fused-runner";
 import {
   type FusionPlannerNode,
@@ -243,6 +244,106 @@ const assertNoLargeArrayOutput = ({
     `Node '${nodeId}' (${nodeType}) returned large in-memory array output(s) [${details}]. Large arrays must be persisted as DatasetRef instead of being returned directly.`,
   );
 };
+
+export const relayCsvSortProgress = inngest.createFunction(
+  {
+    id: "relay/csv-sort-progress",
+    retries: 0,
+  },
+  {
+    event: "csv/sort.progress",
+    channels: [FileChannel()],
+  },
+  async ({ event, publish }) => {
+    const data = isRecord(event.data) ? event.data : {};
+    const executionId =
+      typeof data.executionId === "string" ? data.executionId : null;
+    const nodeId = typeof data.nodeId === "string" ? data.nodeId : null;
+    const stage = typeof data.stage === "string" ? data.stage : null;
+
+    if (!executionId || !nodeId || !stage) {
+      return {
+        forwarded: false,
+      };
+    }
+
+    await publish(
+      FileChannel().progress({
+        executionId,
+        nodeId,
+        stage,
+        variableName:
+          typeof data.variableName === "string" ? data.variableName : undefined,
+        strategy: typeof data.strategy === "string" ? data.strategy : undefined,
+        sourceRows:
+          typeof data.sourceRows === "number" ? data.sourceRows : undefined,
+        rowsScanned:
+          typeof data.rowsScanned === "number" ? data.rowsScanned : undefined,
+        rowsWritten:
+          typeof data.rowsWritten === "number" ? data.rowsWritten : undefined,
+        runCount: typeof data.runCount === "number" ? data.runCount : undefined,
+        mergePass:
+          typeof data.mergePass === "number" ? data.mergePass : undefined,
+        mergeFanIn:
+          typeof data.mergeFanIn === "number" ? data.mergeFanIn : undefined,
+        elapsedMs:
+          typeof data.elapsedMs === "number" ? data.elapsedMs : undefined,
+      }),
+    );
+
+    return {
+      forwarded: true,
+    };
+  },
+);
+
+export const relayCsvFilterProgress = inngest.createFunction(
+  {
+    id: "relay/csv-filter-progress",
+    retries: 0,
+  },
+  {
+    event: "csv/filter.progress",
+    channels: [FileChannel()],
+  },
+  async ({ event, publish }) => {
+    const data = isRecord(event.data) ? event.data : {};
+    const executionId =
+      typeof data.executionId === "string" ? data.executionId : null;
+    const nodeId = typeof data.nodeId === "string" ? data.nodeId : null;
+    const stage = typeof data.stage === "string" ? data.stage : null;
+
+    if (!executionId || !nodeId || !stage) {
+      return {
+        forwarded: false,
+      };
+    }
+
+    await publish(
+      FileChannel().progress({
+        executionId,
+        nodeId,
+        stage,
+        variableName:
+          typeof data.variableName === "string" ? data.variableName : undefined,
+        sourceRows:
+          typeof data.sourceRows === "number" ? data.sourceRows : undefined,
+        rowsScanned:
+          typeof data.rowsScanned === "number" ? data.rowsScanned : undefined,
+        rowsMatched:
+          typeof data.rowsMatched === "number" ? data.rowsMatched : undefined,
+        rowsWritten:
+          typeof data.rowsWritten === "number" ? data.rowsWritten : undefined,
+        elapsedMs:
+          typeof data.elapsedMs === "number" ? data.elapsedMs : undefined,
+      }),
+    );
+
+    return {
+      forwarded: true,
+    };
+  },
+);
 
 export const executeWorkflow = inngest.createFunction(
   {
@@ -500,6 +601,23 @@ export const executeWorkflow = inngest.createFunction(
               ...normalizedOutput,
             };
 
+            try {
+              await persistExecutionNodeOutputs({
+                executionId,
+                nodeId: fusedNodeOutput.nodeId,
+                output: normalizedOutput,
+              });
+            } catch (nodeOutputPersistenceError) {
+              console.warn("[Inngest] Failed to persist fused node output:", {
+                executionId,
+                nodeId: fusedNodeOutput.nodeId,
+                error:
+                  nodeOutputPersistenceError instanceof Error
+                    ? nodeOutputPersistenceError.message
+                    : String(nodeOutputPersistenceError),
+              });
+            }
+
             console.log(
               "[Inngest] Node completed (fused):",
               fusedNodeOutput.nodeId,
@@ -586,11 +704,59 @@ export const executeWorkflow = inngest.createFunction(
           ...normalizedOutput,
         };
 
+        try {
+          await persistExecutionNodeOutputs({
+            executionId,
+            nodeId: node.id,
+            output: normalizedOutput,
+          });
+        } catch (nodeOutputPersistenceError) {
+          console.warn("[Inngest] Failed to persist node output:", {
+            executionId,
+            nodeId: node.id,
+            error:
+              nodeOutputPersistenceError instanceof Error
+                ? nodeOutputPersistenceError.message
+                : String(nodeOutputPersistenceError),
+          });
+        }
+
         console.log("[Inngest] Node completed:", node.id);
       }
 
       // Mark execution as SUCCESS
       await step.run("complete-execution", async () => {
+        const currentExecution = await prisma.execution.findUnique({
+          where: { id: executionId },
+          select: { status: true },
+        });
+
+        if (!currentExecution || currentExecution.status !== "RUNNING") {
+          // If execution was canceled while nodes were still finishing, keep it canceled
+          // and remove any late materialized datasets.
+          if (currentExecution?.status === "FAILED") {
+            const { getExecutionDatasetsDirectory } = await import(
+              "@/features/executions/server/datasets/paths"
+            );
+            const { rm } = await import("node:fs/promises");
+            try {
+              await rm(getExecutionDatasetsDirectory(executionId), {
+                recursive: true,
+                force: true,
+              });
+            } catch (cleanupError) {
+              console.warn(
+                "[Inngest] Failed to cleanup execution directory after cancellation:",
+                cleanupError,
+              );
+            }
+          }
+
+          await releaseExecutionSlot(executionId);
+          clearExecutionBudget(executionId);
+          return;
+        }
+
         const outputSummary = buildExecutionOutputSummary(context);
         const resourceBudget = getExecutionBudgetSnapshot(executionId);
         const executionPerformance = summarizeNodeExecutionMetrics(nodeMetrics);
@@ -648,19 +814,17 @@ export const executeWorkflow = inngest.createFunction(
           select: { status: true },
         });
 
-        if (!currentExecution || currentExecution.status !== "RUNNING") {
-          return;
+        if (currentExecution?.status === "RUNNING") {
+          await prisma.execution.update({
+            where: { id: executionId },
+            data: {
+              status: "FAILED",
+              finishedAt: new Date(),
+              error: error instanceof Error ? error.message : String(error),
+              errorStack: error instanceof Error ? error.stack : undefined,
+            },
+          });
         }
-
-        await prisma.execution.update({
-          where: { id: executionId },
-          data: {
-            status: "FAILED",
-            finishedAt: new Date(),
-            error: error instanceof Error ? error.message : String(error),
-            errorStack: error instanceof Error ? error.stack : undefined,
-          },
-        });
 
         // Clean up any heavy dataset files generated before failure to save disk space
         const { getExecutionDatasetsDirectory } = await import(

@@ -262,14 +262,20 @@ export const purgeDevQueues = async () => {
 
     let cursor = "0";
     do {
-      const result = await redis.scan(cursor, "MATCH", `${EXECUTION_STATE_KEY}*`);
+      const result = await redis.scan(
+        cursor,
+        "MATCH",
+        `${EXECUTION_STATE_KEY}*`,
+      );
       cursor = result[0];
       const keys = result[1];
       if (keys.length > 0) {
         await redis.del(...keys);
       }
     } while (cursor !== "0");
-    console.log("[Redis Queue] Developer environment detected: Cleared all ghost execution locks successfully.");
+    console.log(
+      "[Redis Queue] Developer environment detected: Cleared all ghost execution locks successfully.",
+    );
   } catch (error) {
     console.error("[Redis Queue] Failed to clear dev queues on boot:", error);
   }

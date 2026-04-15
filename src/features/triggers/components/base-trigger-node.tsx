@@ -17,24 +17,28 @@ import { WorkflowNode } from "../../../components/workflow-node";
 
 interface BaseTriggerNodeProps extends NodeProps {
   icon: ComponentType<{ className?: string }> | string;
+  iconClassName?: string;
   name: string;
   description?: string;
   children?: ReactNode;
   status?: NodeStatus;
   onSettings?: () => void;
   onDoubleClick?: () => void;
+  onIconClick?: () => void;
 }
 
 export const BaseTriggerNode = memo(
   ({
     id,
     icon: Icon,
+    iconClassName,
     name,
     description,
     children,
     status = "initial",
     onSettings,
     onDoubleClick,
+    onIconClick,
   }: BaseTriggerNodeProps) => {
     const { setNodes, setEdges } = useReactFlow();
 
@@ -78,8 +82,23 @@ export const BaseTriggerNode = memo(
                   width={16}
                   height={16}
                 />
+              ) : onIconClick ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onIconClick();
+                  }}
+                  className="rounded-full p-0.5 transition-colors hover:bg-accent/60 focus:outline-none"
+                >
+                  <Icon
+                    className={iconClassName ?? "size-4 text-muted-foreground"}
+                  />
+                </button>
               ) : (
-                <Icon className="size-4 text-muted-foreground" />
+                <Icon
+                  className={iconClassName ?? "size-4 text-muted-foreground"}
+                />
               )}
               {children}
 

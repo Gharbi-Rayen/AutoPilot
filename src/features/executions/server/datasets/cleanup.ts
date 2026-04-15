@@ -14,6 +14,8 @@ export interface DatasetCleanupOptions {
   now?: Date;
   completedTtlMs?: number;
   orphanTtlMs?: number;
+  /** When true, also cleans executions still marked as RUNNING (e.g. stale from a previous process). */
+  forceCleanRunning?: boolean;
 }
 
 export interface DatasetCleanupResult {
@@ -111,7 +113,10 @@ export const cleanupExecutionDatasets = async (
       continue;
     }
 
-    if (execution.status === "RUNNING") {
+    if (
+      execution.status === "RUNNING" &&
+      !(options.forceCleanRunning ?? false)
+    ) {
       skippedActiveExecutions += 1;
       continue;
     }

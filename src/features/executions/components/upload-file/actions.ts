@@ -5,12 +5,15 @@ import { FileChannel } from "@/inngest/channels/file";
 import { inngest } from "@/inngest/client";
 import type { UploadFileFormValues } from "./dialog";
 
-export type FileToken = Realtime.Token<typeof FileChannel, ["status"]>;
+export type FileToken = Realtime.Token<
+  typeof FileChannel,
+  ["status", "progress"]
+>;
 
 export async function fetchFileRealTimeToken(): Promise<FileToken> {
   const token = await getSubscriptionToken(inngest, {
     channel: FileChannel(),
-    topics: ["status"],
+    topics: ["status", "progress"],
     ...(process.env.NODE_ENV === "development"
       ? { apiBaseUrl: "http://127.0.0.1:8288/" }
       : {}),

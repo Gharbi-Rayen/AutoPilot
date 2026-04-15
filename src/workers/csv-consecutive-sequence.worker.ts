@@ -5,6 +5,10 @@ import {
   streamContextRows,
 } from "@/features/executions/components/csv-shared/executor-utils";
 import { inngest } from "@/inngest/client";
+import {
+  DEFAULT_WORKER_SETTINGS,
+  DEFAULT_WORKER_STALL_OPTIONS,
+} from "@/workers/worker-settings";
 
 const HEAVY_CONCURRENCY = 2;
 const QUEUE_NAME = "csv-consecutive-sequence";
@@ -623,10 +627,8 @@ const worker = new Worker<
   {
     connection: workerConnection,
     concurrency: HEAVY_CONCURRENCY,
-    settings: {
-      backoffStrategy: (attemptsMade) =>
-        Math.min(1000 * 2 ** attemptsMade, 30_000),
-    },
+    settings: DEFAULT_WORKER_SETTINGS,
+    ...DEFAULT_WORKER_STALL_OPTIONS,
   },
 );
 
@@ -664,13 +666,23 @@ worker.on("failed", async (job, error) => {
     isUnrecoverable ||
     (job && job.attemptsMade >= (job.opts.attempts ?? 3))
   ) {
+    const failurePayload = {
+      executionId: job?.data.executionId,
+      variableName: job?.data.variableName,
+      error: error.message,
+      reason: error.message,
+      status: "failed" as const,
+    };
+
     try {
       await inngest.send({
+        name: "csv/consecutive-sequence.complete",
+        data: failurePayload,
+      });
+
+      await inngest.send({
         name: "csv/consecutive-sequence.failed",
-        data: {
-          executionId: job?.data.executionId,
-          reason: error.message,
-        },
+        data: failurePayload,
       });
     } catch {
       // Ignore notification failures.

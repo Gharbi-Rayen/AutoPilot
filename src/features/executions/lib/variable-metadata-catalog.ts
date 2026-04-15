@@ -182,7 +182,10 @@ const getUpstreamScope = (
   return visited;
 };
 
-const topologicalSort = (nodes: GraphNode[], edges: GraphEdge[]): GraphNode[] => {
+const topologicalSort = (
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+): GraphNode[] => {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]));
   const inDegree = new Map<string, number>();
   const adjacency = new Map<string, string[]>();
@@ -451,7 +454,7 @@ export const buildVariableMetadataCatalog = ({
       const rowCount =
         typeof leftCount === "number" && typeof rightCount === "number"
           ? Math.max(leftCount, rightCount)
-          : leftCount ?? rightCount;
+          : (leftCount ?? rightCount);
 
       setVariableMetadata(metadataByVariable, {
         variableName,

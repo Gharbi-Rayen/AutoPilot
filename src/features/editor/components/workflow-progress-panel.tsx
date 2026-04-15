@@ -1,8 +1,8 @@
 "use client";
 
+import { useInngestSubscription } from "@inngest/realtime/hooks";
 import { useQuery } from "@tanstack/react-query";
 import type { Edge, Node } from "@xyflow/react";
-import stableStringify from "fast-json-stable-stringify";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   AlertTriangleIcon,
@@ -13,29 +13,23 @@ import {
   DownloadIcon,
   Loader2Icon,
   Maximize2Icon,
-  PauseIcon,
   PlayIcon,
   XCircleIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import toposort from "toposort";
+import { NodeStatusLine } from "@/components/node-status-line";
 import type { NodeStatus } from "@/components/react-flow/node-status-indicator";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ExecutionDatasetViewer } from "@/features/executions/components/execution-dataset-viewer";
-import {
-  useExecuteWorkflow,
-  usePauseExecution,
-  useUpdateWorkflow,
-} from "@/features/workflows/hooks/use-workflows";
-import type { NodeType } from "@/generated/prisma";
+import { fetchFileRealTimeToken } from "@/features/executions/components/upload-file/actions";
+import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { cn } from "@/lib/utils";
 import {
   activeExecutionIdAtom,
   executionStartedAtAtom,
   nodeStatusMapAtom,
-  resetWorkflowExecutionStateAtom,
   type WorkflowExecutionState,
   workflowExecutionErrorAtom,
   workflowExecutionResultAtom,
@@ -43,44 +37,33 @@ import {
   workflowProgressPanelCollapsedAtom,
 } from "@/store/execution-status";
 import { useTRPC } from "@/trpc/client";
-import { editorAtom } from "../store/atoms";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type TraceStatus = NodeStatus;
-type InspectorTab = "output" | "error";
-
-interface RunnerTraceStep {
-  id: string;
-  name: string;
-  startMs: number;
-  endMs: number;
-  status: TraceStatus;
-  payload?: unknown;
-}
 
 interface WorkflowTraceNode {
   id: string;
   label: string;
   status: TraceStatus;
   variableKeys: string[];
+  type?: string;
 }
 
-type TraceSelection =
-  | {
-      kind: "runner-step";
-      id: string;
-    }
-  | {
-      kind: "workflow-node";
-      id: string;
-    }
-  | null;
+type SortProgressSnapshot = {
+  stage: string;
+  label: string;
+  rowsScanned?: number;
+  rowsWritten?: number;
+  runCount?: number;
+  elapsedMs?: number;
+};
+
+// ─── Config maps ─────────────────────────────────────────────────────────────
 
 const workflowStateConfig: Record<
   WorkflowExecutionState,
-  {
-    label: string;
-    className: string;
-  }
+  { label: string; className: string }
 > = {
   idle: {
     label: "Idle",
@@ -91,7 +74,7 @@ const workflowStateConfig: Record<
     className: "bg-blue-100 text-blue-700 border-blue-200",
   },
   paused: {
-    label: "Paused",
+    label: "Canceled",
     className: "bg-amber-100 text-amber-700 border-amber-200",
   },
   success: {
@@ -106,246 +89,72 @@ const workflowStateConfig: Record<
 
 const traceStatusConfig: Record<
   TraceStatus,
-  {
-    label: string;
-    dotClassName: string;
-    textClassName: string;
-    barClassName: string;
-  }
+  { dotClassName: string; textClassName: string; barClassName: string }
 > = {
   initial: {
-    label: "Pending",
     dotClassName: "bg-zinc-400",
     textClassName: "text-zinc-500",
     barClassName: "bg-zinc-400",
   },
   loading: {
-    label: "Running",
     dotClassName: "bg-amber-500",
     textClassName: "text-amber-700",
     barClassName: "bg-amber-500",
   },
   success: {
-    label: "Done",
     dotClassName: "bg-emerald-500",
     textClassName: "text-emerald-600",
     barClassName: "bg-emerald-500",
   },
   error: {
-    label: "Failed",
     dotClassName: "bg-red-500",
     textClassName: "text-red-600",
     barClassName: "bg-red-500",
   },
 };
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
 const FALLBACK_TIMELINE_MAX_MS = 9200;
-
-const FALLBACK_RUNNER_STEPS: RunnerTraceStep[] = [
-  {
-    id: "s1",
-    name: "get-workflow",
-    startMs: 0,
-    endMs: 400,
-    status: "success",
-    payload: { stepId: "s1", operation: "get-workflow" },
-  },
-  {
-    id: "s2",
-    name: "prepare-workflow",
-    startMs: 400,
-    endMs: 1400,
-    status: "success",
-    payload: { stepId: "s2", operation: "prepare-workflow" },
-  },
-  {
-    id: "s3",
-    name: "finalize-context",
-    startMs: 1400,
-    endMs: 1800,
-    status: "success",
-    payload: { stepId: "s3", operation: "finalize-context" },
-  },
-  {
-    id: "s4",
-    name: "chunk-input",
-    startMs: 1800,
-    endMs: 2300,
-    status: "success",
-    payload: { stepId: "s4", operation: "chunk-input" },
-  },
-  {
-    id: "s5",
-    name: "publish-node-1",
-    startMs: 2300,
-    endMs: 2700,
-    status: "success",
-    payload: { stepId: "s5", operation: "publish-node-1" },
-  },
-  {
-    id: "s6",
-    name: "map-outputs",
-    startMs: 2700,
-    endMs: 3000,
-    status: "success",
-    payload: { stepId: "s6", operation: "map-outputs" },
-  },
-  {
-    id: "s7",
-    name: "publish-node-2",
-    startMs: 3000,
-    endMs: 3600,
-    status: "success",
-    payload: { stepId: "s7", operation: "publish-node-2" },
-  },
-  {
-    id: "s8",
-    name: "chunk-results",
-    startMs: 3600,
-    endMs: 4100,
-    status: "success",
-    payload: { stepId: "s8", operation: "chunk-results" },
-  },
-  {
-    id: "s9",
-    name: "publish-metrics",
-    startMs: 4100,
-    endMs: 4500,
-    status: "success",
-    payload: { stepId: "s9", operation: "publish-metrics" },
-  },
-  {
-    id: "s10",
-    name: "process-dataset",
-    startMs: 4500,
-    endMs: 5700,
-    status: "success",
-    payload: { stepId: "s10", operation: "process-dataset" },
-  },
-  {
-    id: "s11",
-    name: "publish-status",
-    startMs: 5700,
-    endMs: 6000,
-    status: "success",
-    payload: { stepId: "s11", operation: "publish-status" },
-  },
-  {
-    id: "s12",
-    name: "fail-execution",
-    startMs: 6000,
-    endMs: 6600,
-    status: "error",
-    payload: { stepId: "s12", operation: "fail-execution" },
-  },
-  {
-    id: "s13",
-    name: "finalize",
-    startMs: 6600,
-    endMs: 7800,
-    status: "error",
-    payload: { stepId: "s13", operation: "finalize" },
-  },
-];
-
 const FALLBACK_SYNTHETIC_STEP_DURATION_MS = 420;
 const FALLBACK_SYNTHETIC_STEP_GAP_MS = 110;
-const RUNNER_STEP_REVEAL_DELAY_MS = 120;
 
 const PANEL_ANIMATION_CSS = `
-  @keyframes workflow-trace-row-in {
-    0% {
-      opacity: 0;
-      transform: translateX(-10px);
-    }
-
-    100% {
-      opacity: 1;
-      transform: translateX(0);
-    }
-  }
-
   @keyframes workflow-trace-bar-grow {
-    from {
-      transform: scaleX(0);
-    }
-
-    to {
-      transform: scaleX(1);
-    }
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
   }
-
   @keyframes workflow-trace-bar-shimmer {
-    0% {
-      background-position: 200% 0;
-    }
-
-    100% {
-      background-position: -200% 0;
-    }
-  }
-
-  @keyframes workflow-node-dot-pulse {
-    0%,
-    100% {
-      transform: scale(1);
-      opacity: 1;
-    }
-
-    50% {
-      transform: scale(1.32);
-      opacity: 0.7;
-    }
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 `;
 
-const TRACE_OUTPUT_VARIABLE_KEYS = [
-  "variableName",
-  "outputVariable",
-  "resultVariable",
-  "saveAs",
-  "outputKey",
-  "targetVariable",
-  "storeAs",
-] as const;
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readOptionalNumber = (
+  record: Record<string, unknown>,
+  key: string,
+): number | undefined => {
+  const value = record[key];
+  return typeof value === "number" ? value : undefined;
 };
 
-const toTraceStatus = (value: unknown): TraceStatus => {
-  if (
-    value === "initial" ||
-    value === "loading" ||
-    value === "success" ||
-    value === "error"
-  ) {
-    return value;
-  }
-
-  return "initial";
-};
-
-const isSettledTraceStatus = (status: TraceStatus) => {
-  return status === "success" || status === "error";
-};
-
-const humanizeNodeType = (type: string) => {
-  return type
+const humanizeNodeType = (type: string) =>
+  type
     .toLowerCase()
     .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
     .join(" ");
-};
 
 const getNodeLabel = (node: Node): string => {
   if (typeof node.data === "object" && node.data !== null) {
     const data = node.data as Record<string, unknown>;
-    if (typeof data.name === "string" && data.name.length > 0) {
-      return data.name;
-    }
+    if (typeof data.name === "string" && data.name.length > 0) return data.name;
   }
-
   return humanizeNodeType(String(node.type ?? "Node"));
 };
 
@@ -353,46 +162,42 @@ const sortNodesByExecutionOrder = (
   nodes: Node[],
   edges: Pick<Edge, "source" | "target">[],
 ): Node[] => {
-  if (edges.length === 0) {
-    return nodes;
-  }
+  if (edges.length === 0) return nodes;
 
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const edgePairs: [string, string][] = edges
-    .filter(
-      (edge): edge is Pick<Edge, "source" | "target"> =>
-        nodeMap.has(edge.source) && nodeMap.has(edge.target),
-    )
-    .map((edge) => [edge.source, edge.target]);
+    .filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target))
+    .map((e) => [e.source, e.target]);
 
-  if (edgePairs.length === 0) {
-    return nodes;
-  }
+  if (edgePairs.length === 0) return nodes;
 
   try {
-    const sortedNodeIds = [...new Set(toposort(edgePairs))];
-    const connectedNodeIds = new Set(sortedNodeIds);
-
-    const sortedNodes = sortedNodeIds
+    const sortedIds = [...new Set(toposort(edgePairs))];
+    const connectedIds = new Set(sortedIds);
+    const sorted = sortedIds
       .map((id) => nodeMap.get(id))
-      .filter((node): node is Node => Boolean(node));
-
-    const isolatedNodes = nodes.filter(
-      (node) => !connectedNodeIds.has(node.id),
-    );
-
-    return [...sortedNodes, ...isolatedNodes];
+      .filter((n): n is Node => Boolean(n));
+    const isolated = nodes.filter((n) => !connectedIds.has(n.id));
+    return [...sorted, ...isolated];
   } catch {
     return nodes;
   }
 };
 
-const formatTimeLabel = (milliseconds: number): string => {
-  if (milliseconds <= 0) {
-    return "0s";
+const formatTimeLabel = (ms: number) =>
+  ms <= 0 ? "0s" : `${(ms / 1000).toFixed(1)}s`;
+
+const formatBytes = (value: unknown) => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return "-";
   }
 
-  return `${(milliseconds / 1000).toFixed(1)}s`;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  if (value < 1024 * 1024 * 1024)
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 };
 
 const safeStringify = (value: unknown) => {
@@ -404,36 +209,20 @@ const safeStringify = (value: unknown) => {
 };
 
 const isDatasetLikeValue = (value: unknown): boolean => {
-  if (Array.isArray(value)) {
+  if (Array.isArray(value))
     return value.every(
-      (item) =>
-        typeof item === "object" && item !== null && !Array.isArray(item),
+      (i) => typeof i === "object" && i !== null && !Array.isArray(i),
     );
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (record.kind === "dataset" || record.kind === "dataset-summary") {
-    return true;
-  }
-
-  return Array.isArray(record.records) || Array.isArray(record.preview);
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as Record<string, unknown>;
+  if (r.kind === "dataset" || r.kind === "dataset-summary") return true;
+  return Array.isArray(r.records) || Array.isArray(r.preview);
 };
 
 const formatDateTime = (value: Date | string | number | null | undefined) => {
-  if (!value) {
-    return "-";
-  }
-
-  const parsedDate = new Date(value);
-  if (Number.isNaN(parsedDate.getTime())) {
-    return "-";
-  }
-
-  return parsedDate.toLocaleString();
+  if (!value) return "-";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "-" : d.toLocaleString();
 };
 
 const getDurationLabel = ({
@@ -445,26 +234,50 @@ const getDurationLabel = ({
   finishedAt: Date | null;
   isRunning: boolean;
 }) => {
-  if (!startedAt) {
-    return "-";
-  }
-
+  if (!startedAt) return "-";
   const end = finishedAt ?? (isRunning ? new Date() : null);
-  if (!end) {
-    return "-";
-  }
-
-  const durationMs = Math.max(end.getTime() - startedAt.getTime(), 0);
-  if (durationMs < 1000) {
-    return `${durationMs} ms`;
-  }
-
-  if (durationMs < 60_000) {
-    return `${(durationMs / 1000).toFixed(1)} s`;
-  }
-
-  return `${(durationMs / 60_000).toFixed(1)} min`;
+  if (!end) return "-";
+  const ms = Math.max(end.getTime() - startedAt.getTime(), 0);
+  if (ms < 1000) return `${ms} ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${(ms / 60_000).toFixed(1)} min`;
 };
+
+const formatSortProgressLabel = (snapshot: SortProgressSnapshot): string => {
+  if (snapshot.stage === "scanning") {
+    if (typeof snapshot.rowsScanned === "number" && snapshot.rowsScanned > 0) {
+      return `Scanning ${snapshot.rowsScanned.toLocaleString()} rows...`;
+    }
+    return "Scanning source rows...";
+  }
+
+  if (snapshot.stage === "building_runs") {
+    return "Building sorted runs...";
+  }
+
+  if (snapshot.stage === "merging") {
+    return "Merging pass 1...";
+  }
+
+  if (snapshot.stage === "persisting") {
+    if (typeof snapshot.rowsWritten === "number" && snapshot.rowsWritten > 0) {
+      return `Persisting dataset (${snapshot.rowsWritten.toLocaleString()} rows written)...`;
+    }
+    return "Persisting dataset...";
+  }
+
+  if (snapshot.stage === "sorting") {
+    return "Sorting rows...";
+  }
+
+  if (snapshot.stage === "completed") {
+    return "Dataset persisted.";
+  }
+
+  return "Processing...";
+};
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 const TraceStatusIcon = ({
   status,
@@ -479,76 +292,55 @@ const TraceStatusIcon = ({
     error: "text-red-500",
     initial: "text-zinc-400",
   };
-
-  if (status === "success") {
+  if (status === "success")
     return (
       <CheckCircle2Icon
-        className={cn("shrink-0", colorMap[status])}
+        className={cn("shrink-0", colorMap.success)}
         size={size}
       />
     );
-  }
-
-  if (status === "error") {
+  if (status === "error")
     return (
-      <XCircleIcon className={cn("shrink-0", colorMap[status])} size={size} />
+      <XCircleIcon className={cn("shrink-0", colorMap.error)} size={size} />
     );
-  }
-
-  if (status === "loading") {
+  if (status === "loading")
     return (
       <Loader2Icon
-        className={cn("shrink-0 animate-spin mt-[1px]", colorMap[status])}
+        className={cn("shrink-0 animate-spin mt-[1px]", colorMap.loading)}
         size={size}
       />
     );
-  }
-
   return (
-    <Clock3Icon className={cn("shrink-0", colorMap[status])} size={size} />
+    <Clock3Icon className={cn("shrink-0", colorMap.initial)} size={size} />
   );
 };
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export const WorkflowProgressPanel = ({
   nodes,
   edges,
-  workflowId,
+  workflowId: _workflowId,
 }: {
   nodes: Node[];
   edges: Edge[];
   workflowId: string;
 }) => {
   const trpc = useTRPC();
-  const editor = useAtomValue(editorAtom);
-  const saveWorkflow = useUpdateWorkflow();
-  const executeWorkflow = useExecuteWorkflow();
-  const pauseExecution = usePauseExecution();
 
   const [isCollapsed, setIsCollapsed] = useAtom(
     workflowProgressPanelCollapsedAtom,
   );
-  const [traceSelection, setTraceSelection] = useState<TraceSelection>(null);
-  const [activeTab, setActiveTab] = useState<InspectorTab>("error");
-  const [isMetadataCollapsed, setIsMetadataCollapsed] = useState(true);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isOutputExpanded, setIsOutputExpanded] = useState(false);
-
   const [splitPercent, setSplitPercent] = useState(38);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
   const [copiedState, setCopiedState] = useState<"output" | "error" | null>(
     null,
   );
-  const [revealedRunnerStepIds, setRevealedRunnerStepIds] = useState<string[]>(
-    [],
-  );
-  const [settledRunnerStepIds, setSettledRunnerStepIds] = useState<string[]>(
-    [],
-  );
 
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const splitDraggingRef = useRef(false);
-  const runnerRevealTimersRef = useRef<number[]>([]);
-  const runnerRevealKeyRef = useRef("");
-  const lastSavedSignatureRef = useRef<string | null>(null);
 
   const executionState = useAtomValue(workflowExecutionStateAtom);
   const activeExecutionId = useAtomValue(activeExecutionIdAtom);
@@ -557,109 +349,21 @@ export const WorkflowProgressPanel = ({
   const executionError = useAtomValue(workflowExecutionErrorAtom);
   const executionResult = useAtomValue(workflowExecutionResultAtom);
 
-  const setActiveExecutionId = useSetAtom(activeExecutionIdAtom);
   const setExecutionStartedAt = useSetAtom(executionStartedAtAtom);
-  const resetWorkflowExecutionState = useSetAtom(
-    resetWorkflowExecutionStateAtom,
-  );
   const setExecutionState = useSetAtom(workflowExecutionStateAtom);
   const setExecutionResult = useSetAtom(workflowExecutionResultAtom);
   const setExecutionError = useSetAtom(workflowExecutionErrorAtom);
 
-  const clearRunnerRevealTimers = useCallback(() => {
-    for (const timerId of runnerRevealTimersRef.current) {
-      window.clearTimeout(timerId);
-    }
-
-    runnerRevealTimersRef.current = [];
-  }, []);
-
-  const handleRunWorkflow = async () => {
-    if (!editor) {
-      return;
-    }
-
-    clearRunnerRevealTimers();
-    runnerRevealKeyRef.current = "";
-    setTraceSelection(null);
-    setActiveTab("output");
-    setRevealedRunnerStepIds([]);
-    setSettledRunnerStepIds([]);
-
-    resetWorkflowExecutionState();
-    setIsCollapsed(false);
-    setExecutionState("running");
-    setExecutionStartedAt(Date.now());
-
-    const latestNodes = editor.getNodes().map((node) => ({
-      id: node.id,
-      type: node.type as NodeType,
-      position: node.position,
-      data: node.data as Record<string, unknown> | undefined,
-    }));
-
-    const latestEdges = editor.getEdges().map((edge) => ({
-      source: edge.source,
-      target: edge.target,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
-    }));
-
-    const graphSignature = stableStringify({
-      nodes: latestNodes,
-      edges: latestEdges,
-    });
-
-    try {
-      if (graphSignature !== lastSavedSignatureRef.current) {
-        await saveWorkflow.mutateAsync({
-          id: workflowId,
-          nodes: latestNodes,
-          edges: latestEdges,
-        });
-        lastSavedSignatureRef.current = graphSignature;
-      }
-
-      const workflowExecution = await executeWorkflow.mutateAsync({
-        id: workflowId,
-      });
-
-      setActiveExecutionId(workflowExecution.executionId);
-    } catch (error) {
-      setExecutionState("error");
-      setExecutionError(
-        error instanceof Error ? error.message : "Failed to execute workflow.",
-      );
-    }
-  };
-
-  const handlePauseWorkflow = async () => {
-    if (!activeExecutionId) {
-      return;
-    }
-
-    try {
-      await pauseExecution.mutateAsync({ executionId: activeExecutionId });
-      setExecutionState("paused");
-      setExecutionError("Paused by user.");
-    } catch (error) {
-      setExecutionError(
-        error instanceof Error ? error.message : "Failed to pause workflow.",
-      );
-    }
-  };
+  // ── Execution polling ──────────────────────────────────────────────────────
 
   const executionQuery = useQuery({
     ...trpc.executions.getOne.queryOptions({ id: activeExecutionId ?? "" }),
     enabled: Boolean(activeExecutionId),
     retry: false,
     refetchInterval: (query) => {
-      const currentExecution = query.state.data;
-      if (!currentExecution) {
-        return 1000;
-      }
-
-      return currentExecution.status === "RUNNING" ? 1000 : false;
+      const current = query.state.data;
+      if (!current) return 1000;
+      return current.status === "RUNNING" ? 1000 : false;
     },
   });
 
@@ -669,51 +373,102 @@ export const WorkflowProgressPanel = ({
     }),
     enabled: Boolean(activeExecutionId),
     retry: false,
+    refetchInterval: (query) => {
+      const status = executionQuery.data?.status;
+
+      if (status === "RUNNING") return 1000;
+
+      if (status === "SUCCESS") {
+        const output = query.state.data?.output;
+        const finishedAt = executionQuery.data?.finishedAt
+          ? new Date(executionQuery.data.finishedAt).getTime()
+          : null;
+
+        if (output == null && finishedAt && Date.now() - finishedAt < 30_000) {
+          return 1000;
+        }
+      }
+
+      return false;
+    },
   });
+
+  const executionNodeOutputQuery = useQuery({
+    ...trpc.executions.getNodeOutput.queryOptions({
+      executionId: activeExecutionId ?? "",
+      nodeId: selectedNodeId ?? "",
+    }),
+    enabled: Boolean(activeExecutionId && selectedNodeId),
+    retry: false,
+    refetchInterval: (query) => {
+      const status = executionQuery.data?.status;
+      if (status === "RUNNING") {
+        return 1000;
+      }
+
+      if (status === "SUCCESS" && !query.state.data) {
+        return 1000;
+      }
+
+      return false;
+    },
+  });
+
+  const { data: realtimeMessages } = useInngestSubscription({
+    refreshToken: fetchFileRealTimeToken,
+    enabled: Boolean(activeExecutionId),
+  });
+
+  const executionStatus = executionQuery.data?.status;
+
+  useEffect(() => {
+    if (
+      !activeExecutionId ||
+      !executionStatus ||
+      executionStatus === "RUNNING"
+    ) {
+      return;
+    }
+
+    void executionRawOutputQuery.refetch();
+  }, [activeExecutionId, executionRawOutputQuery.refetch, executionStatus]);
 
   useEffect(() => {
     if (!activeExecutionId) {
       setExecutionResult(null);
       return;
     }
-
     setExecutionResult(null);
   }, [activeExecutionId, setExecutionResult]);
 
   useEffect(() => {
-    const currentExecution = executionQuery.data;
+    const current = executionQuery.data;
+    if (!current) return;
 
-    if (!currentExecution) {
-      return;
-    }
+    if (current.startedAt)
+      setExecutionStartedAt(new Date(current.startedAt).getTime());
 
-    if (currentExecution.startedAt) {
-      setExecutionStartedAt(new Date(currentExecution.startedAt).getTime());
-    }
-
-    if (currentExecution.status === "RUNNING") {
+    if (current.status === "RUNNING") {
       setExecutionState("running");
       setExecutionError(null);
       return;
     }
-
-    if (currentExecution.status === "SUCCESS") {
+    if (current.status === "SUCCESS") {
       setExecutionState("success");
       setExecutionError(null);
       return;
     }
-
+    const normalizedError = current.error?.toLowerCase() ?? "";
     if (
-      currentExecution.status === "FAILED" &&
-      currentExecution.error?.toLowerCase().includes("paused")
+      current.status === "FAILED" &&
+      /(paused|canceled|cancelled)/.test(normalizedError)
     ) {
       setExecutionState("paused");
-      setExecutionError(currentExecution.error);
+      setExecutionError(current.error);
       return;
     }
-
     setExecutionState("error");
-    setExecutionError(currentExecution.error ?? "Workflow execution failed.");
+    setExecutionError(current.error ?? "Workflow execution failed.");
   }, [
     executionQuery.data,
     setExecutionError,
@@ -724,6 +479,9 @@ export const WorkflowProgressPanel = ({
   useEffect(() => {
     setExecutionResult(executionRawOutputQuery.data?.output ?? null);
   }, [executionRawOutputQuery.data, setExecutionResult]);
+
+  // ── Derived data ───────────────────────────────────────────────────────────
+
   const stateConfig = workflowStateConfig[executionState];
 
   const outputPreview =
@@ -733,9 +491,10 @@ export const WorkflowProgressPanel = ({
       ? (outputPreview as Record<string, unknown>)
       : null;
 
-  const orderedNodes = useMemo(() => {
-    return sortNodesByExecutionOrder(nodes, edges);
-  }, [edges, nodes]);
+  const orderedNodes = useMemo(
+    () => sortNodesByExecutionOrder(nodes, edges),
+    [edges, nodes],
+  );
 
   const workflowNodes = useMemo<WorkflowTraceNode[]>(() => {
     return orderedNodes
@@ -747,10 +506,8 @@ export const WorkflowProgressPanel = ({
             ? (node.data as Record<string, unknown>)
             : {};
 
-        const variableKeys = TRACE_OUTPUT_VARIABLE_KEYS.map(
-          (key) => nodeData[key],
-        ).filter(
-          (key): key is string => typeof key === "string" && key.length > 0,
+        const variableKeys = [...new Set(Object.values(nodeData))].filter(
+          (v): v is string => typeof v === "string" && v.length > 0,
         );
 
         return {
@@ -758,6 +515,7 @@ export const WorkflowProgressPanel = ({
           label: getNodeLabel(node),
           status,
           variableKeys,
+          type: String(node.type ?? ""),
         };
       });
   }, [nodeStatusMap, orderedNodes]);
@@ -768,208 +526,249 @@ export const WorkflowProgressPanel = ({
       : [];
   }, [outputRecord]);
 
-  const hasRunnerMetrics = runnerMetrics.length > 0;
+  // Per-node timing derived from real metrics or synthetic fallback
+  const nodeTimingMap = useMemo(() => {
+    const map = new Map<string, { startMs: number; endMs: number }>();
 
-  const runnerSteps = useMemo<RunnerTraceStep[]>(() => {
     if (runnerMetrics.length > 0) {
       let cursor = 0;
-
-      const mappedSteps = runnerMetrics.map((metric, index) => {
-        const durationCandidate =
-          typeof metric.durationMs === "number" &&
-          Number.isFinite(metric.durationMs)
-            ? metric.durationMs
-            : 180;
-        const durationMs = Math.max(durationCandidate, 80);
-        const startMs = cursor;
-        const endMs = startMs + durationMs;
-        cursor = endMs;
-
-        const metricNodeId =
-          typeof metric.nodeId === "string"
-            ? metric.nodeId
-            : `metric-${index + 1}`;
-        const metricNodeType =
-          typeof metric.nodeType === "string"
-            ? humanizeNodeType(metric.nodeType)
-            : `Step ${index + 1}`;
-
-        let status = toTraceStatus(
-          metric.status ?? nodeStatusMap[metricNodeId],
-        );
-        if (status === "initial") {
-          if (
-            executionState === "running" &&
-            index === runnerMetrics.length - 1
-          ) {
-            status = "loading";
-          } else {
-            status = "success";
-          }
+      for (const metric of runnerMetrics) {
+        if (typeof metric.nodeId === "string") {
+          const duration =
+            typeof metric.durationMs === "number" &&
+            Number.isFinite(metric.durationMs)
+              ? Math.max(metric.durationMs, 80)
+              : 180;
+          map.set(metric.nodeId, { startMs: cursor, endMs: cursor + duration });
+          cursor += duration;
         }
-
-        return {
-          id: `metric-step-${index + 1}-${metricNodeId}`,
-          name: metricNodeType,
-          startMs,
-          endMs,
-          status,
-          payload: metric,
-        } satisfies RunnerTraceStep;
-      });
-
-      if (
-        executionState === "error" &&
-        mappedSteps.length > 0 &&
-        !mappedSteps.some((step) => step.status === "error")
-      ) {
-        const lastStepIndex = mappedSteps.length - 1;
-        mappedSteps[lastStepIndex] = {
-          ...mappedSteps[lastStepIndex],
-          status: "error",
-        };
       }
-
-      return mappedSteps;
-    }
-
-    if (workflowNodes.length > 0) {
-      const firstLoadingIndex = workflowNodes.findIndex(
-        (node) => node.status === "loading",
-      );
-      const firstInitialIndex = workflowNodes.findIndex(
-        (node) => node.status === "initial",
-      );
-      const inferredActiveIndex =
-        firstLoadingIndex >= 0 ? firstLoadingIndex : firstInitialIndex;
-
-      return workflowNodes.map((node, index) => {
-        let status = node.status;
-        if (
-          executionState === "running" &&
-          status === "initial" &&
-          inferredActiveIndex === index
-        ) {
-          status = "loading";
-        }
-
+    } else {
+      workflowNodes.forEach((node, index) => {
         const startMs =
           index *
           (FALLBACK_SYNTHETIC_STEP_DURATION_MS +
             FALLBACK_SYNTHETIC_STEP_GAP_MS);
-        const endMs = startMs + FALLBACK_SYNTHETIC_STEP_DURATION_MS;
-
-        return {
-          id: `node-trace-${node.id}`,
-          name: node.label,
+        map.set(node.id, {
           startMs,
-          endMs,
-          status,
-          payload: {
-            nodeId: node.id,
-            nodeLabel: node.label,
-            source: "node-status-map",
-          },
-        } satisfies RunnerTraceStep;
+          endMs: startMs + FALLBACK_SYNTHETIC_STEP_DURATION_MS,
+        });
       });
     }
 
-    return FALLBACK_RUNNER_STEPS.map((step, index) => {
-      let status: TraceStatus = "initial";
-
-      if (executionState === "running") {
-        status = index === 0 ? "loading" : "initial";
-      } else if (executionState === "success") {
-        status = "success";
-      } else if (executionState === "error") {
-        status = step.status;
-      } else if (executionState === "paused") {
-        status = index === 0 ? "loading" : "initial";
-      }
-
-      return {
-        ...step,
-        status,
-      };
-    });
-  }, [executionState, nodeStatusMap, runnerMetrics, workflowNodes]);
+    return map;
+  }, [runnerMetrics, workflowNodes]);
 
   const timelineMaxMs = useMemo(() => {
-    const maxStepEnd = runnerSteps.reduce(
-      (maxValue, step) => Math.max(maxValue, step.endMs),
-      0,
-    );
-
-    return Math.max(FALLBACK_TIMELINE_MAX_MS, maxStepEnd, 1);
-  }, [runnerSteps]);
+    let maxMs = 0;
+    for (const t of nodeTimingMap.values()) maxMs = Math.max(maxMs, t.endMs);
+    return Math.max(FALLBACK_TIMELINE_MAX_MS, maxMs, 1);
+  }, [nodeTimingMap]);
 
   const timelineMarkers = useMemo(() => {
-    const markersCount = 4;
-
-    return Array.from({ length: markersCount + 1 }, (_, index) =>
-      Math.round((timelineMaxMs / markersCount) * index),
+    const count = 4;
+    return Array.from({ length: count + 1 }, (_, i) =>
+      Math.round((timelineMaxMs / count) * i),
     );
   }, [timelineMaxMs]);
 
   const totalNodes = workflowNodes.length;
   const completedCount = workflowNodes.filter(
-    (node) => node.status === "success" || node.status === "error",
+    (n) => n.status === "success" || n.status === "error",
   ).length;
 
-  const selectedRunnerStep =
-    traceSelection?.kind === "runner-step"
-      ? (runnerSteps.find((step) => step.id === traceSelection.id) ?? null)
-      : null;
+  // ── Selected node ──────────────────────────────────────────────────────────
 
-  const selectedWorkflowNode =
-    traceSelection?.kind === "workflow-node"
-      ? (workflowNodes.find((node) => node.id === traceSelection.id) ?? null)
-      : null;
+  const selectedWorkflowNode = selectedNodeId
+    ? (workflowNodes.find((n) => n.id === selectedNodeId) ?? null)
+    : null;
+
+  const selectedNodeLiveOutputRecord = useMemo(() => {
+    const output = executionNodeOutputQuery.data?.output;
+    return isRecord(output) ? output : null;
+  }, [executionNodeOutputQuery.data?.output]);
+
+  const selectedSortProgress = useMemo<SortProgressSnapshot | null>(() => {
+    if (
+      !selectedWorkflowNode ||
+      selectedWorkflowNode.status !== "loading" ||
+      !activeExecutionId ||
+      !realtimeMessages?.length
+    ) {
+      return null;
+    }
+
+    const progressEntries: Array<{
+      createdAtMs: number;
+      payload: Record<string, unknown>;
+    }> = [];
+
+    for (const message of realtimeMessages) {
+      if (
+        message.kind !== "data" ||
+        message.channel !== FILE_CHANNEL_NAME ||
+        message.topic !== "progress" ||
+        !isRecord(message.data)
+      ) {
+        continue;
+      }
+
+      const messageExecutionId =
+        typeof message.data.executionId === "string"
+          ? message.data.executionId
+          : null;
+      const messageNodeId =
+        typeof message.data.nodeId === "string" ? message.data.nodeId : null;
+
+      if (
+        messageExecutionId !== activeExecutionId ||
+        messageNodeId !== selectedWorkflowNode.id
+      ) {
+        continue;
+      }
+
+      const rawCreatedAt = (message as { createdAt?: unknown }).createdAt;
+      if (
+        typeof rawCreatedAt !== "string" &&
+        typeof rawCreatedAt !== "number" &&
+        !(rawCreatedAt instanceof Date)
+      ) {
+        continue;
+      }
+
+      const createdAtMs = new Date(rawCreatedAt).getTime();
+      if (Number.isNaN(createdAtMs)) {
+        continue;
+      }
+
+      if (executionStartedAt && createdAtMs < executionStartedAt) {
+        continue;
+      }
+
+      progressEntries.push({
+        createdAtMs,
+        payload: message.data,
+      });
+    }
+
+    const latestProgressEntry = progressEntries.sort(
+      (left, right) => right.createdAtMs - left.createdAtMs,
+    )[0];
+
+    if (!latestProgressEntry) {
+      return null;
+    }
+
+    const payload = latestProgressEntry.payload;
+    const stage = typeof payload.stage === "string" ? payload.stage : null;
+    if (!stage) {
+      return null;
+    }
+
+    const snapshot: SortProgressSnapshot = {
+      stage,
+      label: "",
+      rowsScanned: readOptionalNumber(payload, "rowsScanned"),
+      rowsWritten: readOptionalNumber(payload, "rowsWritten"),
+      runCount: readOptionalNumber(payload, "runCount"),
+      elapsedMs: readOptionalNumber(payload, "elapsedMs"),
+    };
+
+    snapshot.label = formatSortProgressLabel(snapshot);
+    return snapshot;
+  }, [
+    activeExecutionId,
+    executionStartedAt,
+    realtimeMessages,
+    selectedWorkflowNode,
+  ]);
+
+  // Auto-select most relevant node
+  useEffect(() => {
+    const hasValid =
+      selectedNodeId && workflowNodes.some((n) => n.id === selectedNodeId);
+    if (hasValid) return;
+
+    const toSelect =
+      workflowNodes.find((n) => n.status === "error") ??
+      workflowNodes.find((n) => n.status === "loading") ??
+      (executionState !== "idle"
+        ? workflowNodes[workflowNodes.length - 1]
+        : null);
+
+    if (toSelect) setSelectedNodeId(toSelect.id);
+  }, [executionState, workflowNodes, selectedNodeId]);
 
   const selectedNodeOutput = useMemo(() => {
-    if (!selectedWorkflowNode || !outputRecord) {
+    if (!selectedWorkflowNode) {
       return null;
     }
 
-    for (const variableKey of selectedWorkflowNode.variableKeys) {
-      if (variableKey in outputRecord) {
-        return outputRecord[variableKey];
+    const resolveFromRecord = (record: Record<string, unknown> | null) => {
+      if (!record) {
+        return null;
       }
-    }
 
-    if (selectedWorkflowNode.id in outputRecord) {
-      return outputRecord[selectedWorkflowNode.id];
-    }
+      for (const key of selectedWorkflowNode.variableKeys) {
+        if (key in record) {
+          return record[key];
+        }
+      }
 
-    return null;
-  }, [outputRecord, selectedWorkflowNode]);
+      if (selectedWorkflowNode.id in record) {
+        return record[selectedWorkflowNode.id];
+      }
+
+      const entries = Object.entries(record);
+      if (entries.length === 1) {
+        return entries[0]?.[1] ?? null;
+      }
+
+      return null;
+    };
+
+    return (
+      resolveFromRecord(selectedNodeLiveOutputRecord) ??
+      resolveFromRecord(outputRecord)
+    );
+  }, [outputRecord, selectedNodeLiveOutputRecord, selectedWorkflowNode]);
 
   const selectedDatasetVariable = useMemo(() => {
-    if (!selectedWorkflowNode || !outputRecord) {
+    if (!selectedWorkflowNode) {
       return null;
     }
 
-    for (const variableKey of selectedWorkflowNode.variableKeys) {
-      if (isDatasetLikeValue(outputRecord[variableKey])) {
-        return variableKey;
+    const resolveFromRecord = (record: Record<string, unknown> | null) => {
+      if (!record) {
+        return null;
       }
-    }
 
-    return null;
-  }, [outputRecord, selectedWorkflowNode]);
+      for (const key of selectedWorkflowNode.variableKeys) {
+        if (isDatasetLikeValue(record[key])) {
+          return key;
+        }
+      }
 
-  const selectedOutputPayload =
-    selectedRunnerStep?.payload ?? selectedNodeOutput ?? outputPreview ?? null;
+      const firstDatasetEntry = Object.entries(record).find(([, value]) =>
+        isDatasetLikeValue(value),
+      );
 
+      return firstDatasetEntry?.[0] ?? null;
+    };
+
+    return (
+      resolveFromRecord(selectedNodeLiveOutputRecord) ??
+      resolveFromRecord(outputRecord)
+    );
+  }, [outputRecord, selectedNodeLiveOutputRecord, selectedWorkflowNode]);
+
+  const selectedOutputPayload = selectedNodeOutput;
   const outputPayloadText = selectedOutputPayload
     ? safeStringify(selectedOutputPayload)
     : "";
-
-  const isOutputTooLargeToRender = outputPayloadText.length > 500000;
   const isOutputPayloadLarge =
     outputPayloadText.length > 24000 ||
     outputPayloadText.split("\n").length > 400;
-
   const outputPayloadPreview = isOutputPayloadLarge
     ? `${outputPayloadText.slice(0, 1200)}\n\n... (output truncated)`
     : outputPayloadText;
@@ -981,13 +780,44 @@ export const WorkflowProgressPanel = ({
       ? "Failed to load raw execution output."
       : null);
 
+  const outputLimitInfo = isRecord(outputRecord?.__outputLimit)
+    ? (outputRecord.__outputLimit as Record<string, unknown>)
+    : null;
+
+  const selectedBlobOutput = useMemo(() => {
+    if (!isRecord(selectedOutputPayload)) return null;
+    if (selectedOutputPayload.type !== "blob") return null;
+
+    return {
+      name:
+        typeof selectedOutputPayload.name === "string"
+          ? selectedOutputPayload.name
+          : "uploaded-file",
+      mimeType:
+        typeof selectedOutputPayload.mimeType === "string"
+          ? selectedOutputPayload.mimeType
+          : "application/octet-stream",
+      size: selectedOutputPayload.size,
+      uploadedAt:
+        typeof selectedOutputPayload.uploadedAt === "string"
+          ? selectedOutputPayload.uploadedAt
+          : null,
+      fileBlobPath:
+        typeof selectedOutputPayload.fileBlobPath === "string"
+          ? selectedOutputPayload.fileBlobPath
+          : null,
+    };
+  }, [selectedOutputPayload]);
+
   const stackTraceText = executionQuery.data?.errorStack ?? "";
-  const stackTraceLines = useMemo(() => {
-    return stackTraceText
-      .split(/\r?\n/)
-      .map((line) => line.trimEnd())
-      .filter((line) => line.length > 0);
-  }, [stackTraceText]);
+  const stackTraceLines = useMemo(
+    () =>
+      stackTraceText
+        .split(/\r?\n/)
+        .map((l) => l.trimEnd())
+        .filter((l) => l.length > 0),
+    [stackTraceText],
+  );
 
   const startedAt = executionQuery.data?.startedAt
     ? new Date(executionQuery.data.startedAt)
@@ -997,293 +827,489 @@ export const WorkflowProgressPanel = ({
   const finishedAt = executionQuery.data?.finishedAt
     ? new Date(executionQuery.data.finishedAt)
     : null;
+
+  const inspectorName = selectedWorkflowNode?.label ?? "Inspector";
+  const inspectorStatus: TraceStatus =
+    selectedWorkflowNode?.status ?? "initial";
   const durationLabel = getDurationLabel({
     startedAt,
     finishedAt,
     isRunning: executionState === "running",
   });
 
-  const selectedIdentity = selectedWorkflowNode
-    ? `${selectedWorkflowNode.label} (${selectedWorkflowNode.id.slice(0, 10)})`
-    : selectedRunnerStep
-      ? `${selectedRunnerStep.name} (${selectedRunnerStep.id})`
-      : "-";
+  // ── Split drag ─────────────────────────────────────────────────────────────
 
-  const metadataEntries = [
-    {
-      label: "Status",
-      value: executionQuery.data?.status ?? "PENDING",
-      danger: (executionQuery.data?.status ?? "PENDING") === "FAILED",
+  const handleSplitMouseDown = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      splitDraggingRef.current = true;
+      setIsDraggingSplit(true);
     },
-    {
-      label: "Started",
-      value: formatDateTime(startedAt),
-    },
-    {
-      label: "Finished",
-      value: formatDateTime(finishedAt),
-    },
-    {
-      label: "Duration",
-      value: durationLabel,
-    },
-    {
-      label: "Node",
-      value: selectedIdentity,
-      mono: true,
-    },
-  ];
+    [],
+  );
 
-  const isRunning = executionState === "running";
-  const isActionPending =
-    saveWorkflow.isPending ||
-    executeWorkflow.isPending ||
-    pauseExecution.isPending;
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!splitDraggingRef.current || !splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
+      const relative = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitPercent(Math.min(Math.max(relative, 22), 62));
+    };
+    const onUp = () => {
+      splitDraggingRef.current = false;
+      setIsDraggingSplit(false);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   const handleCopy = async (value: string, target: "output" | "error") => {
-    if (!value) {
-      return;
-    }
-
+    if (!value) return;
     await navigator.clipboard.writeText(value);
     setCopiedState(target);
     window.setTimeout(() => setCopiedState(null), 1800);
   };
 
   const handleDownloadOutput = () => {
-    if (!outputPayloadText) {
-      return;
-    }
-
+    if (!outputPayloadText) return;
     const blob = new Blob([outputPayloadText], {
       type: "application/json;charset=utf-8",
     });
-    const downloadUrl = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-
-    anchor.href = downloadUrl;
-    anchor.download = `workflow-output-${timestamp}.json`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(downloadUrl);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `workflow-output-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  const handleSelectRunnerStep = (step: RunnerTraceStep) => {
-    setTraceSelection({
-      kind: "runner-step",
-      id: step.id,
-    });
-    setActiveTab(step.status === "error" ? "error" : "output");
-  };
+  // ── Right panel renderer ───────────────────────────────────────────────────
 
-  const handleSelectWorkflowNode = (node: WorkflowTraceNode) => {
-    setTraceSelection({
-      kind: "workflow-node",
-      id: node.id,
-    });
-    setActiveTab(node.status === "error" ? "error" : "output");
-  };
-
-  useEffect(() => {
-    const onMove = (event: MouseEvent) => {
-      if (!splitDraggingRef.current || !splitContainerRef.current) {
-        return;
-      }
-
-      const rect = splitContainerRef.current.getBoundingClientRect();
-      if (rect.width <= 0) {
-        return;
-      }
-
-      const relative = ((event.clientX - rect.left) / rect.width) * 100;
-      const nextValue = Math.min(Math.max(relative, 22), 62);
-      setSplitPercent(nextValue);
-    };
-
-    const onMouseUp = () => {
-      splitDraggingRef.current = false;
-      setIsDraggingSplit(false);
-    };
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearRunnerRevealTimers();
-    };
-  }, [clearRunnerRevealTimers]);
-
-  useEffect(() => {
-    const nextStepIds = runnerSteps.map((step) => step.id);
-    const nextStepKey = nextStepIds.join("::");
-    const isRevealMode = executionState === "running" && !hasRunnerMetrics;
-
-    if (isRevealMode && runnerRevealKeyRef.current === nextStepKey) {
-      return;
-    }
-
-    runnerRevealKeyRef.current = nextStepKey;
-
-    if (nextStepIds.length === 0) {
-      clearRunnerRevealTimers();
-      setRevealedRunnerStepIds([]);
-      return;
-    }
-
-    if (executionState !== "running" || hasRunnerMetrics) {
-      clearRunnerRevealTimers();
-      setRevealedRunnerStepIds(nextStepIds);
-      return;
-    }
-
-    clearRunnerRevealTimers();
-    setRevealedRunnerStepIds([]);
-
-    nextStepIds.forEach((stepId, index) => {
-      const timerId = window.setTimeout(() => {
-        setRevealedRunnerStepIds((previous) => {
-          if (previous.includes(stepId)) {
-            return previous;
-          }
-
-          return [...previous, stepId];
-        });
-      }, index * RUNNER_STEP_REVEAL_DELAY_MS);
-
-      runnerRevealTimersRef.current.push(timerId);
-    });
-
-    return () => {
-      clearRunnerRevealTimers();
-    };
-  }, [clearRunnerRevealTimers, executionState, hasRunnerMetrics, runnerSteps]);
-
-  useEffect(() => {
-    if (!activeExecutionId) {
-      setSettledRunnerStepIds([]);
-      return;
-    }
-
-    setSettledRunnerStepIds((previous) => {
-      const settledNow = runnerSteps
-        .filter((step) => isSettledTraceStatus(step.status))
-        .map((step) => step.id);
-
-      if (settledNow.length === 0) {
-        return previous.length > 0 ? [] : previous;
-      }
-
-      const previousSet = new Set(previous);
-      let changed = false;
-
-      for (const stepId of settledNow) {
-        if (!previousSet.has(stepId)) {
-          previousSet.add(stepId);
-          changed = true;
-        }
-      }
-
-      if (!changed && previous.length === previousSet.size) {
-        return previous;
-      }
-
-      return Array.from(previousSet);
-    });
-  }, [activeExecutionId, runnerSteps]);
-
-  const revealedRunnerStepIdSet = useMemo(() => {
-    return new Set(revealedRunnerStepIds);
-  }, [revealedRunnerStepIds]);
-
-  const settledRunnerStepIdSet = useMemo(() => {
-    return new Set(settledRunnerStepIds);
-  }, [settledRunnerStepIds]);
-
-  const activeSyntheticRunnerStepId = useMemo(() => {
-    if (executionState !== "running" || hasRunnerMetrics) {
-      return null;
-    }
-
-    return (
-      runnerSteps.find((step) => step.status === "loading")?.id ??
-      runnerSteps.find((step) => step.status === "initial")?.id ??
-      runnerSteps[0]?.id ??
-      null
-    );
-  }, [executionState, hasRunnerMetrics, runnerSteps]);
-
-  useEffect(() => {
-    const hasValidRunnerSelection =
-      traceSelection?.kind === "runner-step" &&
-      runnerSteps.some((step) => step.id === traceSelection.id);
-    const hasValidNodeSelection =
-      traceSelection?.kind === "workflow-node" &&
-      workflowNodes.some((node) => node.id === traceSelection.id);
-
-    if (hasValidRunnerSelection || hasValidNodeSelection) {
-      return;
-    }
-
-    const preferredRunner =
-      runnerSteps.find((step) => step.status === "error") ??
-      runnerSteps.find((step) => step.status === "loading") ??
+  const renderRightPanel = () => {
+    const executionStatusLabel =
+      executionQuery.data?.status ??
       (executionState === "running"
-        ? runnerSteps.find((step) => step.status === "initial")
-        : null) ??
-      runnerSteps[runnerSteps.length - 1];
+        ? "RUNNING"
+        : executionState === "success"
+          ? "SUCCESS"
+          : executionState === "error" || executionState === "paused"
+            ? "FAILED"
+            : "PENDING");
 
-    if (preferredRunner) {
-      setTraceSelection({
-        kind: "runner-step",
-        id: preferredRunner.id,
-      });
-      setActiveTab(preferredRunner.status === "error" ? "error" : "output");
-      return;
+    const metadataView = (
+      <div className="rounded-md border border-border bg-muted/25 px-3 py-2 text-xs">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+          <div className="space-y-0.5">
+            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+              Status
+            </p>
+            <p
+              className={cn(
+                "font-medium",
+                executionStatusLabel === "FAILED"
+                  ? "text-red-600"
+                  : "text-foreground",
+              )}
+            >
+              {executionStatusLabel}
+            </p>
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+              Started
+            </p>
+            <p className="text-foreground">{formatDateTime(startedAt)}</p>
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+              Finished
+            </p>
+            <p className="text-foreground">{formatDateTime(finishedAt)}</p>
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+              Duration
+            </p>
+            <p className="text-foreground">{durationLabel}</p>
+          </div>
+        </div>
+      </div>
+    );
+
+    // No execution started
+    if (executionState === "idle") {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <PlayIcon className="size-5 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              No execution yet
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Click the play icon on the Manual Trigger node to run the workflow
+            </p>
+          </div>
+        </div>
+      );
     }
 
-    const preferredNode =
-      workflowNodes.find((node) => node.status === "error") ??
-      workflowNodes.find((node) => node.status === "loading") ??
-      workflowNodes[workflowNodes.length - 1];
-
-    if (preferredNode) {
-      setTraceSelection({
-        kind: "workflow-node",
-        id: preferredNode.id,
-      });
-      setActiveTab(preferredNode.status === "error" ? "error" : "output");
+    // No node selected yet
+    if (!selectedWorkflowNode) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
+          <Clock3Icon className="size-8 opacity-20" />
+          <p className="text-xs text-muted-foreground">
+            Select a node to inspect its output
+          </p>
+        </div>
+      );
     }
-  }, [executionState, runnerSteps, traceSelection, workflowNodes]);
 
-  const inspectorHeaderName =
-    selectedRunnerStep?.name ?? selectedWorkflowNode?.label ?? "Select a step";
-  const inspectorHeaderStatus: TraceStatus =
-    selectedRunnerStep?.status ?? selectedWorkflowNode?.status ?? "initial";
+    const { status, label } = selectedWorkflowNode;
 
-  const _requiresRawOutputForSelection =
-    traceSelection?.kind === "workflow-node";
+    // Node is actively running
+    if (status === "loading") {
+      const runningText = selectedSortProgress?.label ?? `Running ${label}…`;
+      const rowStats =
+        selectedSortProgress &&
+        (selectedSortProgress.rowsScanned || selectedSortProgress.rowsWritten)
+          ? [
+              selectedSortProgress.rowsScanned
+                ? `${selectedSortProgress.rowsScanned.toLocaleString()} scanned`
+                : "",
+              selectedSortProgress.rowsWritten
+                ? `${selectedSortProgress.rowsWritten.toLocaleString()} written`
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          : null;
+
+      return (
+        <div className="space-y-3">
+          {metadataView}
+          <NodeStatusLine text={runningText} />
+          {rowStats && (
+            <p className="px-1 text-[11px] text-muted-foreground">{rowStats}</p>
+          )}
+        </div>
+      );
+    }
+
+    // Execution is running but this node hasn't started
+    if (executionState === "running" && status === "initial") {
+      return (
+        <div className="space-y-3">
+          {metadataView}
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+            <Clock3Icon className="size-4 shrink-0 text-muted-foreground" />
+            <div>
+              <p className="text-sm font-medium text-foreground">{label}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Not started yet
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Error state
+    if (status === "error" || executionState === "error") {
+      return (
+        <div className="space-y-3">
+          {effectiveError && (
+            <div className="flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-red-700">
+              <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100">
+                <AlertTriangleIcon className="size-3.5" />
+              </span>
+              <span className="text-xs leading-relaxed">{effectiveError}</span>
+            </div>
+          )}
+
+          <div className="overflow-hidden rounded-md border border-border bg-muted/25">
+            <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+              <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                Stack trace
+              </span>
+              <button
+                type="button"
+                onClick={() => handleCopy(stackTraceText, "error")}
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+                disabled={!stackTraceText}
+              >
+                <CopyIcon className="size-3" />
+                {copiedState === "error" ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <div className="max-h-[280px] overflow-auto px-3 py-2 font-mono text-xs leading-6">
+              {stackTraceLines.length > 0 ? (
+                stackTraceLines.map((line, i) => (
+                  <div key={`${i + 1}-${line}`} className="flex gap-3">
+                    <span className="w-5 shrink-0 select-none text-right text-[11px] text-muted-foreground">
+                      {i + 1}
+                    </span>
+                    <span
+                      className={
+                        i === 0 ? "text-red-600" : "text-muted-foreground"
+                      }
+                    >
+                      {line}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="px-1 py-1 text-muted-foreground">
+                  No stack trace available.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Success — show dataset or JSON output
+    if (status === "success") {
+      // Manual trigger has no output — show workflow status instead
+      if (selectedWorkflowNode.type === "MANUAL_TRIGGER") {
+        const statusText =
+          executionState === "running"
+            ? "Workflow is running..."
+            : executionState === "success"
+              ? "Workflow completed"
+              : executionState === "paused" || executionState === "error"
+                ? "Workflow stopped"
+                : "Workflow completed";
+        return (
+          <div className="space-y-3">
+            {metadataView}
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
+              <CheckCircle2Icon className="size-4 shrink-0 text-green-500" />
+              <p className="text-sm font-medium text-foreground">
+                {statusText}
+              </p>
+            </div>
+          </div>
+        );
+      }
+
+      const isWaitingForNodeOutput =
+        executionState === "running" &&
+        !selectedNodeOutput &&
+        (executionNodeOutputQuery.isFetching ||
+          executionRawOutputQuery.isFetching);
+
+      if (isWaitingForNodeOutput) {
+        return (
+          <div className="space-y-3">
+            {metadataView}
+            <NodeStatusLine text="Waiting for node output…" />
+          </div>
+        );
+      }
+
+      if (selectedBlobOutput) {
+        return (
+          <div className="space-y-3">
+            {metadataView}
+            <div className="rounded-md border border-border bg-muted/20 p-3">
+              <p className="text-xs font-medium text-foreground">
+                Uploaded file
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <div className="rounded border border-border bg-background/70 px-2 py-1.5">
+                  <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Name
+                  </p>
+                  <p
+                    className="truncate text-foreground"
+                    title={selectedBlobOutput.name}
+                  >
+                    {selectedBlobOutput.name}
+                  </p>
+                </div>
+                <div className="rounded border border-border bg-background/70 px-2 py-1.5">
+                  <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Type
+                  </p>
+                  <p
+                    className="truncate text-foreground"
+                    title={selectedBlobOutput.mimeType}
+                  >
+                    {selectedBlobOutput.mimeType}
+                  </p>
+                </div>
+                <div className="rounded border border-border bg-background/70 px-2 py-1.5">
+                  <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Size
+                  </p>
+                  <p className="text-foreground">
+                    {formatBytes(selectedBlobOutput.size)}
+                  </p>
+                </div>
+                <div className="rounded border border-border bg-background/70 px-2 py-1.5">
+                  <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                    Uploaded
+                  </p>
+                  <p className="text-foreground">
+                    {selectedBlobOutput.uploadedAt
+                      ? formatDateTime(selectedBlobOutput.uploadedAt)
+                      : "-"}
+                  </p>
+                </div>
+              </div>
+              {selectedBlobOutput.fileBlobPath && (
+                <p
+                  className="mt-2 truncate text-[11px] text-muted-foreground"
+                  title={selectedBlobOutput.fileBlobPath}
+                >
+                  {selectedBlobOutput.fileBlobPath}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      if (selectedDatasetVariable && activeExecutionId) {
+        return (
+          <div className="space-y-3">
+            {metadataView}
+            <div className="rounded-md border border-border bg-muted/20 p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-medium text-foreground">
+                  Dataset: {selectedDatasetVariable}
+                </span>
+              </div>
+              <ExecutionDatasetViewer
+                executionId={activeExecutionId}
+                variable={selectedDatasetVariable}
+                nodeId={selectedWorkflowNode.id}
+                enabled={true}
+              />
+            </div>
+          </div>
+        );
+      }
+
+      if (outputPayloadText) {
+        return (
+          <div className="space-y-3">
+            {metadataView}
+            <div className="overflow-hidden rounded-md border border-border bg-muted/20">
+              <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+                <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+                  Output
+                </span>
+                <div className="flex items-center gap-2">
+                  {isOutputPayloadLarge && (
+                    <button
+                      type="button"
+                      onClick={() => setIsOutputExpanded(true)}
+                      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <Maximize2Icon className="size-3" />
+                      Expand
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(outputPayloadText, "output")}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <CopyIcon className="size-3" />
+                    {copiedState === "output" ? "Copied" : "Copy"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownloadOutput}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <DownloadIcon className="size-3" />
+                    Download
+                  </button>
+                </div>
+              </div>
+              <pre className="max-h-[340px] overflow-auto px-3 py-2 font-mono text-xs leading-5 text-foreground">
+                {outputPayloadPreview}
+              </pre>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-3">
+          {metadataView}
+          {outputLimitInfo ? (
+            <div className="rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+              {typeof outputLimitInfo.message === "string"
+                ? outputLimitInfo.message
+                : "Execution output exceeded the limit, so this node output is not available in the summary."}
+            </div>
+          ) : (
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+              No returned data available for this node.
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Paused / other fallback
+    return (
+      <div className="space-y-3">
+        {metadataView}
+        <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          {executionState === "paused"
+            ? "Execution was canceled."
+            : "No output available."}
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <>
       <style>{PANEL_ANIMATION_CSS}</style>
 
+      {/* Expanded output dialog */}
+      <Dialog open={isOutputExpanded} onOpenChange={setIsOutputExpanded}>
+        <DialogContent className="max-h-[80vh] max-w-4xl overflow-hidden p-0">
+          <DialogTitle className="border-b border-border px-4 py-3 text-sm font-medium">
+            {inspectorName} — Full Output
+          </DialogTitle>
+          <div className="overflow-auto p-4">
+            <pre className="font-mono text-xs leading-5">
+              {outputPayloadText}
+            </pre>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div
         className={cn(
-          "overflow-hidden bg-background transition-all duration-300 ease-out",
+          "flex h-full flex-col overflow-hidden bg-background transition-all duration-300 ease-out",
           isCollapsed
             ? "rounded-none border-0 pt-5"
             : "rounded-xl border border-border",
         )}
       >
+        {/* ── Panel header ──────────────────────────────────────────────── */}
         <div
           className={cn(
             "flex items-center bg-muted/40 transition-[padding,gap] duration-300",
@@ -1318,28 +1344,14 @@ export const WorkflowProgressPanel = ({
             </Badge>
           )}
 
-          <Button
-            size="sm"
-            variant={isRunning ? "destructive" : "default"}
-            disabled={isActionPending || (!isRunning && !editor)}
-            className={cn(
-              "gap-1.5 text-xs",
-              isCollapsed ? "h-7 px-2.5" : "h-8 px-3",
-            )}
-            onClick={(event) => {
-              event.stopPropagation();
-              void (isRunning ? handlePauseWorkflow() : handleRunWorkflow());
-            }}
-          >
-            {isRunning ? (
-              <PauseIcon className="size-3.5" />
-            ) : isActionPending ? (
-              <Loader2Icon className="size-3.5 animate-spin" />
-            ) : (
-              <PlayIcon className="size-3.5" />
-            )}
-            {isRunning ? "Pause" : "Run"}
-          </Button>
+          {!isCollapsed && activeExecutionId && (
+            <Badge
+              variant="outline"
+              className="font-mono text-[10px] text-muted-foreground"
+            >
+              {durationLabel}
+            </Badge>
+          )}
 
           <div className="ml-auto flex min-w-0 items-center gap-2">
             {activeExecutionId && (
@@ -1350,114 +1362,92 @@ export const WorkflowProgressPanel = ({
                 )}
               >
                 {isCollapsed
-                  ? `${activeExecutionId.slice(0, 8)}...`
+                  ? `${activeExecutionId.slice(0, 8)}…`
                   : `Execution: ${activeExecutionId}`}
               </span>
             )}
-
             {isCollapsed && (
-              <ChevronDownIcon
-                className="size-4 -rotate-180 text-muted-foreground"
-                aria-hidden
-              />
+              <button
+                type="button"
+                onClick={() => setIsCollapsed(false)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Expand panel"
+              >
+                <ChevronDownIcon className="size-4 -rotate-180" />
+              </button>
             )}
           </div>
         </div>
 
+        {/* ── Collapsible body ───────────────────────────────────────────── */}
         <div
-          className="grid transition-[grid-template-rows] duration-300 ease-out"
-          style={{
-            gridTemplateRows: isCollapsed ? "0fr" : "1fr",
-          }}
+          className="grid min-h-0 flex-1 transition-[grid-template-rows] duration-300 ease-out"
+          style={{ gridTemplateRows: isCollapsed ? "0fr" : "1fr" }}
         >
-          <div className="min-h-0 overflow-hidden">
+          <div className="h-full min-h-0 overflow-hidden">
             <div
               ref={splitContainerRef}
               className={cn(
-                "flex h-[460px] min-h-0",
+                "flex h-full min-h-0",
                 isDraggingSplit && "select-none",
               )}
             >
+              {/* ── Left: Nodes in trace style ──────────────────────────── */}
               <div
-                className="min-w-[220px] border-r border-border"
+                className="flex h-full min-w-[220px] flex-col border-r border-border"
                 style={{ width: `${splitPercent}%` }}
               >
-                <div className="border-b border-border bg-muted/40 px-2.5 py-1.5">
+                {/* Timeline header */}
+                <div className="shrink-0 border-b border-border bg-muted/40 px-2.5 py-1.5">
                   <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                     Trace
                   </span>
-
                   <div className="mt-1 flex pl-[128px] pr-2">
-                    {timelineMarkers.map((markerMs) => (
+                    {timelineMarkers.map((ms) => (
                       <span
-                        key={markerMs}
+                        key={ms}
                         className="flex-1 font-mono text-[10px] text-muted-foreground"
                       >
-                        {formatTimeLabel(markerMs)}
+                        {formatTimeLabel(ms)}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                <div className="flex h-[calc(100%-38px)] flex-col overflow-hidden">
-                  <div className="min-h-0 flex-1 overflow-y-auto">
-                    {runnerSteps.map((step) => {
-                      const isVisibleStep =
-                        executionState !== "running" ||
-                        hasRunnerMetrics ||
-                        revealedRunnerStepIdSet.has(step.id);
-
-                      if (!isVisibleStep) {
-                        return null;
-                      }
-
-                      const isSyntheticRunningStep =
-                        activeSyntheticRunnerStepId === step.id;
-                      const visualStatus: TraceStatus =
-                        isSyntheticRunningStep && step.status === "initial"
-                          ? "loading"
-                          : step.status;
-                      const statusConfig = traceStatusConfig[visualStatus];
-                      const isSelected =
-                        traceSelection?.kind === "runner-step" &&
-                        traceSelection.id === step.id;
-                      const isRunningStep = visualStatus === "loading";
-                      const isSettledStep = settledRunnerStepIdSet.has(step.id);
-
-                      const leftPercent = (step.startMs / timelineMaxMs) * 100;
+                {/* Node rows */}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {workflowNodes.length === 0 ? (
+                    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                      No nodes in workflow
+                    </div>
+                  ) : (
+                    workflowNodes.map((node) => {
+                      const timing = nodeTimingMap.get(node.id) ?? {
+                        startMs: 0,
+                        endMs: 0,
+                      };
+                      const isSelected = selectedNodeId === node.id;
+                      const isLoading = node.status === "loading";
+                      const visualStatus: TraceStatus = node.status;
+                      const statusCfg = traceStatusConfig[visualStatus];
+                      const leftPercent =
+                        (timing.startMs / timelineMaxMs) * 100;
                       const widthPercent = Math.max(
-                        ((step.endMs - step.startMs) / timelineMaxMs) * 100,
-                        1.8,
-                      );
-                      const runningWidthPercent = Math.max(
-                        widthPercent * 0.55,
+                        ((timing.endMs - timing.startMs) / timelineMaxMs) * 100,
                         1.8,
                       );
 
                       return (
                         <button
-                          key={step.id}
+                          key={node.id}
                           type="button"
-                          onClick={() =>
-                            handleSelectRunnerStep({
-                              ...step,
-                              status: visualStatus,
-                            })
-                          }
+                          onClick={() => setSelectedNodeId(node.id)}
                           className={cn(
                             "flex h-[26px] w-full items-center gap-1.5 px-2 pr-2 text-left transition-colors",
                             isSelected
                               ? "border-l-2 border-l-blue-500 bg-blue-500/10 pl-1.5"
                               : "border-l-2 border-l-transparent hover:bg-accent/50",
                           )}
-                          style={
-                            executionState === "running" && !hasRunnerMetrics
-                              ? {
-                                  animation:
-                                    "workflow-trace-row-in 220ms ease both",
-                                }
-                              : undefined
-                          }
                         >
                           <TraceStatusIcon status={visualStatus} size={14} />
 
@@ -1469,18 +1459,18 @@ export const WorkflowProgressPanel = ({
                                 : "text-muted-foreground",
                             )}
                           >
-                            {step.name}
+                            {node.label}
                           </span>
 
                           <div className="relative h-[11px] flex-1">
-                            {isRunningStep ? (
+                            {isLoading ? (
                               <div
                                 className="absolute top-0 h-full rounded-[2px]"
                                 style={{
                                   left: `${leftPercent}%`,
-                                  width: `${runningWidthPercent}%`,
+                                  width: `${Math.max(widthPercent * 0.55, 1.8)}%`,
                                   backgroundImage:
-                                    "linear-gradient(90deg, rgba(245, 158, 11, 0.75) 25%, rgba(255, 255, 255, 0.55) 50%, rgba(245, 158, 11, 0.75) 75%)",
+                                    "linear-gradient(90deg, rgba(245,158,11,0.75) 25%, rgba(255,255,255,0.55) 50%, rgba(245,158,11,0.75) 75%)",
                                   backgroundSize: "200% 100%",
                                   animation:
                                     "workflow-trace-bar-shimmer 1.1s linear infinite",
@@ -1490,416 +1480,85 @@ export const WorkflowProgressPanel = ({
                               <div
                                 className={cn(
                                   "absolute top-0 h-full rounded-[2px]",
-                                  statusConfig.barClassName,
+                                  statusCfg.barClassName,
                                   isSelected ? "opacity-100" : "opacity-70",
                                 )}
                                 style={{
                                   left: `${leftPercent}%`,
                                   width: `${widthPercent}%`,
                                   transformOrigin: "left center",
-                                  animation: isSettledStep
-                                    ? "workflow-trace-bar-grow 360ms ease both"
-                                    : undefined,
+                                  animation:
+                                    node.status === "success" ||
+                                    node.status === "error"
+                                      ? "workflow-trace-bar-grow 360ms ease both"
+                                      : undefined,
                                 }}
                               />
                             )}
                           </div>
                         </button>
                       );
-                    })}
-                  </div>
-
-                  <div className="flex h-[156px] min-h-[156px] flex-col border-t border-border bg-muted/30">
-                    <div className="shrink-0 px-2.5 py-1">
-                      <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                        Nodes
-                      </span>
-                    </div>
-
-                    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pb-2">
-                      {workflowNodes.map((node) => {
-                        const statusConfig = traceStatusConfig[node.status];
-                        const isSelected =
-                          traceSelection?.kind === "workflow-node" &&
-                          traceSelection.id === node.id;
-
-                        return (
-                          <button
-                            key={node.id}
-                            type="button"
-                            onClick={() => handleSelectWorkflowNode(node)}
-                            className={cn(
-                              "flex h-[30px] w-full items-center gap-2 px-2 text-left transition-colors",
-                              isSelected
-                                ? "border-l-2 border-l-blue-500 bg-blue-500/10 pl-1.5"
-                                : "border-l-2 border-l-transparent hover:bg-accent/50",
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "h-1.5 w-1.5 shrink-0 rounded-full",
-                                statusConfig.dotClassName,
-                              )}
-                              style={
-                                node.status === "loading"
-                                  ? {
-                                      animation:
-                                        "workflow-node-dot-pulse 1s ease-in-out infinite",
-                                    }
-                                  : undefined
-                              }
-                            />
-
-                            <span
-                              className={cn(
-                                "flex-1 truncate text-[12px] text-foreground",
-                                isSelected && "font-medium",
-                              )}
-                            >
-                              {node.label}
-                            </span>
-
-                            <span
-                              className={cn(
-                                "shrink-0 text-[11px] transition-colors duration-300",
-                                statusConfig.textClassName,
-                              )}
-                            >
-                              {statusConfig.label}
-                            </span>
-                          </button>
-                        );
-                      })}
-                      <div className="h-3 shrink-0" aria-hidden />
-                    </div>
-                  </div>
+                    })
+                  )}
                 </div>
               </div>
 
+              {/* ── Resize handle ──────────────────────────────────────── */}
               <button
                 type="button"
-                aria-label="Resize trace and inspector panels"
+                aria-label="Resize panels"
                 className={cn(
-                  "w-1 border-0 p-0 cursor-col-resize bg-transparent transition-colors hover:bg-blue-400/45",
+                  "w-1 cursor-col-resize border-0 bg-transparent p-0 transition-colors hover:bg-blue-400/45",
                   isDraggingSplit && "bg-blue-500/60",
                 )}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  splitDraggingRef.current = true;
-                  setIsDraggingSplit(true);
-                }}
+                onMouseDown={handleSplitMouseDown}
               />
 
+              {/* ── Right: Output / Error / Loading ────────────────────── */}
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                {/* Inspector header */}
                 <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
                   <div className="flex min-w-0 items-center gap-2">
-                    <TraceStatusIcon status={inspectorHeaderStatus} size={16} />
+                    <TraceStatusIcon status={inspectorStatus} size={16} />
                     <span className="truncate text-[13px] font-medium text-foreground">
-                      {inspectorHeaderName}
+                      {inspectorName}
                     </span>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIsMetadataCollapsed((previous) => !previous)
-                    }
-                    className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent"
-                  >
-                    <ChevronDownIcon
-                      className={cn(
-                        "size-3 transition-transform duration-200",
-                        isMetadataCollapsed && "-rotate-90",
-                      )}
-                    />
-                    {isMetadataCollapsed ? "Show details" : "Hide details"}
-                  </button>
-                </div>
-
-                <div
-                  className="grid transition-[grid-template-rows] duration-[250ms] ease-out"
-                  style={{
-                    gridTemplateRows: isMetadataCollapsed ? "0fr" : "1fr",
-                  }}
-                >
-                  <div className="min-h-0 overflow-hidden">
-                    <div className="flex flex-wrap gap-y-0 border-b border-border bg-muted/30">
-                      {metadataEntries.map((entry, index) => (
-                        <div
-                          key={entry.label}
-                          className={cn(
-                            "min-w-0 flex-[1_1_160px] px-3 py-2",
-                            index < metadataEntries.length - 1 &&
-                              "border-r border-border",
-                          )}
+                  {selectedWorkflowNode?.status === "success" &&
+                    outputPayloadText && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCopy(outputPayloadText, "output")
+                          }
+                          className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent"
                         >
-                          <div className="mb-1 text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-                            {entry.label}
-                          </div>
-                          <div
-                            className={cn(
-                              "max-w-full truncate text-[12px] font-medium text-foreground",
-                              entry.danger && "text-red-600",
-                              entry.mono && "font-mono text-[11px]",
-                            )}
-                            title={entry.value}
-                          >
-                            {entry.value}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center border-b border-border px-3">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("output")}
-                    className={cn(
-                      "-mb-px border-b-2 px-3 py-2 text-xs transition-colors",
-                      activeTab === "output"
-                        ? "border-b-blue-500 font-medium text-foreground"
-                        : "border-b-transparent text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    Output
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("error")}
-                    className={cn(
-                      "-mb-px inline-flex items-center gap-1 border-b-2 px-3 py-2 text-xs transition-colors",
-                      activeTab === "error"
-                        ? "border-b-blue-500 font-medium text-foreground"
-                        : "border-b-transparent text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                    Error details
-                  </button>
-                </div>
-
-                <div className="min-h-0 flex-1 overflow-auto p-4 pb-12">
-                  {activeTab === "error" ? (
-                    <div>
-                      {effectiveError ? (
-                        <div className="mb-4 flex items-start gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-red-700">
-                          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100">
-                            <AlertTriangleIcon className="size-3.5" />
-                          </span>
-                          <span className="text-xs leading-relaxed">
-                            {effectiveError}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="mb-4 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                          No execution error is currently available.
-                        </div>
-                      )}
-
-                      <div className="overflow-hidden rounded-md border border-border bg-muted/25">
-                        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                          <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-                            Stack trace
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(stackTraceText, "error")}
-                            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                            disabled={!stackTraceText}
-                          >
-                            <CopyIcon className="size-3" />
-                            {copiedState === "error" ? "Copied" : "Copy"}
-                          </button>
-                        </div>
-
-                        <div className="max-h-[280px] overflow-auto px-3 py-2 font-mono text-xs leading-6">
-                          {stackTraceLines.length > 0 ? (
-                            stackTraceLines.map((line, index) => (
-                              <div
-                                key={`${index + 1}-${line}`}
-                                className="flex gap-3"
-                              >
-                                <span className="w-5 shrink-0 select-none text-right text-[11px] text-muted-foreground">
-                                  {index + 1}
-                                </span>
-                                <span
-                                  className={cn(
-                                    index === 0
-                                      ? "text-red-600"
-                                      : "text-muted-foreground",
-                                  )}
-                                >
-                                  {line}
-                                </span>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="px-1 py-1 text-muted-foreground">
-                              No stack trace available for this execution.
-                            </div>
-                          )}
-                        </div>
+                          <CopyIcon className="size-3" />
+                          {copiedState === "output" ? "Copied" : "Copy"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDownloadOutput}
+                          className="inline-flex items-center gap-1 rounded border border-border bg-background px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent"
+                        >
+                          <DownloadIcon className="size-3" />
+                          Download
+                        </button>
                       </div>
-                    </div>
-                  ) : (
-                    <div>
-                      \n{" "}
-                      {executionRawOutputQuery.isFetching ? (
-                        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                          <Loader2Icon className="size-4 animate-spin" />
-                          Loading output...
-                        </div>
-                      ) : selectedDatasetVariable && activeExecutionId ? (
-                        <div className="rounded-md border border-border bg-muted/20 p-3">
-                          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-xs font-medium text-foreground">
-                              Dataset: {selectedDatasetVariable}
-                            </span>
-                          </div>
-                          <ExecutionDatasetViewer
-                            executionId={activeExecutionId}
-                            variable={selectedDatasetVariable}
-                            enabled={true}
-                          />
-                        </div>
-                      ) : outputPayloadText ? (
-                        <div className="overflow-hidden rounded-md border border-border bg-muted/25">
-                          <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-                            <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-                              Step output
-                            </span>
+                    )}
+                </div>
 
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setIsOutputExpanded(true)}
-                                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                              >
-                                <Maximize2Icon className="size-3" />
-                                Expand
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleCopy(outputPayloadText, "output")
-                                }
-                                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                              >
-                                <CopyIcon className="size-3" />
-                                {copiedState === "output" ? "Copied" : "Copy"}
-                              </button>
-
-                              {isOutputPayloadLarge && (
-                                <button
-                                  type="button"
-                                  onClick={handleDownloadOutput}
-                                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
-                                >
-                                  <DownloadIcon className="size-3" />
-                                  Download
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {isOutputTooLargeToRender ? (
-                            <div className="flex flex-col items-center justify-center p-8 border-t border-border/80 text-amber-500 bg-amber-950/10">
-                              <div className="flex items-center gap-2 mb-4">
-                                <AlertTriangleIcon className="size-5 shrink-0" />
-                                <span className="text-[13px] font-medium text-amber-600 dark:text-amber-400">
-                                  Output size is too large to render ( &gt; 1MB
-                                  )
-                                </span>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={handleDownloadOutput}
-                                className="h-8 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-                              >
-                                <DownloadIcon className="mr-1.5 size-3.5" />
-                                Download Raw Data
-                              </Button>
-                            </div>
-                          ) : (
-                            <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 font-mono text-xs leading-6 text-muted-foreground">
-                              {outputPayloadPreview}
-                            </pre>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex h-[180px] flex-col items-center justify-center gap-2 rounded-md border border-dashed border-border bg-muted/20 text-xs text-muted-foreground pb-2">
-                          <Clock3Icon className="size-5" />
-                          No output for this selection.
-                        </div>
-                      )}
-                    </div>
-                  )}
+                {/* Content */}
+                <div className="min-h-0 flex-1 overflow-auto p-4">
+                  {renderRightPanel()}
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-      <Dialog open={isOutputExpanded} onOpenChange={setIsOutputExpanded}>
-        <DialogContent className="max-w-[80vw] w-[1000px] h-[80vh] flex flex-col p-0 gap-0">
-          <div className="flex items-center justify-between border-b border-border px-4 py-3 bg-muted/30">
-            <DialogTitle className="text-sm font-medium m-0 p-0">
-              Output Payload
-            </DialogTitle>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleCopy(outputPayloadText, "output")}
-                className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <CopyIcon className="size-3.5" />
-                {copiedState === "output" ? "Copied" : "Copy"}
-              </button>
-              {isOutputPayloadLarge && (
-                <button
-                  type="button"
-                  onClick={handleDownloadOutput}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <DownloadIcon className="size-3.5" />
-                  Download
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto bg-background p-4 flex">
-            {isOutputTooLargeToRender ? (
-              <div className="m-auto flex flex-col items-center justify-center p-8 text-amber-500 bg-amber-950/10 rounded-md border border-amber-900/20">
-                <div className="flex items-center gap-2 mb-4">
-                  <AlertTriangleIcon className="size-5 shrink-0" />
-                  <span className="text-[13px] font-medium text-amber-600 dark:text-amber-400">
-                    Output size is too large to render ( &gt; 1MB )
-                  </span>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDownloadOutput}
-                  className="h-8 border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
-                >
-                  <DownloadIcon className="mr-1.5 size-3.5" />
-                  Download Raw Data
-                </Button>
-              </div>
-            ) : (
-              <pre className="font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap break-words">
-                {outputPayloadText}
-              </pre>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 };

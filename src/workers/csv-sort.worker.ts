@@ -6,6 +6,8 @@ import {
   streamContextRows,
 } from "@/features/executions/components/csv-shared/executor-utils";
 import {
+  createKeyComparator,
+  createKeyExtractor,
   createRowComparator,
   type SortDirection,
   type SortNulls,
@@ -20,6 +22,10 @@ import {
 import type { DatasetSchema } from "@/features/executions/server/datasets/schema-types";
 import { TempFileManager } from "@/features/executions/server/datasets/temp-file-manager";
 import { inngest } from "@/inngest/client";
+import {
+  DEFAULT_WORKER_SETTINGS,
+  DEFAULT_WORKER_STALL_OPTIONS,
+} from "@/workers/worker-settings";
 
 const HEAVY_CONCURRENCY = 2;
 const QUEUE_NAME = "csv-sort";
@@ -27,6 +33,7 @@ const SORT_PROGRESS_EVENT_NAME = "csv/sort.progress";
 const SORT_WORKER_CODE_VERSION = "csv-sort@2026-04-08-fastpath-v2";
 const DATASET_REF_IN_MEMORY_ROW_THRESHOLD = 5_000_000;
 const SINGLE_NUMERIC_COLUMN_IN_MEMORY_ROW_THRESHOLD = 5_000_000;
+const SORT_PROGRESS_EMIT_INTERVAL_ROWS = 1_000_000;
 
 type SortCompareAs = "string" | "number" | "date";
 
@@ -44,6 +51,7 @@ type CsvSortSummary = {
 export interface CsvSortJobData {
   executionId: string;
   datasetId: string;
+  nodeId: string;
   variableName: string;
   sourceRef: unknown;
   sortField: string;
@@ -79,25 +87,48 @@ const isSingleNumericColumnSchema = (schema: DatasetSchema | undefined) => {
   return fields.length === 1 && fields[0]?.type === "number";
 };
 
-const emitSortStageProgress = async (
+const emitSortStageProgress = (
   job: Job<CsvSortJobData, CsvSortJobResult>,
   stage: string,
   details: Record<string, unknown>,
-) => {
-  try {
-    await inngest.send({
+): void => {
+  // Fire-and-forget — never await progress events inside hot paths.
+  // Awaiting was blocking the stream generator for every HTTP roundtrip.
+  inngest
+    .send({
       name: SORT_PROGRESS_EVENT_NAME,
       data: {
         executionId: job.data.executionId,
         datasetId: job.data.datasetId,
+        nodeId: job.data.nodeId,
         variableName: job.data.variableName,
         stage,
         ...details,
       },
+    })
+    .catch(() => {
+      // Best effort only.
     });
-  } catch {
-    // Best effort only.
+};
+
+const logSortLifecycle = (
+  job: Job<CsvSortJobData, CsvSortJobResult>,
+  message: string,
+  details?: Record<string, unknown>,
+  lineHint?: string,
+) => {
+  const messageWithLineHint = lineHint
+    ? `${message} (lineHint=${lineHint})`
+    : message;
+
+  if (details && Object.keys(details).length > 0) {
+    console.log(
+      `[csv-sort] job ${job.id} ${messageWithLineHint} ${JSON.stringify(details)}`,
+    );
+    return;
   }
+
+  console.log(`[csv-sort] job ${job.id} ${messageWithLineHint}`);
 };
 
 const workerConnection = new Redis(
@@ -147,10 +178,31 @@ const sortRows = async (
     schema: sourceSchema,
   });
 
+  // Precomputed key helpers — used for both in-memory and external sort.
+  // Key is computed once per row; comparisons then work on the scalar key
+  // value instead of re-running type coercion on every comparison call.
+  const extractKey = createKeyExtractor({
+    field: sortField,
+    direction,
+    compareAs,
+    nulls,
+    schema: sourceSchema,
+  });
+  const compareKeys = createKeyComparator(direction, nulls);
+
   const inlineRows = extractInlineRows(sourceRef);
   const datasetRefFastPathThreshold = isSingleNumericColumnSchema(sourceSchema)
     ? SINGLE_NUMERIC_COLUMN_IN_MEMORY_ROW_THRESHOLD
     : DATASET_REF_IN_MEMORY_ROW_THRESHOLD;
+
+  logSortLifecycle(job, "received payload", {
+    sourceRows,
+    sourceType: isDatasetRef(sourceRef) ? "dataset-ref" : "inline",
+    sortField,
+    direction,
+    compareAs,
+    nulls,
+  });
 
   const useFastPath =
     (isDatasetRef(sourceRef) && sourceRows <= datasetRefFastPathThreshold) ||
@@ -158,14 +210,42 @@ const sortRows = async (
       inlineRows.length > 0 &&
       inlineRows.length <= DATASET_STORAGE.MAX_INLINE_DATASET_ROWS);
 
+  logSortLifecycle(job, "selected strategy", {
+    strategy: useFastPath ? "in-memory" : "external",
+    sourceRows,
+  });
+
   if (useFastPath) {
     let rowsForSort = inlineRows;
 
+    emitSortStageProgress(job, "scanning", {
+      strategy: "in-memory",
+      sourceRows,
+      rowsScanned: 0,
+      rowsWritten: 0,
+      elapsedMs: Date.now() - startedAt,
+    });
+
     if (isDatasetRef(sourceRef)) {
+      logSortLifecycle(job, "loading rows for in-memory sort", {
+        sourceRows,
+      });
+
       rowsForSort = [];
       for await (const row of streamContextRows(sourceRef)) {
         rowsForSort.push(row);
-        if (rowsForSort.length % 10_000 === 0) {
+
+        if (rowsForSort.length % SORT_PROGRESS_EMIT_INTERVAL_ROWS === 0) {
+          emitSortStageProgress(job, "scanning", {
+            strategy: "in-memory",
+            sourceRows,
+            rowsScanned: rowsForSort.length,
+            rowsWritten: 0,
+            elapsedMs: Date.now() - startedAt,
+          });
+        }
+
+        if (rowsForSort.length % 500_000 === 0) {
           await job.updateProgress({
             phase: "loading",
             strategy: "in-memory",
@@ -174,13 +254,30 @@ const sortRows = async (
             rowsWritten: 0,
           });
         }
+
+        if (rowsForSort.length % 100_000 === 0) {
+          logSortLifecycle(
+            job,
+            "in-memory load progress",
+            {
+              rowsScanned: rowsForSort.length,
+              sourceRows,
+            },
+            "csv-sort.worker.ts:208",
+          );
+        }
       }
     }
 
-    await emitSortStageProgress(job, "load_done", {
+    emitSortStageProgress(job, "sorting", {
       strategy: "in-memory",
       rowsScanned: rowsForSort.length,
+      rowsWritten: 0,
       elapsedMs: Date.now() - startedAt,
+    });
+
+    logSortLifecycle(job, "starting in-memory sort", {
+      rowsToSort: rowsForSort.length,
     });
 
     await job.updateProgress({
@@ -190,20 +287,66 @@ const sortRows = async (
       rowsWritten: 0,
     });
 
-    const sorted = rowsForSort
-      .map((row, index) => ({ row, index }))
-      .sort((left, right) => {
-        const rowComparison = compareRows(left.row, right.row);
-        if (rowComparison !== 0) {
-          return rowComparison;
-        }
+    // Precompute one sort key per row — eliminates repeated type coercion
+    // inside comparisons (O(N log N) calls → O(N) key extractions).
+    const sortKeys = rowsForSort.map((r) =>
+      extractKey(r as Record<string, unknown>),
+    );
 
-        return left.index - right.index;
-      })
-      .map((entry) => entry.row);
+    const comparatorLogInterval = 1_000_000;
+    let compareCount = 0;
+    let nextComparatorLogAt = comparatorLogInterval;
 
-    await emitSortStageProgress(job, "sort_done", {
+    const indices = Array.from({ length: rowsForSort.length }, (_, i) => i);
+    indices.sort((a, b) => {
+      compareCount += 1;
+
+      if (compareCount >= nextComparatorLogAt) {
+        logSortLifecycle(
+          job,
+          "in-memory comparator heartbeat",
+          {
+            compareCount,
+            rowsToSort: rowsForSort.length,
+            elapsedMs: Date.now() - startedAt,
+          },
+          "csv-sort.worker.ts:243",
+        );
+        nextComparatorLogAt += comparatorLogInterval;
+      }
+
+      return compareKeys(
+        sortKeys[a] as number | string | null,
+        sortKeys[b] as number | string | null,
+        a,
+        b,
+      );
+    });
+
+    logSortLifecycle(
+      job,
+      "in-memory comparator finished",
+      {
+        compareCount,
+        rowsToSort: rowsForSort.length,
+        elapsedMs: Date.now() - startedAt,
+      },
+      "csv-sort.worker.ts:243",
+    );
+
+    const sorted = indices.map(
+      (i) => rowsForSort[i] as Record<string, unknown>,
+    );
+
+    emitSortStageProgress(job, "persisting", {
       strategy: "in-memory",
+      sourceRows,
+      rowsScanned: rowsForSort.length,
+      rowsWritten: 0,
+      elapsedMs: Date.now() - startedAt,
+    });
+
+    logSortLifecycle(job, "in-memory sort completed", {
       rowsSorted: sorted.length,
       elapsedMs: Date.now() - startedAt,
     });
@@ -228,8 +371,15 @@ const sortRows = async (
       completed: true,
     });
 
-    await emitSortStageProgress(job, "persist_done", {
+    emitSortStageProgress(job, "completed", {
       strategy: "in-memory",
+      sourceRows,
+      rowsScanned: rowsForSort.length,
+      rowsWritten: manifest.rowCount,
+      elapsedMs: Date.now() - startedAt,
+    });
+
+    logSortLifecycle(job, "in-memory output persisted", {
       rowsWritten: manifest.rowCount,
       elapsedMs: Date.now() - startedAt,
     });
@@ -259,10 +409,35 @@ const sortRows = async (
   }
 
   let rowsScanned = 0;
+  emitSortStageProgress(job, "scanning", {
+    strategy: "external",
+    sourceRows,
+    rowsScanned: 0,
+    rowsWritten: 0,
+    elapsedMs: Date.now() - startedAt,
+  });
+
+  logSortLifecycle(job, "starting external sort", {
+    sourceRows,
+    runTargetBytes: DATASET_STORAGE.EXTERNAL_SORT_RUN_TARGET_BYTES,
+    mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
+  });
+
   const sourceWithProgress = (async function* () {
     for await (const row of streamContextRows(sourceRef)) {
       rowsScanned += 1;
-      if (rowsScanned % 10_000 === 0) {
+
+      if (rowsScanned % SORT_PROGRESS_EMIT_INTERVAL_ROWS === 0) {
+        emitSortStageProgress(job, "scanning", {
+          strategy: "external",
+          sourceRows,
+          rowsScanned,
+          rowsWritten: 0,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+
+      if (rowsScanned % 500_000 === 0) {
         await job.updateProgress({
           phase: "sorting",
           strategy: "external",
@@ -271,6 +446,19 @@ const sortRows = async (
           rowsWritten: 0,
         });
       }
+
+      if (rowsScanned % 100_000 === 0) {
+        logSortLifecycle(
+          job,
+          "external scan progress",
+          {
+            rowsScanned,
+            sourceRows,
+          },
+          "csv-sort.worker.ts:350",
+        );
+      }
+
       yield row;
     }
   })();
@@ -280,26 +468,79 @@ const sortRows = async (
     executionId,
   });
 
+  emitSortStageProgress(job, "building_runs", {
+    strategy: "external",
+    sourceRows,
+    rowsScanned,
+    rowsWritten: 0,
+    elapsedMs: Date.now() - startedAt,
+  });
+
   const externalSort = await externalSortRows({
     source: sourceWithProgress,
     compareRows,
+    extractKey: extractKey as (row: unknown) => number | string | null,
+    compareKeys,
     tempManager,
     runTargetBytes: DATASET_STORAGE.EXTERNAL_SORT_RUN_TARGET_BYTES,
     mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
   });
 
-  await emitSortStageProgress(job, "run_done", {
+  const estimatedMergePasses =
+    externalSort.runCount <= 1
+      ? 0
+      : Math.ceil(
+          Math.log(externalSort.runCount) /
+            Math.log(Math.max(DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN, 2)),
+        );
+
+  emitSortStageProgress(job, "merging", {
     strategy: "external",
+    sourceRows,
+    rowsScanned,
+    runCount: externalSort.runCount,
+    mergePass: estimatedMergePasses > 0 ? 1 : 0,
+    mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
+    rowsWritten: 0,
+    elapsedMs: Date.now() - startedAt,
+  });
+
+  logSortLifecycle(job, "external run generation completed", {
     rowsScanned,
     runCount: externalSort.runCount,
     elapsedMs: Date.now() - startedAt,
   });
 
   let rowsWritten = 0;
+  emitSortStageProgress(job, "persisting", {
+    strategy: "external",
+    sourceRows,
+    rowsScanned,
+    rowsWritten: 0,
+    runCount: externalSort.runCount,
+    mergePass: estimatedMergePasses,
+    mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
+    elapsedMs: Date.now() - startedAt,
+  });
+
   const sortedWithProgress = (async function* () {
     for await (const row of externalSort.rows) {
       rowsWritten += 1;
-      if (rowsWritten % 10_000 === 0) {
+
+      if (rowsWritten % SORT_PROGRESS_EMIT_INTERVAL_ROWS === 0) {
+        emitSortStageProgress(job, "persisting", {
+          strategy: "external",
+          sourceRows,
+          rowsScanned,
+          rowsWritten,
+          runCount: externalSort.runCount,
+          mergePass: estimatedMergePasses,
+          mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+
+      if (rowsWritten % 500_000 === 0) {
         await job.updateProgress({
           phase: "writing",
           strategy: "external",
@@ -309,6 +550,20 @@ const sortRows = async (
           runCount: externalSort.runCount,
         });
       }
+
+      if (rowsWritten % 100_000 === 0) {
+        logSortLifecycle(
+          job,
+          "external write progress",
+          {
+            rowsWritten,
+            rowsScanned,
+            runCount: externalSort.runCount,
+          },
+          "csv-sort.worker.ts:402",
+        );
+      }
+
       yield row;
     }
   })();
@@ -332,10 +587,20 @@ const sortRows = async (
     completed: true,
   });
 
-  await emitSortStageProgress(job, "persist_done", {
+  emitSortStageProgress(job, "completed", {
     strategy: "external",
+    sourceRows,
     rowsScanned,
     rowsWritten: manifest.rowCount,
+    runCount: externalSort.runCount,
+    mergePass: estimatedMergePasses,
+    mergeFanIn: DATASET_STORAGE.EXTERNAL_SORT_MAX_FAN_IN,
+    elapsedMs: Date.now() - startedAt,
+  });
+
+  logSortLifecycle(job, "external output persisted", {
+    rowsWritten: manifest.rowCount,
+    rowsScanned,
     runCount: externalSort.runCount,
     elapsedMs: Date.now() - startedAt,
   });
@@ -375,16 +640,14 @@ const worker = new Worker<CsvSortJobData, CsvSortJobResult>(
   {
     connection: workerConnection,
     concurrency: HEAVY_CONCURRENCY,
-    settings: {
-      backoffStrategy: (attemptsMade) =>
-        Math.min(1000 * 2 ** attemptsMade, 30_000),
-    },
+    settings: DEFAULT_WORKER_SETTINGS,
+    ...DEFAULT_WORKER_STALL_OPTIONS,
   },
 );
 
 worker.on("completed", async (job, result) => {
   console.log(
-    `[csv-sort] job ${job.id} complete - ${result.datasetRef.rowCount.toLocaleString()} rows`,
+    `[csv-sort] job ${job.id} complete - ${result.datasetRef.rowCount.toLocaleString()} rows (strategy=${result.summary.strategy})`,
   );
 
   try {
@@ -393,6 +656,7 @@ worker.on("completed", async (job, result) => {
       data: {
         executionId: job.data.executionId,
         datasetId: result.datasetRef.datasetId,
+        nodeId: job.data.nodeId,
         variableName: job.data.variableName,
         result,
       },
@@ -414,6 +678,7 @@ worker.on("failed", async (job, error) => {
     const failurePayload = {
       executionId: job?.data.executionId,
       datasetId: job?.data.datasetId,
+      nodeId: job?.data.nodeId,
       variableName: job?.data.variableName,
       error: error.message,
       reason: error.message,

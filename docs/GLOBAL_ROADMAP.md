@@ -456,18 +456,16 @@ Trigger nodes follow the same 4-file pattern as execution nodes (`node.tsx`, `di
 
 ## Docs
 
-| File                                         | Purpose                                                                                                            |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `docs/GLOBAL_ROADMAP.md`                     | This file — complete map of every file in the project.                                                             |
-| `docs/AI_NODES_IMPLEMENTATION.md`            | Guide for implementing AI nodes (OpenAI, Anthropic, Gemini) — architecture, executor pattern, credential handling. |
-| `docs/FEATURES_OVERVIEW.md`                  | High-level overview of all application features.                                                                   |
-| `docs/MESSAGING_NODES_TESTING_GUIDE.md`      | Testing guide for messaging nodes (Discord, Slack, Telegram, Email, WhatsApp).                                     |
-| `docs/SOLUTION_VARIABLE_NAME_FIX.md`         | Documents a specific bug fix related to variable name resolution in workflows.                                     |
-| `docs/STRIPE_INTEGRATION.md`                 | Stripe integration architecture — webhook setup, trigger node, event handling.                                     |
-| `docs/STRIPE_TESTING_GUIDE.md`               | Guide for testing Stripe webhook triggers locally with Stripe CLI.                                                 |
-| `docs/TESTING_INSTRUCTIONS.md`               | General testing instructions and setup guide.                                                                      |
-| `docs/VARIABLE_GUIDE.md`                     | Guide for using variables and Handlebars templates in workflow nodes.                                              |
-| `docs/WORKFLOW_HTTP_REQUEST_DEBUG_REPORT.md` | Debug report for HTTP request node issues.                                                                         |
+| File                                           | Purpose                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------ |
+| `docs/GLOBAL_ROADMAP.md`                       | This file — complete map of every file in the project.                         |
+| `docs/ARCHITECTURE_CRITIQUE.md`                | Architecture strengths, risks, and recommended improvements.                   |
+| `docs/FEATURES_OVERVIEW.md`                    | High-level overview of all application features.                               |
+| `docs/MESSAGING_NODES_TESTING_GUIDE.md`        | Testing guide for messaging nodes (Discord, Slack, Telegram, Email, WhatsApp). |
+| `docs/TESTING_INSTRUCTIONS.md`                 | General testing instructions and setup guide.                                  |
+| `docs/VARIABLE_GUIDE.md`                       | Guide for using variables and Handlebars templates in workflow nodes.          |
+| `docs/WORKFLOW_EXECUTION_PANEL.md`             | Workflow progress panel behavior and execution inspector documentation.        |
+| `docs/WORKFLOW_EXECUTION_PERFORMANCE_GUIDE.md` | Workflow execution performance guidance and optimization notes.                |
 
 ---
 

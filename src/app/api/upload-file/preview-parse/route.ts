@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
-import { Queue } from "bullmq";
 import { createId } from "@paralleldrive/cuid2";
+import { Queue } from "bullmq";
 import { type NextRequest, NextResponse } from "next/server";
 import { requestCsvParseCancellation } from "@/features/executions/server/csv-parse-cancel";
 import { getExecutionDatasetsDirectory } from "@/features/executions/server/datasets/paths";
@@ -11,7 +11,10 @@ import {
   resolveWorkflowFileAssetContentPath,
 } from "@/features/executions/server/workflow-file-assets";
 import { auth } from "@/lib/auth";
-import type { CsvParseJobData, CsvParseJobResult } from "@/workers/csv-parse.worker";
+import type {
+  CsvParseJobData,
+  CsvParseJobResult,
+} from "@/workers/csv-parse.worker";
 
 const connection = getRedisConnection();
 
@@ -83,7 +86,10 @@ export async function POST(request: NextRequest) {
   }
 
   if (!body.fileRef) {
-    return NextResponse.json({ error: "fileRef is required." }, { status: 400 });
+    return NextResponse.json(
+      { error: "fileRef is required." },
+      { status: 400 },
+    );
   }
 
   try {
@@ -103,7 +109,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fileBlobPath = await resolveWorkflowFileAssetContentPath(body.fileRef);
+    const fileBlobPath = await resolveWorkflowFileAssetContentPath(
+      body.fileRef,
+    );
     const previewExecutionId = `preview_${createId()}`;
     const datasetId = `preview_${createId()}`;
     const variableName =

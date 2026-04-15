@@ -7,14 +7,9 @@ export type JoinType =
   | "left"
   | "right"
   | "full"
+  | "full_exclusive"
   | "left_exclusive"
-  | "right_exclusive"
-  | "cross"
-  | "semi"
-  | "anti"
-  | "natural"
-  | "union"
-  | "union_all";
+  | "right_exclusive";
 
 export type JoinBuildSide = "left" | "right";
 
@@ -62,33 +57,20 @@ const validateJoinKey = (label: "leftKey" | "rightKey", value: string) => {
 };
 
 export const planJoinStrategy = (input: PlanJoinInput): JoinPlan => {
-  if (input.joinType === "union" || input.joinType === "union_all") {
-    throw new Error("Union types must be routed before reaching the planner.");
-  }
-  if (
-    input.joinType !== "cross" &&
-    input.joinType !== "natural" &&
-    (!input.leftKeys || input.leftKeys.length === 0)
-  ) {
+  if (!input.leftKeys || input.leftKeys.length === 0) {
     return { strategy: "reject", reason: "leftKeys must be provided" };
   }
-  if (
-    input.joinType !== "cross" &&
-    input.joinType !== "natural" &&
-    (!input.rightKeys || input.rightKeys.length === 0)
-  ) {
+  if (!input.rightKeys || input.rightKeys.length === 0) {
     return { strategy: "reject", reason: "rightKeys must be provided" };
   }
 
-  if (input.joinType !== "cross" && input.joinType !== "natural") {
-    for (const key of input.leftKeys) {
-      const leftKeyError = validateJoinKey("leftKey", key);
-      if (leftKeyError) return { strategy: "reject", reason: leftKeyError };
-    }
-    for (const key of input.rightKeys) {
-      const rightKeyError = validateJoinKey("rightKey", key);
-      if (rightKeyError) return { strategy: "reject", reason: rightKeyError };
-    }
+  for (const key of input.leftKeys) {
+    const leftKeyError = validateJoinKey("leftKey", key);
+    if (leftKeyError) return { strategy: "reject", reason: leftKeyError };
+  }
+  for (const key of input.rightKeys) {
+    const rightKeyError = validateJoinKey("rightKey", key);
+    if (rightKeyError) return { strategy: "reject", reason: rightKeyError };
   }
 
   const leftRows = Math.max(0, input.leftRows);
@@ -112,18 +94,12 @@ export const planJoinStrategy = (input: PlanJoinInput): JoinPlan => {
   }
 
   const buildSide: JoinBuildSide =
-    input.joinType === "semi" || input.joinType === "anti"
-      ? "right"
-      : (input.estimate?.recommendedBuildSide ??
-        (leftRows <= rightRows ? "left" : "right"));
+    input.estimate?.recommendedBuildSide ??
+    (leftRows <= rightRows ? "left" : "right");
 
   const buildSideRows = buildSide === "left" ? leftRows : rightRows;
-  const isFilteredJoin = input.joinType === "semi" || input.joinType === "anti";
 
-  if (
-    !isFilteredJoin &&
-    buildSideRows > DATASET_STORAGE.JOIN_MAX_BUILD_SIDE_ROWS
-  ) {
+  if (buildSideRows > DATASET_STORAGE.JOIN_MAX_BUILD_SIDE_ROWS) {
     return {
       strategy: "reject",
       reason:
@@ -135,7 +111,9 @@ export const planJoinStrategy = (input: PlanJoinInput): JoinPlan => {
     if (!input.estimate.warnings) {
       input.estimate.warnings = [];
     }
-    input.estimate.warnings.push(`Join cardinality warning: ${input.estimate.guidance}`);
+    input.estimate.warnings.push(
+      `Join cardinality warning: ${input.estimate.guidance}`,
+    );
     // Instead of rejecting the join, we allow it to proceed with a severe warning.
   }
 

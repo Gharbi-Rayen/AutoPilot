@@ -3,6 +3,12 @@ import z from "zod";
 export const datasetVariableInput = z.object({
   executionId: z.string(),
   variable: z.string().min(1),
+  nodeId: z.string().min(1).optional(),
+});
+
+export const nodeOutputInput = z.object({
+  executionId: z.string(),
+  nodeId: z.string().min(1),
 });
 
 export const datasetChunkInput = datasetVariableInput.extend({

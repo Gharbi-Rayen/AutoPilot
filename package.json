@@ -14,7 +14,13 @@
     "worker:join": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-join.worker.ts",
     "worker:sort": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-sort.worker.ts",
     "worker:sequence": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-consecutive-sequence.worker.ts",
-    "dev:all": "concurrently --names \"next,parse,join,sort,sequence,inngest\" --prefix-colors \"cyan,green,yellow,blue,magenta,white\" \"npm run dev\" \"npm run worker:parse\" \"npm run worker:join\" \"npm run worker:sort\" \"npm run worker:sequence\" \"npm run inngest:dev\""
+    "worker:filter": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-filter.worker.ts",
+    "worker:aggregate": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-aggregate.worker.ts",
+    "worker:compare": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-compare.worker.ts",
+    "worker:column-stats": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-column-stats.worker.ts",
+    "worker:deduplicate": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-deduplicate.worker.ts",
+    "worker:transform": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata tsx watch src/workers/csv-transform.worker.ts",
+    "dev:all": "concurrently --names \"next,parse,join,sort,sequence,filter,aggregate,compare,columnstats,deduplicate,inngest\" --prefix-colors \"cyan,green,yellow,blue,magenta,red,white,cyan,green,yellow,blue\" \"npm run dev\" \"npm run worker:parse\" \"npm run worker:join\" \"npm run worker:sort\" \"npm run worker:sequence\" \"npm run worker:filter\" \"npm run worker:aggregate\" \"npm run worker:compare\" \"npm run worker:column-stats\" \"npm run worker:deduplicate\" \"npm run inngest:dev\""
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.58",
@@ -115,6 +121,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
+    "@faker-js/faker": "^10.4.0",
     "@tailwindcss/postcss": "^4",
     "@types/dagre": "^0.7.54",
     "@types/jest": "^30.0.0",

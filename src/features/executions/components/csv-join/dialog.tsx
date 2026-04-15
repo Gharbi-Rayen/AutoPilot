@@ -44,8 +44,8 @@ const formSchemaBase = z.object({
   rightVariable: z.string().min(1, { message: "Right variable is required" }),
   keyPairs: z.array(
     z.object({
-      leftKey: z.string().min(1, "Left key is required"),
-      rightKey: z.string().min(1, "Right key is required"),
+      leftKey: z.string(),
+      rightKey: z.string(),
     }),
   ),
   joinType: z.enum([
@@ -53,14 +53,9 @@ const formSchemaBase = z.object({
     "left",
     "right",
     "full",
+    "full_exclusive",
     "left_exclusive",
     "right_exclusive",
-    "cross",
-    "semi",
-    "anti",
-    "natural",
-    "union",
-    "union_all",
   ]),
   caseInsensitive: z.boolean().optional(),
   outputColumns: z
@@ -82,19 +77,33 @@ const formSchemaBase = z.object({
 });
 
 const formSchema = formSchemaBase.superRefine((data, ctx) => {
-  if (
-    data.joinType !== "cross" &&
-    data.joinType !== "natural" &&
-    data.joinType !== "union" &&
-    data.joinType !== "union_all" &&
-    data.keyPairs.length === 0
-  ) {
+  if (data.keyPairs.length === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "At least one key pair is required",
       path: ["keyPairs"],
     });
+
+    return;
   }
+
+  data.keyPairs.forEach((pair, index) => {
+    if (!pair.leftKey.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Left key is required",
+        path: ["keyPairs", index, "leftKey"],
+      });
+    }
+
+    if (!pair.rightKey.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Right key is required",
+        path: ["keyPairs", index, "rightKey"],
+      });
+    }
+  });
 });
 
 export type CsvJoinFormValues = z.infer<typeof formSchemaBase>;
@@ -170,25 +179,22 @@ export const CsvJoinDialog = ({
     }
 
     let estimatedOutputRows = 0;
-    if (watchJoinType === "cross") {
-      estimatedOutputRows = leftRowCount * rightRowCount;
-    } else if (watchJoinType === "union" || watchJoinType === "union_all") {
+    if (watchJoinType === "full") {
+      // Worst case (zero key overlap) = L + R.
       estimatedOutputRows = leftRowCount + rightRowCount;
-    } else if (
-      watchJoinType === "left" ||
-      watchJoinType === "left_exclusive" ||
-      watchJoinType === "semi" ||
-      watchJoinType === "anti"
-    ) {
+    } else if (watchJoinType === "full_exclusive") {
+      // Upper bound: rows with no match on either side = L + R.
+      estimatedOutputRows = leftRowCount + rightRowCount;
+    } else if (watchJoinType === "left") {
       estimatedOutputRows = leftRowCount;
-    } else if (
-      watchJoinType === "right" ||
-      watchJoinType === "right_exclusive"
-    ) {
+    } else if (watchJoinType === "left_exclusive") {
+      estimatedOutputRows = leftRowCount;
+    } else if (watchJoinType === "right") {
       estimatedOutputRows = rightRowCount;
-    } else if (watchJoinType === "full") {
-      estimatedOutputRows = Math.max(leftRowCount, rightRowCount);
+    } else if (watchJoinType === "right_exclusive") {
+      estimatedOutputRows = rightRowCount;
     } else {
+      // inner: upper bound = min(L, R).
       estimatedOutputRows = Math.min(leftRowCount, rightRowCount);
     }
 
@@ -229,7 +235,17 @@ export const CsvJoinDialog = ({
   }, [open, defaultValues, form]);
 
   const handleSubmit = (values: CsvJoinFormValues) => {
-    onSubmit(values);
+    const normalizedValues: CsvJoinFormValues = {
+      ...values,
+      keyPairs: values.keyPairs
+        .map((pair) => ({
+          leftKey: pair.leftKey.trim(),
+          rightKey: pair.rightKey.trim(),
+        }))
+        .filter((pair) => pair.leftKey.length > 0 && pair.rightKey.length > 0),
+    };
+
+    onSubmit(normalizedValues);
     onOpenChange(false);
   };
 
@@ -240,9 +256,10 @@ export const CsvJoinDialog = ({
           <DialogTitle>Join CSV Datasets</DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto px-1 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-1 py-4 min-h-0">
           <Form {...form}>
             <form
+              id="csv-join-form"
               onSubmit={form.handleSubmit(handleSubmit)}
               className="space-y-5"
             >
@@ -278,125 +295,108 @@ export const CsvJoinDialog = ({
                 )}
               />
 
-              {watchJoinType === "natural" && (
-                <div className="rounded-md border p-4 shadow-sm">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
                   <FormLabel>Key Pairs</FormLabel>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Keys are automatically matched on shared column names.
-                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => append({ leftKey: "", rightKey: "" })}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Key Pair
+                  </Button>
                 </div>
-              )}
-              {watchJoinType !== "cross" &&
-                watchJoinType !== "natural" &&
-                watchJoinType !== "union" &&
-                watchJoinType !== "union_all" && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <FormLabel>Key Pairs</FormLabel>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => append({ leftKey: "", rightKey: "" })}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Key Pair
-                      </Button>
+
+                {fields.map((field, index) => (
+                  <div key={field.id} className="flex items-end gap-2">
+                    <div className="grid flex-1 grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name={`keyPairs.${index}.leftKey`}
+                        render={({ field: inputField }) => (
+                          <FormItem>
+                            {index === 0 && <FormLabel>Left Key</FormLabel>}
+                            <FormControl>
+                              <FieldSuggestionInput
+                                placeholder="customerId"
+                                value={inputField.value}
+                                onValueChange={inputField.onChange}
+                                suggestions={leftFieldSuggestions}
+                                mode="single"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name={`keyPairs.${index}.rightKey`}
+                        render={({ field: inputField }) => (
+                          <FormItem>
+                            {index === 0 && <FormLabel>Right Key</FormLabel>}
+                            <FormControl>
+                              <FieldSuggestionInput
+                                placeholder="id"
+                                value={inputField.value}
+                                onValueChange={inputField.onChange}
+                                suggestions={rightFieldSuggestions}
+                                mode="single"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
-
-                    {fields.map((field, index) => (
-                      <div key={field.id} className="flex items-end gap-2">
-                        <div className="grid flex-1 grid-cols-2 gap-4">
-                          <FormField
-                            control={form.control}
-                            name={`keyPairs.${index}.leftKey`}
-                            render={({ field: inputField }) => (
-                              <FormItem>
-                                {index === 0 && <FormLabel>Left Key</FormLabel>}
-                                <FormControl>
-                                  <FieldSuggestionInput
-                                    placeholder="customerId"
-                                    value={inputField.value}
-                                    onValueChange={inputField.onChange}
-                                    suggestions={leftFieldSuggestions}
-                                    mode="single"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name={`keyPairs.${index}.rightKey`}
-                            render={({ field: inputField }) => (
-                              <FormItem>
-                                {index === 0 && (
-                                  <FormLabel>Right Key</FormLabel>
-                                )}
-                                <FormControl>
-                                  <FieldSuggestionInput
-                                    placeholder="id"
-                                    value={inputField.value}
-                                    onValueChange={inputField.onChange}
-                                    suggestions={rightFieldSuggestions}
-                                    mode="single"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="mb-0.5"
-                          onClick={() => remove(index)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Remove</span>
-                        </Button>
-                      </div>
-                    ))}
-                    {form.formState.errors.keyPairs?.root && (
-                      <p className="text-[0.8rem] font-medium text-destructive">
-                        {form.formState.errors.keyPairs.root.message}
-                      </p>
-                    )}
-                    {form.formState.errors.keyPairs &&
-                      !form.formState.errors.keyPairs.root &&
-                      Array.isArray(form.formState.errors.keyPairs) ===
-                        false && (
-                        <p className="text-[0.8rem] font-medium text-destructive">
-                          {form.formState.errors.keyPairs.message as string}
-                        </p>
-                      )}
-                    <FormField
-                      control={form.control}
-                      name="caseInsensitive"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm mt-4">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <div className="space-y-1 leading-none">
-                            <FormLabel>Case-insensitive key matching</FormLabel>
-                            <FormDescription>
-                              Treats 'USA' and 'usa' as equal when matching
-                              keys.
-                            </FormDescription>
-                          </div>
-                        </FormItem>
-                      )}
-                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="mb-0.5"
+                      onClick={() => remove(index)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Remove</span>
+                    </Button>
                   </div>
+                ))}
+                {form.formState.errors.keyPairs?.root && (
+                  <p className="text-[0.8rem] font-medium text-destructive">
+                    {form.formState.errors.keyPairs.root.message}
+                  </p>
                 )}
+                {form.formState.errors.keyPairs &&
+                  !form.formState.errors.keyPairs.root &&
+                  Array.isArray(form.formState.errors.keyPairs) === false && (
+                    <p className="text-[0.8rem] font-medium text-destructive">
+                      {form.formState.errors.keyPairs.message as string}
+                    </p>
+                  )}
+                <FormField
+                  control={form.control}
+                  name="caseInsensitive"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm mt-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Case-insensitive key matching</FormLabel>
+                        <FormDescription>
+                          Treats 'USA' and 'usa' as equal when matching keys.
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <FormField
                 control={form.control}
@@ -415,46 +415,21 @@ export const CsvJoinDialog = ({
                         <SelectItem value="left">Left Join</SelectItem>
                         <SelectItem value="right">Right Join</SelectItem>
                         <SelectItem value="full">Full Outer Join</SelectItem>
+                        <SelectItem value="full_exclusive">
+                          Full Exclusive Join
+                        </SelectItem>
                         <SelectItem value="left_exclusive">
                           Left Exclusive Join
                         </SelectItem>
                         <SelectItem value="right_exclusive">
                           Right Exclusive Join
                         </SelectItem>
-                        <SelectItem value="cross">Cross Join</SelectItem>
-                        <SelectItem value="semi">Semi Join</SelectItem>
-                        <SelectItem value="anti">Anti Join</SelectItem>
-                        <SelectItem value="natural">Natural Join</SelectItem>
-                        <SelectItem value="union">Union</SelectItem>
-                        <SelectItem value="union_all">Union All</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      {field.value === "semi" || field.value === "anti" ? (
-                        <span className="font-medium text-amber-600 dark:text-amber-500">
-                          Output contains only left dataset columns.
-                        </span>
-                      ) : field.value === "natural" ? (
-                        <span className="font-medium text-blue-600 dark:text-blue-500">
-                          Keys are automatically matched on shared column names.
-                        </span>
-                      ) : field.value === "union" ||
-                        field.value === "union_all" ? (
-                        <span className="flex flex-col gap-1 mt-1">
-                          <span className="text-muted-foreground">
-                            Stacks both datasets vertically. Columns should
-                            match in both datasets.
-                          </span>
-                          {field.value === "union" && (
-                            <span className="font-medium text-amber-600 dark:text-amber-500 text-xs">
-                              Deduplication is limited to 500,000 rows. Use CSV
-                              Deduplicate for larger datasets.
-                            </span>
-                          )}
-                        </span>
-                      ) : (
-                        "Inner, left, right, full, cross, exclusive, semi, and anti joins are supported."
-                      )}
+                      {field.value === "full_exclusive"
+                        ? "Rows that have no match on either side (left-exclusive ∪ right-exclusive)."
+                        : "Inner, left, right, full, and exclusive joins are supported."}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -478,157 +453,141 @@ export const CsvJoinDialog = ({
                 )}
               />
 
-              {watchJoinType !== "union" &&
-                watchJoinType !== "union_all" &&
-                watchLeftVariable &&
-                watchRightVariable && (
-                  <Collapsible
-                    open={isOutputColumnsOpen}
-                    onOpenChange={setIsOutputColumnsOpen}
-                    className="w-full space-y-2 rounded-md border p-4 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <h4 className="text-sm font-semibold">
-                          Output Columns
-                        </h4>
-                        <p className="text-xs text-muted-foreground">
-                          Select columns to include in the output
-                        </p>
-                      </div>
-                      <CollapsibleTrigger asChild>
-                        <Button variant="ghost" size="sm" className="w-9 p-0">
-                          <ChevronDown
-                            className={`h-4 w-4 transition-transform duration-200 ${
-                              isOutputColumnsOpen ? "rotate-180" : ""
-                            }`}
-                          />
-                          <span className="sr-only">Toggle output columns</span>
-                        </Button>
-                      </CollapsibleTrigger>
+              {watchLeftVariable && watchRightVariable && (
+                <Collapsible
+                  open={isOutputColumnsOpen}
+                  onOpenChange={setIsOutputColumnsOpen}
+                  className="w-full space-y-2 rounded-md border p-4 shadow-sm"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-semibold">Output Columns</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Select columns to include in the output
+                      </p>
                     </div>
-
-                    <CollapsibleContent className="space-y-4">
-                      {outputFields.length === 0 ? (
-                        <p className="text-sm text-muted-foreground italic">
-                          All columns included by default.
-                        </p>
-                      ) : (
-                        <div className="space-y-3">
-                          {outputFields.map((field, index) => (
-                            <div
-                              key={field.id}
-                              className="flex items-end gap-2"
-                            >
-                              <FormField
-                                control={form.control}
-                                name={`outputColumns.${index}.source`}
-                                render={({ field: sourceField }) => (
-                                  <FormItem className="w-1/4">
-                                    {index === 0 && (
-                                      <FormLabel>Source</FormLabel>
-                                    )}
-                                    <Select
-                                      onValueChange={sourceField.onChange}
-                                      defaultValue={sourceField.value}
-                                    >
-                                      <FormControl>
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Select" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        <SelectItem value="left">
-                                          Left
-                                        </SelectItem>
-                                        <SelectItem value="right">
-                                          Right
-                                        </SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name={`outputColumns.${index}.column`}
-                                render={({ field: inputField }) => (
-                                  <FormItem className="w-2/4">
-                                    {index === 0 && (
-                                      <FormLabel>Column</FormLabel>
-                                    )}
-                                    <FormControl>
-                                      <FieldSuggestionInput
-                                        placeholder="Column Name"
-                                        value={inputField.value ?? ""}
-                                        onValueChange={inputField.onChange}
-                                        suggestions={
-                                          form.watch(
-                                            `outputColumns.${index}.source`,
-                                          ) === "right"
-                                            ? rightFieldSuggestions
-                                            : leftFieldSuggestions
-                                        }
-                                        mode="single"
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name={`outputColumns.${index}.alias`}
-                                render={({ field: inputField }) => (
-                                  <FormItem className="w-1/4">
-                                    {index === 0 && (
-                                      <FormLabel>Alias</FormLabel>
-                                    )}
-                                    <FormControl>
-                                      <Input
-                                        placeholder="Alias (optional)"
-                                        {...inputField}
-                                        value={inputField.value || ""}
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="mb-[2px] transition-colors hover:border-destructive hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                onClick={() => removeOutput(index)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                <span className="sr-only">Remove column</span>
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() =>
-                          appendOutput({
-                            source: "left",
-                            column: "",
-                            alias: "",
-                          })
-                        }
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Column
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="w-9 p-0">
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform duration-200 ${
+                            isOutputColumnsOpen ? "rotate-180" : ""
+                          }`}
+                        />
+                        <span className="sr-only">Toggle output columns</span>
                       </Button>
-                    </CollapsibleContent>
-                  </Collapsible>
-                )}
+                    </CollapsibleTrigger>
+                  </div>
+
+                  <CollapsibleContent className="space-y-4">
+                    {outputFields.length === 0 ? (
+                      <p className="text-sm text-muted-foreground italic">
+                        All columns included by default.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {outputFields.map((field, index) => (
+                          <div key={field.id} className="flex items-end gap-2">
+                            <FormField
+                              control={form.control}
+                              name={`outputColumns.${index}.source`}
+                              render={({ field: sourceField }) => (
+                                <FormItem className="w-1/4">
+                                  {index === 0 && <FormLabel>Source</FormLabel>}
+                                  <Select
+                                    onValueChange={sourceField.onChange}
+                                    defaultValue={sourceField.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="left">Left</SelectItem>
+                                      <SelectItem value="right">
+                                        Right
+                                      </SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name={`outputColumns.${index}.column`}
+                              render={({ field: inputField }) => (
+                                <FormItem className="w-2/4">
+                                  {index === 0 && <FormLabel>Column</FormLabel>}
+                                  <FormControl>
+                                    <FieldSuggestionInput
+                                      placeholder="Column Name"
+                                      value={inputField.value ?? ""}
+                                      onValueChange={inputField.onChange}
+                                      suggestions={
+                                        form.watch(
+                                          `outputColumns.${index}.source`,
+                                        ) === "right"
+                                          ? rightFieldSuggestions
+                                          : leftFieldSuggestions
+                                      }
+                                      mode="single"
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name={`outputColumns.${index}.alias`}
+                              render={({ field: inputField }) => (
+                                <FormItem className="w-1/4">
+                                  {index === 0 && <FormLabel>Alias</FormLabel>}
+                                  <FormControl>
+                                    <Input
+                                      placeholder="Alias (optional)"
+                                      {...inputField}
+                                      value={inputField.value || ""}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="mb-[2px] transition-colors hover:border-destructive hover:bg-destructive hover:text-destructive-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                              onClick={() => removeOutput(index)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Remove column</span>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() =>
+                        appendOutput({
+                          source: "left",
+                          column: "",
+                          alias: "",
+                        })
+                      }
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Column
+                    </Button>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
 
               {estimateFromPreview &&
                 estimateFromPreview.estimatedOutputRows >= 0 && (
@@ -652,13 +611,15 @@ export const CsvJoinDialog = ({
                     )}
                   </div>
                 )}
-
-              <DialogFooter className="pt-4 border-t sticky bottom-0 bg-background/95 backdrop-blur">
-                <Button type="submit">Save</Button>
-              </DialogFooter>
             </form>
           </Form>
         </div>
+
+        <DialogFooter className="border-t pt-4 flex-shrink-0">
+          <Button type="submit" form="csv-join-form">
+            Save
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

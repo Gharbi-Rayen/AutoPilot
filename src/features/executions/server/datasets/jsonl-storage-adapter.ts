@@ -426,25 +426,46 @@ export class JsonlStorageAdapter implements DatasetStorageAdapter {
     datasetId: string,
   ): AsyncGenerator<DatasetRow, void, void> {
     const manifest = await this.getManifest(executionId, datasetId);
+    const chunks = manifest.chunks;
 
-    for (const chunk of manifest.chunks) {
+    // Read-ahead window: while processing chunk N, the next PREFETCH chunks
+    // are already being read from disk concurrently.  This hides per-file
+    // open/close latency (especially significant on cloud-synced or slow
+    // storage) without holding more than PREFETCH × chunkSize in memory.
+    const PREFETCH = 4;
+    const pending = new Map<number, Promise<string>>();
+
+    const kickPrefetch = (i: number): void => {
+      const chunk = chunks[i];
+      if (!chunk || pending.has(i)) return;
+      const path = getDatasetChunkPath(executionId, datasetId, chunk.fileName);
+      pending.set(i, readFile(path, "utf-8"));
+    };
+
+    // Seed the initial window.
+    for (let i = 0; i < Math.min(PREFETCH, chunks.length); i++) {
+      kickPrefetch(i);
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (!chunk) continue;
+
+      // Extend the window one step ahead.
+      kickPrefetch(i + PREFETCH);
+
+      // Await the prefetched content (usually already ready).
       const chunkPath = getDatasetChunkPath(
         executionId,
         datasetId,
         chunk.fileName,
       );
-      const stream = createReadStream(chunkPath, { encoding: "utf-8" });
-      const reader = createInterface({
-        input: stream,
-        crlfDelay: Infinity,
-      });
+      const content = await (pending.get(i) ?? readFile(chunkPath, "utf-8"));
+      pending.delete(i);
 
       let lineNumber = 0;
-      for await (const line of reader) {
-        if (!line.trim()) {
-          continue;
-        }
-
+      for (const line of content.split("\n")) {
+        if (!line.trim()) continue;
         lineNumber += 1;
         const parsedRow = parseJsonLine(line, chunk.chunkIndex, lineNumber);
         yield normalizeRowAtReadBoundary(parsedRow, manifest.schema);

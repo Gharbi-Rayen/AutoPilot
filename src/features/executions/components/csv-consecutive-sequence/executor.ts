@@ -1,5 +1,6 @@
 import { NonRetriableError } from "inngest";
 import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
+import type { DatasetSchema } from "@/features/executions/server/datasets/schema-types";
 import {
   availableContextKeys,
   extractInlineRows,
@@ -261,30 +262,38 @@ export const CsvConsecutiveSequenceExecutor: NodeExecutor<
     );
 
     await step.run("enqueue-csv-consecutive-sequence", async () => {
-      const { Queue } = await import("bullmq");
-      const { default: Redis } = await import("ioredis");
-
-      const connection = new Redis(
-        process.env.REDIS_URL ?? "redis://localhost:6379",
+      const { getCsvConsecutiveSequenceQueue } = await import(
+        "@/lib/worker-queue"
+      );
+      const queue = getCsvConsecutiveSequenceQueue();
+      await queue.add(
+        "analyze",
         {
-          maxRetriesPerRequest: null,
+          executionId,
+          variableName,
+          sourceRef: source,
+          minimumSequenceLength,
+          analysisColumn,
+          groupByColumns,
+          comparison,
+        },
+        {
+          jobId: `${executionId}-${variableName}`,
+          removeOnComplete: 50,
+          removeOnFail: 20,
         },
       );
-
-      const queue = new Queue("csv-consecutive-sequence", { connection });
-      await queue.add("analyze", {
-        executionId,
-        variableName,
-        sourceRef: source,
-        minimumSequenceLength,
-        analysisColumn,
-        groupByColumns,
-        comparison,
-      });
-      await queue.close();
     });
 
     const completion = await completionPromise;
+    const failureMessage = completion?.data?.error ?? completion?.data?.reason;
+
+    if (typeof failureMessage === "string" && failureMessage.length > 0) {
+      throw new NonRetriableError(
+        `CSV consecutive sequence analyzer failed: ${failureMessage}`,
+      );
+    }
+
     if (!completion || !completion.data?.result) {
       throw new NonRetriableError(
         "Wait for consecutive sequence analyzer timed out after 60 minutes",
@@ -293,18 +302,49 @@ export const CsvConsecutiveSequenceExecutor: NodeExecutor<
 
     const result = completion.data.result as CsvConsecutiveSequenceWorkerResult;
 
+    const sequenceRecords = result.sequences.map((sequence) => {
+      // Collect group fields separately so sequence_begin/sequence_end always come first
+      const groupFields: Record<string, unknown> = {};
+      if (
+        sequence.groupValues &&
+        typeof sequence.groupValues === "object" &&
+        !Array.isArray(sequence.groupValues)
+      ) {
+        Object.assign(groupFields, sequence.groupValues);
+      } else if (sequence.groupKey !== null) {
+        groupFields.group_key = sequence.groupKey;
+      }
+
+      return {
+        sequence_begin: sequence.startPoint,
+        sequence_end: sequence.endPoint,
+        consecutive_count: sequence.length,
+        ...groupFields,
+      };
+    });
+
+    // Build an explicit schema to guarantee column display order:
+    // sequence_begin → sequence_end → consecutive_count → (group columns)
+    const sequenceSchema: DatasetSchema = {
+      sequence_begin: { type: "string", nullable: false },
+      sequence_end: { type: "string", nullable: false },
+      consecutive_count: { type: "number", nullable: false },
+    };
+    for (const col of groupByColumns) {
+      sequenceSchema[col] = { type: "string", nullable: true };
+    }
+
     return {
       [variableName]: {
+        kind: "dataset-summary",
+        records: sequenceRecords,
+        schema: sequenceSchema,
         metadata: {
           sequenceCount: result.sequenceCount,
-          sequenceLengths: result.sequenceLengths,
-          startPoints: result.startPoints,
-          endPoints: result.endPoints,
           minimumSequenceLength,
           analysisColumn,
           groupedBy: result.groupedBy,
           comparisonKind: result.comparisonKind,
-          sequences: result.sequences,
           sourceRows,
           processedRows: result.processedRows,
           malformedRows: result.malformedRows,

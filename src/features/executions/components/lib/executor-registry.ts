@@ -5,6 +5,8 @@ import { CsvColumnStatsExecutor } from "../csv-column-stats/executor";
 import { CsvCompareExecutor } from "../csv-compare/executor";
 import { CsvConsecutiveSequenceExecutor } from "../csv-consecutive-sequence/executor";
 import { CsvDeduplicateExecutor } from "../csv-deduplicate/executor";
+import { CsvTransformExecutor } from "../csv-transform/executor";
+
 import { CsvFilterExecutor } from "../csv-filter/executor";
 import { CsvJoinExecutor } from "../csv-join/executor";
 import { CsvParseExecutor } from "../csv-parse/executor";
@@ -35,6 +37,7 @@ export const executorRegistry: Partial<Record<NodeType, NodeExecutor>> = {
 
   [NodeType.CSV_GENERATE]: stubExecutor,
   [NodeType.CSV_DEDUPLICATE]: CsvDeduplicateExecutor,
+  [NodeType.CSV_TRANSFORM]: CsvTransformExecutor,
   [NodeType.PDF_EXTRACT_TEXT]: stubExecutor,
   [NodeType.PDF_EXTRACT_TABLES]: stubExecutor,
   [NodeType.PDF_SPLIT]: stubExecutor,

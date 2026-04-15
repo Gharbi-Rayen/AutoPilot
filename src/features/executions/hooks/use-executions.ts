@@ -25,15 +25,37 @@ export const useExecutionRawOutput = (id: string, enabled = true) => {
   });
 };
 
-export const useExecutionDatasetMeta = (
+export const useExecutionNodeOutput = (
   executionId: string,
-  variable: string,
+  nodeId: string,
   enabled = true,
 ) => {
   const trpc = useTRPC();
 
   return useQuery({
-    ...trpc.executions.getDatasetMeta.queryOptions({ executionId, variable }),
+    ...trpc.executions.getNodeOutput.queryOptions({
+      executionId,
+      nodeId,
+    }),
+    enabled: enabled && Boolean(executionId) && Boolean(nodeId),
+    retry: false,
+  });
+};
+
+export const useExecutionDatasetMeta = (
+  executionId: string,
+  variable: string,
+  nodeId?: string,
+  enabled = true,
+) => {
+  const trpc = useTRPC();
+
+  return useQuery({
+    ...trpc.executions.getDatasetMeta.queryOptions({
+      executionId,
+      variable,
+      nodeId,
+    }),
     enabled: enabled && Boolean(executionId) && Boolean(variable),
     retry: false,
   });
@@ -43,6 +65,7 @@ export const useExecutionDatasetChunk = (
   executionId: string,
   variable: string,
   chunkIndex: number,
+  nodeId?: string,
   enabled = true,
 ) => {
   const trpc = useTRPC();
@@ -52,6 +75,7 @@ export const useExecutionDatasetChunk = (
       executionId,
       variable,
       chunkIndex,
+      nodeId,
     }),
     enabled:
       enabled &&
@@ -69,6 +93,7 @@ export const useExecutionDatasetRows = (
   chunkIndex: number,
   offset: number,
   limit: number,
+  nodeId?: string,
   enabled = true,
 ) => {
   const trpc = useTRPC();
@@ -80,6 +105,7 @@ export const useExecutionDatasetRows = (
       chunkIndex,
       offset,
       limit,
+      nodeId,
     }),
     enabled:
       enabled &&
@@ -96,6 +122,7 @@ export const useExecutionDatasetPage = (
   variable: string,
   page: number,
   pageSize: number,
+  nodeId?: string,
   enabled = true,
 ) => {
   const trpc = useTRPC();
@@ -106,6 +133,7 @@ export const useExecutionDatasetPage = (
       variable,
       page,
       pageSize,
+      nodeId,
     }),
     enabled:
       enabled &&
@@ -123,6 +151,7 @@ export const useExecutionDatasetDownload = (
   executionId: string,
   variable: string,
   format: "json" | "jsonl" = "json",
+  nodeId?: string,
   enabled = false,
 ) => {
   const trpc = useTRPC();
@@ -132,6 +161,7 @@ export const useExecutionDatasetDownload = (
       executionId,
       variable,
       format,
+      nodeId,
     }),
     enabled: enabled && Boolean(executionId) && Boolean(variable),
     retry: false,

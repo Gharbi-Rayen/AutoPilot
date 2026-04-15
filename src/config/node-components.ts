@@ -6,6 +6,7 @@ import { CsvColumnStatsNode } from "@/features/executions/components/csv-column-
 import { CsvCompareNode } from "@/features/executions/components/csv-compare/node";
 import { CsvConsecutiveSequenceNode } from "@/features/executions/components/csv-consecutive-sequence/node";
 import { CsvDeduplicateNode } from "@/features/executions/components/csv-deduplicate/node";
+import { CsvTransformNode } from "@/features/executions/components/csv-transform/node";
 import { CsvFilterNode } from "@/features/executions/components/csv-filter/node";
 import { CsvGenerateNode } from "@/features/executions/components/csv-generate/node";
 import { CsvJoinNode } from "@/features/executions/components/csv-join/node";
@@ -45,6 +46,7 @@ export const nodeComponents: NodeTypes = {
   [NodeType.CSV_COLUMN_STATS]: CsvColumnStatsNode,
   [NodeType.CSV_COMPARE]: CsvCompareNode,
   [NodeType.CSV_CONSECUTIVE_SEQUENCE_ANALYZER]: CsvConsecutiveSequenceNode,
+  [NodeType.CSV_TRANSFORM]: CsvTransformNode,
 } as const satisfies NodeTypes;
 
 export type RegisteredNodeType = keyof typeof nodeComponents;

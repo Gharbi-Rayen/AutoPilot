@@ -17,6 +17,45 @@ interface ExecutionDatasetNavigationProps {
   onPageSizeChange: (pageSize: number) => void;
 }
 
+/**
+ * Build the page number tokens to show between Prev / Next.
+ *
+ * Rules:
+ *  - Always show page 1 and page `totalPages`.
+ *  - Show a window of ±2 pages around the current page.
+ *  - Insert "…" (represented as null) wherever there is a gap.
+ */
+function buildPageTokens(current: number, total: number): Array<number | null> {
+  if (total <= 1) return [];
+
+  const visible = new Set<number>();
+
+  // Anchors
+  visible.add(1);
+  visible.add(total);
+
+  // Window around current
+  for (
+    let i = Math.max(1, current - 2);
+    i <= Math.min(total, current + 2);
+    i++
+  ) {
+    visible.add(i);
+  }
+
+  const sorted = Array.from(visible).sort((a, b) => a - b);
+
+  const tokens: Array<number | null> = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) {
+      tokens.push(null); // ellipsis gap
+    }
+    tokens.push(sorted[i]);
+  }
+
+  return tokens;
+}
+
 export const ExecutionDatasetNavigation = ({
   page,
   pageSize,
@@ -29,9 +68,11 @@ export const ExecutionDatasetNavigation = ({
 }: ExecutionDatasetNavigationProps) => {
   const canGoPrevious = !isPending && page > 1;
   const canGoNext = !isPending && totalPages > 0 && page < totalPages;
+  const tokens = buildPageTokens(page, totalPages);
 
   return (
     <div className="min-w-0 space-y-2 rounded-md border bg-background/70 p-3">
+      {/* Row counts */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           Page {totalPages === 0 ? 0 : page} of {Math.max(totalPages, 1)}
@@ -39,7 +80,9 @@ export const ExecutionDatasetNavigation = ({
         <p className="text-xs text-muted-foreground">{totalRows} rows total</p>
       </div>
 
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      {/* Navigation row */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        {/* ← Previous */}
         <Button
           type="button"
           variant="outline"
@@ -51,6 +94,36 @@ export const ExecutionDatasetNavigation = ({
           <ChevronLeftIcon className="size-3.5" />
           Previous
         </Button>
+
+        {/* Page number tokens */}
+        {tokens.map((token, i) =>
+          token === null ? (
+            <span
+              key={`ellipsis-before-${tokens[i + 1]}`}
+              className="flex h-7 w-6 items-center justify-center text-xs text-muted-foreground select-none"
+            >
+              …
+            </span>
+          ) : (
+            <Button
+              key={token}
+              type="button"
+              size="sm"
+              variant={token === page ? "default" : "outline"}
+              className={cn(
+                "h-7 min-w-[28px] px-1.5 text-xs tabular-nums",
+                token === page && "shadow-none pointer-events-none",
+              )}
+              onClick={() => onPageChange(token)}
+              disabled={isPending}
+              aria-current={token === page ? "page" : undefined}
+            >
+              {token}
+            </Button>
+          ),
+        )}
+
+        {/* Next → */}
         <Button
           type="button"
           variant="outline"
@@ -63,7 +136,8 @@ export const ExecutionDatasetNavigation = ({
           <ChevronRightIcon className="size-3.5" />
         </Button>
 
-        <div className="flex w-full flex-wrap items-center gap-1 sm:ml-auto sm:w-auto sm:justify-end">
+        {/* Page size selector */}
+        <div className="flex flex-wrap items-center gap-1 sm:ml-auto">
           {PAGE_SIZE_OPTIONS.map((option) => (
             <Button
               key={option}

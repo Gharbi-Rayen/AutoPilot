@@ -9,13 +9,18 @@ import {
 import { inferDatasetSchema } from "@/features/executions/server/datasets/schema-inference";
 import type { DatasetSchema } from "@/features/executions/server/datasets/schema-types";
 import { inngest } from "@/inngest/client";
+import {
+  DEFAULT_WORKER_SETTINGS,
+  DEFAULT_WORKER_STALL_OPTIONS,
+} from "@/workers/worker-settings";
 
 // ─── constants ───────────────────────────────────────────────────────────────
-const CSV_SCHEMA_SAMPLE_ROWS = 100;
+const CSV_SCHEMA_SAMPLE_ROWS = 1000;
 const CSV_WRITE_BATCH_SIZE = 25_000;
 const HEAVY_CONCURRENCY = 2;
 const QUEUE_NAME = "csv-parse";
 const PARSE_PROGRESS_EVENT_NAME = "csv/parse.progress";
+const READ_HIGH_WATER_MARK = 512 * 1024; // 512 KB — reduces read syscalls
 
 export interface CsvParseJobData {
   fileBlobPath: string;
@@ -99,7 +104,7 @@ async function parseCsvJob(
               }
             })
             .catch(() => undefined);
-        }, 350)
+        }, 150)
       : null;
 
   const cancellationError = () =>
@@ -160,8 +165,11 @@ async function parseCsvJob(
     await report({ phase: "probing" });
 
     const probeStartedAt = Date.now();
+    const rawDelimiter = job.data.delimiter;
     const delimiter =
-      job.data.delimiter || (await detectDelimiter(fileBlobPath));
+      rawDelimiter && rawDelimiter !== "auto"
+        ? rawDelimiter
+        : await detectDelimiter(fileBlobPath);
 
     await emitParseStageProgress(job, "probe_done", {
       delimiter,
@@ -181,7 +189,7 @@ async function parseCsvJob(
       await report({ phase: "parsing", bytesRead: 0 });
 
       const fileStream = createReadStream(fileBlobPath, {
-        highWaterMark: 64 * 1024,
+        highWaterMark: READ_HIGH_WATER_MARK,
       });
       const csvParser = parse({
         delimiter,
@@ -372,7 +380,7 @@ async function parseCsvJob(
 
     await new Promise<void>((resolve, reject) => {
       const probeStream = createReadStream(fileBlobPath, {
-        highWaterMark: 64 * 1024,
+        highWaterMark: READ_HIGH_WATER_MARK,
       });
       const probeParser = parse({
         delimiter,
@@ -459,7 +467,7 @@ async function parseCsvJob(
 
       await new Promise<void>((resolve, reject) => {
         const fileStream = createReadStream(fileBlobPath, {
-          highWaterMark: 64 * 1024,
+          highWaterMark: READ_HIGH_WATER_MARK,
         });
 
         const csvParser = parse({
@@ -554,7 +562,7 @@ async function parseCsvJob(
 }
 
 async function detectDelimiter(filePath: string): Promise<string> {
-  const CANDIDATES = [",", "|"];
+  const CANDIDATES = [",", ";", "\t", "|"];
   const sample = await readFirstNLines(filePath, 25);
   let best = ",";
   let bestCount = 0;
@@ -600,10 +608,8 @@ const worker = new Worker<CsvParseJobData, CsvParseJobResult>(
   {
     connection: workerConnection,
     concurrency: HEAVY_CONCURRENCY,
-    settings: {
-      backoffStrategy: (attemptsMade) =>
-        Math.min(1000 * 2 ** attemptsMade, 30_000),
-    },
+    settings: DEFAULT_WORKER_SETTINGS,
+    ...DEFAULT_WORKER_STALL_OPTIONS,
   },
 );
 

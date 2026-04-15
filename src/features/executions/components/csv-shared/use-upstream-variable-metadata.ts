@@ -7,10 +7,7 @@ import {
   getColumnsForVariable,
 } from "@/features/executions/lib/variable-metadata-catalog";
 
-export const useUpstreamVariableMetadata = (
-  nodeId: string,
-  enabled = true,
-) => {
+export const useUpstreamVariableMetadata = (nodeId: string, enabled = true) => {
   const nodes = useNodes();
   const edges = useEdges();
 

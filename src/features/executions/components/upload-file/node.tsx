@@ -9,10 +9,10 @@ import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { fetchFileRealTimeToken } from "./actions";
 import {
-  type UploadPreviewMetadata,
   type SerializedUploadFile,
   UploadFileDialog,
   type UploadFileNodeSubmitValues,
+  type UploadPreviewMetadata,
 } from "./dialog";
 
 interface UploadFileNodeData extends Record<string, unknown> {

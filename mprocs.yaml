@@ -1,4 +1,8 @@
 procs:
+  redis:
+    cwd: .
+    cmd: ["docker", "run", "--rm", "-p", "6379:6379", "redis:7-alpine"]
+
   next:
     cwd: .
     cmd: ["npm", "run", "dev"]
@@ -7,6 +11,42 @@ procs:
     cwd: .
     cmd: ["npm", "run", "inngest:dev"]
 
-  redis:
+  worker-parse:
     cwd: .
-    cmd: ["docker", "run", "--rm", "-p", "6379:6379", "redis:7-alpine"]
+    cmd: ["npm", "run", "worker:parse"]
+
+  worker-sort:
+    cwd: .
+    cmd: ["npm", "run", "worker:sort"]
+
+  worker-filter:
+    cwd: .
+    cmd: ["npm", "run", "worker:filter"]
+
+  worker-join:
+    cwd: .
+    cmd: ["npm", "run", "worker:join"]
+
+  worker-sequence:
+    cwd: .
+    cmd: ["npm", "run", "worker:sequence"]
+
+  worker-aggregate:
+    cwd: .
+    cmd: ["npm", "run", "worker:aggregate"]
+
+  worker-compare:
+    cwd: .
+    cmd: ["npm", "run", "worker:compare"]
+
+  worker-column-stats:
+    cwd: .
+    cmd: ["npm", "run", "worker:column-stats"]
+
+  worker-deduplicate:
+    cwd: .
+    cmd: ["npm", "run", "worker:deduplicate"]
+
+  worker-transform:
+    cwd: .
+    cmd: ["npm", "run", "worker:transform"]

@@ -1,4 +1,8 @@
-import { unionAllRows, unionRows, BudgetExceededError } from "../union-executor";
+import {
+  BudgetExceededError,
+  unionAllRows,
+  unionRows,
+} from "../union-executor";
 
 describe("Union executor", () => {
   const leftRows = [
@@ -6,7 +10,7 @@ describe("Union executor", () => {
     { id: 2, name: "Bob" },
     { id: 3, name: "Charlie" },
   ];
-  
+
   const rightRows = [
     { id: 4, name: "Dave" },
     { id: 2, name: "Bob" }, // Duplicate with left
@@ -22,7 +26,10 @@ describe("Union executor", () => {
 
   describe("unionAllRows", () => {
     it("should preserve all fields and rows unchanged, maintaining order", async () => {
-      const generator = unionAllRows(toAsyncIterable(leftRows), toAsyncIterable(rightRows));
+      const generator = unionAllRows(
+        toAsyncIterable(leftRows),
+        toAsyncIterable(rightRows),
+      );
       const results = [];
       for await (const row of generator) {
         results.push(row);
@@ -35,7 +42,10 @@ describe("Union executor", () => {
 
   describe("unionRows", () => {
     it("should deduplicate identical rows based on properties", async () => {
-      const generator = unionRows(toAsyncIterable(leftRows), toAsyncIterable(rightRows));
+      const generator = unionRows(
+        toAsyncIterable(leftRows),
+        toAsyncIterable(rightRows),
+      );
       const results = [];
       for await (const row of generator) {
         results.push(row);
@@ -60,9 +70,9 @@ describe("Union executor", () => {
 
       const generator = unionRows(generateLarge(), toAsyncIterable([]));
       await expect(async () => {
-        for await (const row of generator) {}
+        for await (const _row of generator) {
+        }
       }).rejects.toThrow(BudgetExceededError);
     });
   });
 });
-

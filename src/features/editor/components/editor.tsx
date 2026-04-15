@@ -34,7 +34,7 @@ import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
 import { NodeType } from "@/generated/prisma";
 import { cn } from "@/lib/utils";
 import { workflowProgressPanelCollapsedAtom } from "@/store/execution-status";
-import { editorAtom } from "../store/atoms";
+import { editorAtom, workflowIdAtom } from "../store/atoms";
 
 const AddNodeButton = dynamic(
   () => import("./add-node-button").then((m) => m.AddNodeButton),
@@ -56,18 +56,23 @@ export const EditorError = () => {
 
 export const Editor = ({ workflowId }: { workflowId: string }) => {
   const DEFAULT_PANEL_HEIGHT = 360;
-  const COLLAPSED_PANEL_HEIGHT = 56;
+  const COLLAPSED_PANEL_HEIGHT = 12;
   const MIN_PANEL_HEIGHT = 220;
-  const COLLAPSE_THRESHOLD_HEIGHT = COLLAPSED_PANEL_HEIGHT + 24;
+  const COLLAPSE_THRESHOLD_HEIGHT = MIN_PANEL_HEIGHT - 40;
   const DRAG_CLICK_THRESHOLD_PX = 5;
-  const MAX_PANEL_HEIGHT_RATIO = 0.8;
+  const MAX_PANEL_HEIGHT_RATIO = 0.95;
 
   const { data: workflow } = useSuspenseWorkflow(workflowId);
 
   const setEditor = useSetAtom(editorAtom);
+  const setWorkflowId = useSetAtom(workflowIdAtom);
   const [progressPanelCollapsed, setProgressPanelCollapsed] = useAtom(
     workflowProgressPanelCollapsedAtom,
   );
+
+  useEffect(() => {
+    setWorkflowId(workflowId);
+  }, [workflowId, setWorkflowId]);
   const resizeStateRef = useRef<{
     pointerId: number;
     startY: number;
@@ -215,13 +220,13 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
   );
 
   const flowBottomOffset = progressPanelCollapsed
-    ? COLLAPSED_PANEL_HEIGHT + 8
+    ? COLLAPSED_PANEL_HEIGHT + 4
     : panelHeight + 10;
 
   const panelContainerClassName = cn(
-    "absolute bottom-0 z-40 overflow-hidden transition-[left,right,transform,width] duration-300 ease-out",
+    "absolute bottom-0 z-40 overflow-hidden transition-[height] duration-200 ease-out",
     progressPanelCollapsed
-      ? "inset-x-0 rounded-none border-t bg-background/95 shadow-xl"
+      ? "inset-x-0"
       : "inset-x-0 border-t bg-background shadow-2xl",
   );
 
@@ -271,8 +276,9 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
               : { height: panelHeight }
           }
         >
+          {/* Drag handle — the only thing visible when collapsed */}
           <div
-            className="absolute inset-x-0 top-0 z-20 flex h-5 touch-none select-none items-start justify-center pt-1"
+            className="absolute inset-x-0 top-0 z-20 flex h-3 touch-none select-none items-center justify-center"
             onPointerDown={handleResizeStart}
             onPointerMove={handleResizeMove}
             onPointerUp={handleResizeEnd}
@@ -280,18 +286,20 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
           >
             <span
               className={cn(
-                "h-1.5 w-14 rounded-full shadow-sm transition-colors",
+                "h-1 w-10 rounded-full transition-colors",
                 progressPanelCollapsed
-                  ? "cursor-pointer bg-muted-foreground/45 hover:bg-blue-500/70"
-                  : "cursor-row-resize bg-border/80 hover:bg-blue-500/65",
+                  ? "cursor-pointer bg-muted-foreground/40 hover:bg-blue-500/70"
+                  : "cursor-row-resize bg-border/70 hover:bg-blue-500/65",
               )}
             />
           </div>
-          <WorkflowProgressPanel
-            nodes={nodes}
-            edges={edges}
-            workflowId={workflowId}
-          />
+          {!progressPanelCollapsed && (
+            <WorkflowProgressPanel
+              nodes={nodes}
+              edges={edges}
+              workflowId={workflowId}
+            />
+          )}
         </div>
       )}
     </div>

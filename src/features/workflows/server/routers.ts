@@ -6,7 +6,7 @@ import z from "zod";
 import { PAGINATION } from "@/config/constants";
 import { registerExecutionInQueue } from "@/features/executions/server/execution-queue";
 import { classifyExecutionProfile } from "@/features/executions/server/queue-policy";
-import { NodeType } from "@/generated/prisma";
+import { NodeType, Prisma } from "@/generated/prisma";
 import { inngest } from "@/inngest/client";
 import prisma from "@/lib/db";
 import {
@@ -43,25 +43,24 @@ export const workflowsRouter = createTRPCRouter({
       const executionId = createId();
       const inngestId = createId();
 
-      // Implement cleanup BEFORE creating the new execution:
-      // Wipe the heavy disk files of older failed/canceled/finished executions for THIS workflow
-      // to keep the local environment crisp after rerunning.
+      // Clean up ALL previous execution datasets for this workflow before starting a new run.
+      // Include stuck RUNNING executions — any prior run is stale once we launch a new one.
       const previousExecutions = await prisma.execution.findMany({
-        where: { workflowId: input.id, status: { not: "RUNNING" } },
+        where: { workflowId: input.id },
         select: { id: true },
       });
 
       if (previousExecutions.length > 0) {
-        import("@/features/executions/server/datasets/cleanup").then(
-          ({ cleanupExecutionDatasets }) => {
-            cleanupExecutionDatasets({
-              executionIds: previousExecutions.map((e) => e.id),
-              completedTtlMs: 0, // 0 = delete immediately
-              orphanTtlMs: 0,
-            }).catch((err) =>
-              console.warn("[Router] Failed previous execution cleanup:", err),
-            );
-          },
+        const { cleanupExecutionDatasets } = await import(
+          "@/features/executions/server/datasets/cleanup"
+        );
+        await cleanupExecutionDatasets({
+          executionIds: previousExecutions.map((e) => e.id),
+          completedTtlMs: 0,
+          orphanTtlMs: 0,
+          forceCleanRunning: true,
+        }).catch((err) =>
+          console.warn("[Router] Failed previous execution cleanup:", err),
         );
       }
 
@@ -141,7 +140,9 @@ export const workflowsRouter = createTRPCRouter({
         data: {
           status: "FAILED",
           finishedAt: new Date(),
-          error: "Paused by user.",
+          error: "Canceled by user.",
+          errorStack: null,
+          output: Prisma.JsonNull,
         },
       });
 

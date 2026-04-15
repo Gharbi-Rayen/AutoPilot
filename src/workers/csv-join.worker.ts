@@ -1,17 +1,19 @@
 import { type Job, UnrecoverableError, Worker } from "bullmq";
-import { NonRetriableError } from "inngest";
 import { DATASET_STORAGE } from "@/config/constants";
-import {
-  unionAllRows,
-  unionRows,
-} from "@/features/executions/components/csv-join/union-executor";
 import { streamContextRows } from "@/features/executions/components/csv-shared/executor-utils";
-import { crossJoinRows } from "@/features/executions/server/datasets/cross-join";
 import { datasetService } from "@/features/executions/server/datasets/dataset-service";
 import { hashJoinRows } from "@/features/executions/server/datasets/hash-join";
-import type { JoinPlan } from "@/features/executions/server/datasets/join-planner";
-import { getRedisConnection } from "@/features/executions/server/redis-queue";
+import type {
+  JoinPlan,
+  JoinType,
+} from "@/features/executions/server/datasets/join-planner";
+import { inferDatasetSchema } from "@/features/executions/server/datasets/schema-inference";
+import type { DatasetSchema } from "@/features/executions/server/datasets/schema-types";
 import { inngest } from "@/inngest/client";
+import {
+  DEFAULT_WORKER_SETTINGS,
+  DEFAULT_WORKER_STALL_OPTIONS,
+} from "@/workers/worker-settings";
 
 const HEAVY_CONCURRENCY = 2;
 const QUEUE_NAME = "csv-join";
@@ -21,27 +23,41 @@ export interface CsvJoinJobData {
   executionId: string;
   datasetId: string;
   variableName: string;
-  leftRef: any;
-  rightRef: any;
+  leftRef: unknown;
+  rightRef: unknown;
   leftKeys: string[];
   rightKeys: string[];
-  joinType: string;
-  schema?: any;
+  joinType: JoinType;
+  schema?: DatasetSchema;
 }
 
 export interface CsvJoinJobResult {
-  rowCount: number;
+  datasetRef: {
+    kind: "dataset";
+    datasetId: string;
+    executionId: string;
+    variableName: string;
+    storage: string;
+    manifestVersion: number;
+    rowCount: number;
+    chunkCount: number;
+    byteSize: number;
+    schema?: DatasetSchema;
+  };
 }
 
 import Redis from "ioredis";
 
 const workerConnection = new Redis(
   process.env.REDIS_URL ?? "redis://localhost:6379",
-  { maxRetriesPerRequest: null }
+  { maxRetriesPerRequest: null },
 );
 
 workerConnection.on("connect", () => {
-  console.log("[csv-join] Redis connected:", process.env.REDIS_URL ?? "redis://localhost:6379");
+  console.log(
+    "[csv-join] Redis connected:",
+    process.env.REDIS_URL ?? "redis://localhost:6379",
+  );
 });
 
 const worker = new Worker<CsvJoinJobData, CsvJoinJobResult>(
@@ -54,102 +70,113 @@ const worker = new Worker<CsvJoinJobData, CsvJoinJobResult>(
       const {
         plan,
         executionId,
-      datasetId,
-      variableName,
-      leftRef,
-      rightRef,
-      leftKeys,
-      rightKeys,
-      joinType,
-    } = job.data;
+        variableName,
+        leftRef,
+        rightRef,
+        leftKeys,
+        rightKeys,
+        joinType,
+      } = job.data;
 
-    let joinedRows: AsyncGenerator<Record<string, unknown>, void, void>;
+      let joinedRows: AsyncGenerator<Record<string, unknown>, void, void>;
 
-    // Deduplicate shared columns for natural joins (moved to worker logic)
-    const deduplicateSharedColumns = (
-      merged: Record<string, unknown>,
-      sharedColumns: string[],
-    ): Record<string, unknown> => {
-      const result = { ...merged };
-      for (const col of sharedColumns) {
-        delete result[`right_${col}`]; // left-side version already present
+      if (plan.strategy === "hash") {
+        joinedRows = hashJoinRows({
+          leftRows: streamContextRows(leftRef),
+          rightRows: streamContextRows(rightRef),
+          leftKeys: leftKeys || [],
+          rightKeys: rightKeys || [],
+          joinType,
+          buildSide: plan.buildSide,
+          caseInsensitive: plan.caseInsensitive,
+          outputColumns: plan.outputColumns,
+        });
+      } else {
+        throw new UnrecoverableError(
+          `Unsupported join strategy: ${plan.strategy}`,
+        );
       }
-      return result;
-    };
 
-    if (plan.strategy === "hash") {
-      let _joinedRows = hashJoinRows({
-        leftRows: streamContextRows(leftRef),
-        rightRows: streamContextRows(rightRef),
-        leftKeys: leftKeys || [],
-        rightKeys: rightKeys || [],
-        joinType: joinType as any,
-        buildSide: plan.buildSide,
-        caseInsensitive: plan.caseInsensitive,
-        outputColumns: plan.outputColumns,
-      });
+      // Buffer the first N rows to infer the schema from the actual output
+      // columns (which are the merged left+right columns, not just the left
+      // source schema that the executor passes in).
+      const SCHEMA_SAMPLE_SIZE = 500;
+      const sampleBuffer: Array<Record<string, unknown>> = [];
+      const joinedRowsIterator = joinedRows[Symbol.asyncIterator]();
 
-      if (joinType === "natural" && plan.sharedColumns) {
-        const sharedColumns = plan.sharedColumns;
-        const baseGenerator = _joinedRows;
-        _joinedRows = (async function* () {
-          for await (const row of baseGenerator) {
-            yield deduplicateSharedColumns(row, sharedColumns);
-          }
-        })();
-      }
-      joinedRows = _joinedRows;
-    } else if ((plan.strategy as string) === "nested_loop") {
-      joinedRows = crossJoinRows({
-        leftRows: streamContextRows(leftRef),
-        rightRows: streamContextRows(rightRef),
-        outputColumns: (plan as any).outputColumns,
-      });
-    } else if (
-      (plan.strategy as string) === "union" ||
-      (plan.strategy as string) === "union_all"
-    ) {
-      const isAll = (plan.strategy as string) === "union_all";
-      const _unionRows = isAll
-        ? unionAllRows(streamContextRows(leftRef), streamContextRows(rightRef))
-        : unionRows(streamContextRows(leftRef), streamContextRows(rightRef));
-
-      joinedRows = (async function* () {
-        for await (const row of _unionRows) {
-          yield row as Record<string, unknown>;
+      // Drain up to SCHEMA_SAMPLE_SIZE rows so we can infer the real output schema
+      // (merged left+right columns) before writing begins.
+      let streamExhausted = false;
+      for (let i = 0; i < SCHEMA_SAMPLE_SIZE; i++) {
+        const { value, done } = await joinedRowsIterator.next();
+        if (done) {
+          streamExhausted = true;
+          break;
         }
-      })();
-    } else {
-      throw new UnrecoverableError(
-        `Unsupported join strategy: ${plan.strategy}`,
-      );
-    }
-
-    let rowsProcessed = 0;
-    const progressGenerator = async function* () {
-      console.log("[csv-join] PROGRESS GENERATOR STARTED.");
-      for await (const row of joinedRows) {
-        if (rowsProcessed === 0) console.log("[csv-join] YIELDED FIRST ROW.");
-        rowsProcessed++;
-if (rowsProcessed % 10_000 === 0) {
-await job.updateProgress(rowsProcessed);
-}
-        yield row;
+        sampleBuffer.push(value);
       }
-      console.log("[csv-join] PROGRESS GENERATOR DONE, processed:", rowsProcessed);
-    };
 
-    console.log("[csv-join] Calling datasetService.persistRowsFromStream...");
-    const manifest = await datasetService.persistRowsFromStream({
-      executionId,
-      variableName,
-      rows: progressGenerator(),
-      chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-      schema: job.data.schema ?? undefined,
-    });
-    console.log("[csv-join] Persist finished:", manifest.rowCount);
+      const inferredSchema: DatasetSchema =
+        sampleBuffer.length > 0
+          ? inferDatasetSchema(sampleBuffer)
+          : (job.data.schema ?? {});
 
-    return { rowCount: manifest.rowCount };
+      // Re-assemble: yield the buffered rows first, then the rest of the stream.
+      const fullStream = async function* () {
+        for (const row of sampleBuffer) {
+          yield row;
+        }
+        if (!streamExhausted) {
+          let next = await joinedRowsIterator.next();
+          while (!next.done) {
+            yield next.value;
+            next = await joinedRowsIterator.next();
+          }
+        }
+      };
+
+      let rowsProcessed = 0;
+      const progressGenerator = async function* () {
+        console.log("[csv-join] PROGRESS GENERATOR STARTED.");
+        for await (const row of fullStream()) {
+          if (rowsProcessed === 0) console.log("[csv-join] YIELDED FIRST ROW.");
+          rowsProcessed++;
+          if (rowsProcessed % 10_000 === 0) {
+            await job.updateProgress(rowsProcessed);
+          }
+          yield row;
+        }
+        console.log(
+          "[csv-join] PROGRESS GENERATOR DONE, processed:",
+          rowsProcessed,
+        );
+      };
+
+      console.log("[csv-join] Calling datasetService.persistRowsFromStream...");
+      const manifest = await datasetService.persistRowsFromStream({
+        executionId,
+        datasetId: job.data.datasetId,
+        variableName,
+        rows: progressGenerator(),
+        chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
+        schema: inferredSchema,
+      });
+      console.log("[csv-join] Persist finished:", manifest.rowCount);
+
+      return {
+        datasetRef: {
+          kind: "dataset" as const,
+          datasetId: manifest.datasetId,
+          executionId: manifest.executionId,
+          variableName: manifest.variableName,
+          storage: manifest.storage,
+          manifestVersion: manifest.version,
+          rowCount: manifest.rowCount,
+          chunkCount: manifest.chunkCount,
+          byteSize: manifest.byteSize,
+          schema: manifest.schema,
+        },
+      };
     } catch (err) {
       console.error(`[csv-join] ✗ HANDLER CRASH:`, err);
       throw err;
@@ -158,25 +185,24 @@ await job.updateProgress(rowsProcessed);
   {
     connection: workerConnection,
     concurrency: HEAVY_CONCURRENCY,
-    settings: {
-      backoffStrategy: (attemptsMade) =>
-        Math.min(1000 * 2 ** attemptsMade, 30_000),
-    },
+    settings: DEFAULT_WORKER_SETTINGS,
+    ...DEFAULT_WORKER_STALL_OPTIONS,
   },
 );
 
 worker.on("completed", async (job, result) => {
   console.log(
-    `[csv-join] COMPLETED job ${job.id} — ${result.rowCount.toLocaleString()} rows`,
+    `[csv-join] COMPLETED job ${job.id} — ${result.datasetRef.rowCount.toLocaleString()} rows`,
   );
   try {
     await inngest.send({
       name: "csv/join.complete",
       data: {
         executionId: job.data.executionId,
-        datasetId: job.data.datasetId,
+        datasetId: result.datasetRef.datasetId,
         variableName: job.data.variableName,
-        rowCount: result.rowCount,
+        rowCount: result.datasetRef.rowCount,
+        result,
       },
     });
   } catch (err) {
@@ -186,16 +212,37 @@ worker.on("completed", async (job, result) => {
 
 worker.on("failed", async (job, err) => {
   const isUnrecoverable = err instanceof UnrecoverableError;
-  console.error(`[csv-join] FAILED job ${job?.id}:`, err?.message);
-  console.error(`[csv-join] Full error:`, err);
-  if (
-    isUnrecoverable ||
-    (job && job.attemptsMade >= (job.opts.attempts ?? 3))
-  ) {
+  const isFinalAttempt =
+    isUnrecoverable || (job && job.attemptsMade >= (job.opts.attempts ?? 3));
+
+  console.error(
+    `[csv-join] FAILED job ${job?.id} (attempt ${job?.attemptsMade}):`,
+    err?.message,
+  );
+
+  if (isFinalAttempt && job) {
+    const executionId = job.data.executionId;
+    const reason = err?.message ?? "csv-join worker failed";
+
+    // Send .complete with failed:true so the executor's waitForEvent resolves
+    // immediately instead of hanging for 60 minutes.
+    try {
+      await inngest.send({
+        name: "csv/join.complete",
+        data: { executionId, error: reason, failed: true },
+      });
+    } catch (signalErr) {
+      console.error(
+        "[csv-join] Failed to signal inngest completion:",
+        signalErr,
+      );
+    }
+
+    // Also send the dedicated failure event for any listeners / dashboards.
     try {
       await inngest.send({
         name: "csv/join.failed",
-        data: { executionId: job?.data.executionId, reason: err.message },
+        data: { executionId, reason },
       });
     } catch {}
   }
@@ -212,4 +259,3 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 console.log(
   `[csv-join] Worker online � queue="${QUEUE_NAME}" concurrency=${HEAVY_CONCURRENCY}`,
 );
-

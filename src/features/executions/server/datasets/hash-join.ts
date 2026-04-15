@@ -102,8 +102,7 @@ const requiresProbeUnmatchedOutput = (
   joinType: JoinType,
   probeSide: JoinBuildSide,
 ): boolean => {
-  if (joinType === "anti") return true;
-  if (joinType === "semi") return false;
+  if (joinType === "full_exclusive") return true;
 
   if (probeSide === "left") {
     return (
@@ -124,7 +123,7 @@ const requiresBuildUnmatchedOutput = (
   joinType: JoinType,
   buildSide: JoinBuildSide,
 ): boolean => {
-  if (joinType === "semi" || joinType === "anti") return false;
+  if (joinType === "full_exclusive") return true;
 
   if (buildSide === "left") {
     return (
@@ -146,8 +145,7 @@ const emitsMatches = (joinType: JoinType): boolean => {
     joinType === "inner" ||
     joinType === "left" ||
     joinType === "right" ||
-    joinType === "full" ||
-    joinType === "natural"
+    joinType === "full"
   );
 };
 
@@ -187,10 +185,6 @@ export const hashJoinRows = async function* ({
   caseInsensitive = false,
   outputColumns,
 }: HashJoinOptions): AsyncGenerator<Record<string, unknown>, void, void> {
-  if (joinType === "natural" && (leftKeys.length === 0 || rightKeys.length === 0)) {
-    throw new Error("Natural Join requires at least one shared column name.");
-  }
-
   const buildOnLeft = buildSide === "left";
 
   const buildRows = buildOnLeft
@@ -240,9 +234,7 @@ export const hashJoinRows = async function* ({
     }
 
     if (matches.length === 0) {
-      if (joinType === "anti" && probeSide === "left") {
-        yield probeRow;
-      } else if (requiresProbeUnmatchedOutput(joinType, probeSide)) {
+      if (requiresProbeUnmatchedOutput(joinType, probeSide)) {
         if (probeSide === "left") {
           yield projectRow(
             withRightNulls(probeRow, rightFields, rightKeys),
@@ -258,8 +250,8 @@ export const hashJoinRows = async function* ({
       continue;
     }
 
-    if (joinType === "semi" && probeSide === "left") {
-      yield probeRow;
+    // full_exclusive: only unmatched rows are emitted — skip matched probe rows
+    if (joinType === "full_exclusive") {
       continue;
     }
 

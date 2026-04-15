@@ -10,6 +10,7 @@ import {
   File,
   GitBranch,
   MousePointerIcon,
+  ScanSearch,
   SearchIcon,
   Table2,
   Upload,
@@ -163,6 +164,12 @@ const executionNodes: NodeTypeOption[] = [
     label: "CSV Compare",
     description: "Compare two CSV datasets",
     icon: ArrowLeftRight,
+  },
+  {
+    type: NodeType.CSV_TRANSFORM,
+    label: "CSV Transform",
+    description: "Search, replace, clear, or delete rows by rules",
+    icon: ScanSearch,
   },
 ];
 

@@ -92,19 +92,8 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
 
     // 2. Enqueue job
     await step.run("enqueue-csv-parse", async () => {
-      const { Queue } = await import("bullmq");
-      const { default: Redis } = await import("ioredis");
-
-      // Create a DEDICATED connection for this queue instance
-      const connection = new Redis(
-        process.env.REDIS_URL || "redis://localhost:6379",
-        {
-          maxRetriesPerRequest: null,
-        },
-      );
-
-      const queue = new Queue("csv-parse", { connection });
-
+      const { getCsvParseQueue } = await import("@/lib/worker-queue");
+      const queue = getCsvParseQueue();
       await queue.add(
         `parse:${executionId}`,
         {
@@ -112,14 +101,18 @@ export const CsvParseExecutor: NodeExecutor<CsvParseData> = async ({
           executionId,
           datasetId,
           variableName,
-          delimiter: data.delimiter,
+          delimiter:
+            data.delimiter && data.delimiter !== "auto"
+              ? data.delimiter
+              : undefined,
           hasHeader,
         },
-        { jobId: `${executionId}-${datasetId}` },
+        {
+          jobId: `${executionId}-${datasetId}`,
+          removeOnComplete: 50,
+          removeOnFail: 20,
+        },
       );
-
-      await queue.close();
-
       return { enqueued: true };
     });
 

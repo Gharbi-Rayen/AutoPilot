@@ -1,16 +1,11 @@
 import { NonRetriableError } from "inngest";
-import { DATASET_STORAGE } from "@/config/constants";
 import { resolveContextSchema } from "@/features/executions/server/datasets/context-resolver";
 import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
-import { datasetService } from "@/features/executions/server/datasets/dataset-service";
 import {
-  applyCsvPredicate,
   availableContextKeys,
   type CsvOperator,
   extractInlineRows,
   resolveContextValue,
-  streamContextRows,
-  toDatasetRefOutput,
   withCsvNodeStatus,
 } from "../csv-shared/executor-utils";
 import type { NodeExecutor } from "../types";
@@ -21,6 +16,29 @@ type CsvFilterData = {
   field?: string;
   operator?: CsvOperator;
   value?: string;
+};
+
+type CsvFilterWorkerResult = {
+  datasetRef: {
+    kind: "dataset";
+    datasetId: string;
+    executionId: string;
+    variableName: string;
+    storage: string;
+    manifestVersion: number;
+    rowCount: number;
+    chunkCount: number;
+    byteSize: number;
+    schema?: Record<string, unknown>;
+  };
+  summary: {
+    sourceRows: number;
+    matchedRows: number;
+    filteredOut: number;
+    field: string;
+    operator: CsvOperator;
+    value?: string;
+  };
 };
 
 export const CsvFilterExecutor: NodeExecutor<CsvFilterData> = async ({
@@ -76,55 +94,68 @@ export const CsvFilterExecutor: NodeExecutor<CsvFilterData> = async ({
 
     const operator = data.operator ?? "eq";
 
-    const output = await step.run("csv-filter", async () => {
-      let matchedRows = 0;
-      const useFastPath =
-        !isDatasetRef(source) &&
-        inlineRows.length > 0 &&
-        inlineRows.length <= DATASET_STORAGE.MAX_INLINE_DATASET_ROWS;
+    const completionPromise = step.waitForEvent(
+      "wait-for-csv-filter-complete",
+      {
+        event: "csv/filter.complete",
+        match: "data.executionId",
+        timeout: "60m",
+      },
+    );
 
-      const filteredRows = async function* () {
-        if (useFastPath) {
-          for (const row of inlineRows) {
-            if (applyCsvPredicate(row, field, operator, data.value)) {
-              matchedRows += 1;
-              yield row;
-            }
-          }
-          return;
-        }
+    const { randomUUID } = await import("node:crypto");
+    const datasetId = randomUUID();
 
-        for await (const row of streamContextRows(source)) {
-          if (applyCsvPredicate(row, field, operator, data.value)) {
-            matchedRows += 1;
-            yield row;
-          }
-        }
-      };
-
-      const manifest = await datasetService.persistRowsFromStream({
-        executionId,
-        variableName,
-        rows: filteredRows(),
-        chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-        schema: sourceSchema,
-      });
-
-      const datasetRef = toDatasetRefOutput(manifest);
-
-      return {
-        ...datasetRef,
-        summary: {
-          sourceRows,
-          matchedRows,
-          filteredOut: Math.max(sourceRows - matchedRows, 0),
+    await step.run("enqueue-csv-filter", async () => {
+      const { getCsvFilterQueue } = await import("@/lib/worker-queue");
+      const queue = getCsvFilterQueue();
+      await queue.add(
+        "filter",
+        {
+          executionId,
+          datasetId,
+          nodeId,
+          variableName,
+          sourceRef: source,
           field,
           operator,
+          value: data.value,
+          sourceRows,
+          sourceSchema,
         },
-      };
+        {
+          jobId: `${executionId}-${datasetId}`,
+          removeOnComplete: 50,
+          removeOnFail: 20,
+        },
+      );
     });
 
+    const completion = await completionPromise;
+    const failureMessage = completion?.data?.error ?? completion?.data?.reason;
+
+    if (typeof failureMessage === "string" && failureMessage.length > 0) {
+      throw new NonRetriableError(`CSV filter failed: ${failureMessage}`);
+    }
+
+    if (!completion || !completion.data?.result) {
+      throw new NonRetriableError(
+        "Wait for csv filter timed out after 60 minutes",
+      );
+    }
+
+    const output = completion.data.result as CsvFilterWorkerResult;
+
+    if (!output.datasetRef?.datasetId) {
+      throw new NonRetriableError(
+        "CSV filter worker returned an invalid dataset reference",
+      );
+    }
+
     return {
-      [variableName]: output,
+      [variableName]: {
+        ...output.datasetRef,
+        summary: output.summary,
+      },
     };
   });

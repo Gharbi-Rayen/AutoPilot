@@ -79,7 +79,7 @@ describe("buildMatchKey", () => {
 
 import { hashJoinRows } from "../hash-join";
 
-describe("hashJoinRows - semi and anti joins", () => {
+describe("hashJoinRows - full_exclusive join", () => {
   const leftRows = [
     { id: 1, name: "Alice" },
     { id: 2, name: "Bob" },
@@ -88,18 +88,18 @@ describe("hashJoinRows - semi and anti joins", () => {
 
   const rightRows = [
     { customer_id: 1, order: "A" },
-    { customer_id: 1, order: "B" },
     { customer_id: 3, order: "C" },
+    { customer_id: 4, order: "D" },
   ];
 
-  it("should handle semi join correctly", async () => {
+  it("should return only rows with no match on either side", async () => {
     const generator = hashJoinRows({
       leftRows,
       rightRows,
       leftKeys: ["id"],
       rightKeys: ["customer_id"],
-      joinType: "semi",
-      buildSide: "right", // Enforced by planner
+      joinType: "full_exclusive",
+      buildSide: "right",
     });
 
     const results = [];
@@ -107,93 +107,15 @@ describe("hashJoinRows - semi and anti joins", () => {
       results.push(row);
     }
 
-    // matched rows yield only left columns, exactly once per left row!
-    expect(results).toEqual([
-      { id: 1, name: "Alice" },
-      { id: 3, name: "Charlie" },
-    ]);
-  });
-
-  it("should handle anti join correctly", async () => {
-    const generator = hashJoinRows({
-      leftRows,
-      rightRows,
-      leftKeys: ["id"],
-      rightKeys: ["customer_id"],
-      joinType: "anti",
-      buildSide: "right", // Enforced by planner
-    });
-
-    const results = [];
-    for await (const row of generator) {
-      results.push(row);
-    }
-
-    // unmatched rows yield only left columns
-    expect(results).toEqual([{ id: 2, name: "Bob" }]);
-  });
-
-  describe("natural join", () => {
-    const natLeftRows = [
-      { id: 1, name: "Alice", age: 30 },
-      { id: 2, name: "Bob", age: 40 },
-    ];
-    const natRightRows = [
-      { id: 1, name: "Alice_Right", age: 30, salary: 5000 },
-      { id: 3, name: "Charlie", age: 50, salary: 6000 },
-    ];
-
-    it("should handle Natural join with 2 shared columns", async () => {
-      const generator = hashJoinRows({
-        leftRows: natLeftRows,
-        rightRows: natRightRows,
-        leftKeys: ["id", "age"],
-        rightKeys: ["id", "age"],
-        joinType: "natural",
-        buildSide: "right",
-      });
-
-      const results = [];
-      for await (const row of generator) {
-        results.push(row);
-      }
-      expect(results).toEqual([
-        { id: 1, name: "Alice", age: 30, right_id: 1, right_name: "Alice_Right", right_age: 30, salary: 5000 },
-      ]);
-    });
-
-    it("should reject Natural join with 0 shared columns", async () => {
-      // hashJoinRows is the underlying engine, but we ensure it throws if incorrectly routed 0 keys
-      const generator = hashJoinRows({
-        leftRows: natLeftRows,
-        rightRows: natRightRows,
-        leftKeys: [],
-        rightKeys: [],
-        joinType: "natural",
-        buildSide: "right",
-      });
-      await expect(async () => {
-        for await (const _ of generator) {}
-      }).rejects.toThrow("Natural Join requires at least one shared column name.");
-    });
-
-    it("should handle Natural join with 1 shared column and a collision value", async () => {
-      const generator = hashJoinRows({
-        leftRows: natLeftRows,
-        rightRows: natRightRows,
-        leftKeys: ["id"],
-        rightKeys: ["id"],
-        joinType: "natural",
-        buildSide: "right",
-      });
-
-      const results = [];
-      for await (const row of generator) {
-        results.push(row);
-      }
-      expect(results).toEqual([
-        { id: 1, name: "Alice", age: 30, right_id: 1, right_name: "Alice_Right", right_age: 30, salary: 5000 },
-      ]);
-    });
+    // Bob (id=2) has no right match; customer_id=4 has no left match
+    expect(results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 2, name: "Bob" }),
+        expect.objectContaining({ customer_id: 4, order: "D" }),
+      ]),
+    );
+    // Alice and Charlie matched — should NOT appear
+    expect(results.some((r) => r.id === 1 || r.id === 3)).toBe(false);
+    expect(results.length).toBe(2);
   });
 });

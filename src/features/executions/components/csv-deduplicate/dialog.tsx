@@ -45,6 +45,13 @@ const formSchema = z.object({
       message:
         "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
     }),
+  duplicatesVariableName: z
+    .string()
+    .regex(/^$|^[A-Za-z_$][A-Za-z0-9_$]*$/, {
+      message:
+        "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
+    })
+    .optional(),
   fields: z.string().optional(),
   keep: z.enum(keepModes),
   includeDuplicates: z.boolean().optional(),
@@ -72,6 +79,7 @@ export const CsvDeduplicateDialog = ({
     defaultValues: {
       sourceVariable: defaultValues.sourceVariable || "",
       variableName: defaultValues.variableName || "",
+      duplicatesVariableName: defaultValues.duplicatesVariableName || "",
       fields: defaultValues.fields || "",
       keep: defaultValues.keep || "first",
       includeDuplicates: defaultValues.includeDuplicates ?? false,
@@ -80,8 +88,13 @@ export const CsvDeduplicateDialog = ({
 
   const watchVariableName = form.watch("variableName") || "deduplicatedData";
   const watchSourceVariable = form.watch("sourceVariable");
+  const watchIncludeDuplicates = form.watch("includeDuplicates");
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
+
+  const defaultDupName = watchVariableName
+    ? `${watchVariableName}_duplicates`
+    : "deduplicatedData_duplicates";
 
   const handleSubmit = (values: CsvDeduplicateFormValues) => {
     onSubmit(values);
@@ -93,6 +106,7 @@ export const CsvDeduplicateDialog = ({
       form.reset({
         sourceVariable: defaultValues.sourceVariable || "",
         variableName: defaultValues.variableName || "",
+        duplicatesVariableName: defaultValues.duplicatesVariableName || "",
         fields: defaultValues.fields || "",
         keep: defaultValues.keep || "first",
         includeDuplicates: defaultValues.includeDuplicates ?? false,
@@ -102,14 +116,15 @@ export const CsvDeduplicateDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Deduplicate CSV</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="flex-1 overflow-y-auto px-1 py-4 min-h-0">
           <Form {...form}>
             <form
+              id="csv-deduplicate-form"
               onSubmit={form.handleSubmit(handleSubmit)}
               className="space-y-5"
             >
@@ -133,10 +148,10 @@ export const CsvDeduplicateDialog = ({
                 name="fields"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Fields (Optional)</FormLabel>
+                    <FormLabel>Fields</FormLabel>
                     <FormControl>
                       <FieldSuggestionInput
-                        placeholder="email,phone"
+                        placeholder="email, phone  (leave empty = all columns)"
                         value={field.value || ""}
                         onValueChange={field.onChange}
                         suggestions={fieldSuggestions}
@@ -144,8 +159,8 @@ export const CsvDeduplicateDialog = ({
                       />
                     </FormControl>
                     <FormDescription>
-                      Comma-separated fields used to detect duplicates. Leave
-                      empty to compare full rows.
+                      Comma-separated columns used to detect duplicates. Leave
+                      empty to compare the entire row across all columns.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -165,10 +180,13 @@ export const CsvDeduplicateDialog = ({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="first">First row</SelectItem>
-                        <SelectItem value="last">Last row</SelectItem>
+                        <SelectItem value="first">First occurrence</SelectItem>
+                        <SelectItem value="last">Last occurrence</SelectItem>
                       </SelectContent>
                     </Select>
+                    <FormDescription>
+                      Which row to keep when duplicates are found.
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -178,7 +196,7 @@ export const CsvDeduplicateDialog = ({
                 control={form.control}
                 name="includeDuplicates"
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
                     <FormControl>
                       <Checkbox
                         checked={field.value}
@@ -187,15 +205,40 @@ export const CsvDeduplicateDialog = ({
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel className="cursor-pointer">
-                        Include removed duplicates
+                        Also output removed duplicates
                       </FormLabel>
                       <FormDescription>
-                        Also return a duplicates list in the output
+                        The removed rows are stored as a separate dataset you
+                        can use downstream.
                       </FormDescription>
                     </div>
                   </FormItem>
                 )}
               />
+
+              {watchIncludeDuplicates && (
+                <FormField
+                  control={form.control}
+                  name="duplicatesVariableName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Duplicates Variable Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder={defaultDupName}
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Leave empty to auto-name as{" "}
+                        <span className="font-mono">{defaultDupName}</span>
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}
@@ -207,19 +250,22 @@ export const CsvDeduplicateDialog = ({
                       <Input placeholder="deduplicatedData" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Store result as {`{{${watchVariableName}}}`}
+                      Store deduplicated rows as{" "}
+                      <span className="font-mono">{`{{${watchVariableName}}}`}</span>
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
-              <DialogFooter>
-                <Button type="submit">Save</Button>
-              </DialogFooter>
             </form>
           </Form>
         </div>
+
+        <DialogFooter className="border-t pt-4 flex-shrink-0">
+          <Button type="submit" form="csv-deduplicate-form">
+            Save
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -12,11 +12,16 @@ import {
   datasetPageInput,
   datasetRowsInput,
   datasetVariableInput,
+  nodeOutputInput,
 } from "./datasets/trpc-inputs";
 import {
   getExecutionQueueState,
   getExecutionQueueStates,
 } from "./execution-queue";
+import {
+  getNodeOutputRecord,
+  resolveExecutionVariableFromNodeOutputs,
+} from "./node-output-store";
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -50,10 +55,12 @@ const resolveExecutionVariableValue = async ({
   userId,
   executionId,
   variable,
+  nodeId,
 }: {
   userId: string;
   executionId: string;
   variable: string;
+  nodeId?: string;
 }) => {
   const execution = await prisma.execution.findFirstOrThrow({
     where: {
@@ -69,17 +76,59 @@ const resolveExecutionVariableValue = async ({
   });
 
   const output = toOutputRecord(execution.output);
-  if (!(variable in output)) {
-    throw new Error(`Variable '${variable}' not found in execution output.`);
+  if (variable in output) {
+    return {
+      executionId: execution.id,
+      value: output[variable],
+    };
   }
 
-  return {
+  const liveValue = await resolveExecutionVariableFromNodeOutputs({
     executionId: execution.id,
-    value: output[variable],
-  };
+    variableName: variable,
+    nodeId,
+  });
+
+  if (liveValue !== null) {
+    return {
+      executionId: execution.id,
+      value: liveValue,
+    };
+  }
+
+  throw new Error(
+    `Variable '${variable}' not found in execution output or live node outputs.`,
+  );
 };
 
 export const executionsRouter = createTRPCRouter({
+  getNodeOutput: protectedProcedure
+    .input(nodeOutputInput)
+    .query(async ({ ctx, input }) => {
+      const execution = await prisma.execution.findFirstOrThrow({
+        where: {
+          id: input.executionId,
+          workflow: {
+            userId: ctx.auth.user.id,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const output = await getNodeOutputRecord({
+        executionId: execution.id,
+        nodeId: input.nodeId,
+      });
+
+      return {
+        executionId: execution.id,
+        nodeId: input.nodeId,
+        output,
+      };
+    }),
+
   cleanupDatasets: protectedProcedure
     .input(
       z
@@ -176,6 +225,7 @@ export const executionsRouter = createTRPCRouter({
         userId: ctx.auth.user.id,
         executionId: input.executionId,
         variable: input.variable,
+        nodeId: input.nodeId,
       });
 
       if (isDatasetRef(value)) {
@@ -216,6 +266,7 @@ export const executionsRouter = createTRPCRouter({
         userId: ctx.auth.user.id,
         executionId: input.executionId,
         variable: input.variable,
+        nodeId: input.nodeId,
       });
 
       if (isDatasetRef(value)) {
@@ -261,6 +312,7 @@ export const executionsRouter = createTRPCRouter({
         userId: ctx.auth.user.id,
         executionId: input.executionId,
         variable: input.variable,
+        nodeId: input.nodeId,
       });
 
       if (isDatasetRef(value)) {
@@ -314,6 +366,7 @@ export const executionsRouter = createTRPCRouter({
         userId: ctx.auth.user.id,
         executionId: input.executionId,
         variable: input.variable,
+        nodeId: input.nodeId,
       });
 
       if (isDatasetRef(value)) {
@@ -365,6 +418,7 @@ export const executionsRouter = createTRPCRouter({
         userId: ctx.auth.user.id,
         executionId: input.executionId,
         variable: input.variable,
+        nodeId: input.nodeId,
       });
 
       let rows: Array<Record<string, unknown>> = [];

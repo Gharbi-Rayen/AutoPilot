@@ -3,13 +3,13 @@ import prisma from "@/lib/db";
 import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
 import {
   availableContextKeys,
+  extractInlineRows,
   resolveContextValue,
   streamContextRows,
-  extractInlineRows,
 } from "../components/csv-shared/executor-utils";
 import { estimateJoinCardinality } from "./datasets/cardinality-estimator";
-import { type JoinType, planJoinStrategy } from "./datasets/join-planner";
 import { isDatasetRef } from "./datasets/dataset-ref";
+import { type JoinType, planJoinStrategy } from "./datasets/join-planner";
 
 const getRowCount = (value: unknown): number => {
   if (isDatasetRef(value)) return value.rowCount;
@@ -29,10 +29,9 @@ export const csvJoinRouter = createTRPCRouter({
             "left",
             "right",
             "full",
-            "cross",
-            "natural",
-            "union",
-            "union_all",
+            "full_exclusive",
+            "left_exclusive",
+            "right_exclusive",
           ])
           .optional(),
         keyPairs: z
@@ -84,12 +83,7 @@ export const csvJoinRouter = createTRPCRouter({
       const rightSource = resolveContextValue(output, input.rightVariable);
 
       try {
-        const joinType = (input.joinType ?? "inner") as
-          | JoinType
-          | "cross"
-          | "natural"
-          | "union"
-          | "union_all";
+        const joinType: JoinType = input.joinType ?? "inner";
 
         let leftKeys: string[] = [];
         let rightKeys: string[] = [];
@@ -101,8 +95,6 @@ export const csvJoinRouter = createTRPCRouter({
 
         const leftRowCount = getRowCount(leftSource);
         const rightRowCount = getRowCount(rightSource);
-        
-        const processedJoinType = (joinType === "union" || joinType === "union_all") ? "inner" : joinType;
 
         const estimateResult = await Promise.race([
           estimateJoinCardinality({
@@ -110,7 +102,7 @@ export const csvJoinRouter = createTRPCRouter({
             rightRows: streamContextRows(rightSource),
             leftKeys,
             rightKeys,
-            joinType: processedJoinType,
+            joinType,
             leftRowCount,
             rightRowCount,
             sampleSize: 100,
@@ -133,29 +125,47 @@ export const csvJoinRouter = createTRPCRouter({
           rightRows: rightRowCount,
           leftKeys,
           rightKeys,
-          joinType: joinType as any,
+          joinType,
           allowPartitionedLargeJoin: false,
           estimate: estimateResult,
           caseInsensitive: false,
         });
 
+        // inner_estimate: expected matched output rows (shared by several formulas).
+        const innerEstimate = Math.max(
+          0,
+          Math.min(leftRowCount, rightRowCount) *
+            estimateResult.estimatedFanout,
+        );
+
         let estimatedOutputRows = 0;
-        if (joinType === "union" || joinType === "union_all") {
-          estimatedOutputRows = leftRowCount + rightRowCount;
-        } else if (joinType === "cross") {
-          estimatedOutputRows = leftRowCount * rightRowCount;
-        } else if (joinType === "inner") {
-          estimatedOutputRows = Math.min(leftRowCount, rightRowCount) * estimateResult.estimatedFanout;
+        if (joinType === "inner") {
+          estimatedOutputRows = innerEstimate;
         } else if (joinType === "full") {
-          estimatedOutputRows = Math.max(leftRowCount, rightRowCount) * estimateResult.estimatedFanout;
-        } else if (joinType === "left" || joinType === "left_exclusive") {
+          // full = matched rows + unmatched-left + unmatched-right
+          //      ≈ L + R − inner  (clamped to [max(L,R), L+R])
+          estimatedOutputRows = Math.max(
+            Math.max(leftRowCount, rightRowCount),
+            leftRowCount + rightRowCount - innerEstimate,
+          );
+        } else if (joinType === "full_exclusive") {
+          // Rows that don't match on either side = left_exclusive + right_exclusive
+          estimatedOutputRows =
+            Math.max(0, leftRowCount - innerEstimate) +
+            Math.max(0, rightRowCount - innerEstimate);
+        } else if (joinType === "left") {
+          // All left rows preserved; multiplied by right fanout.
           estimatedOutputRows = leftRowCount * estimateResult.estimatedFanout;
-        } else if (joinType === "right" || joinType === "right_exclusive") {
+        } else if (joinType === "left_exclusive") {
+          estimatedOutputRows = Math.max(0, leftRowCount - innerEstimate);
+        } else if (joinType === "right") {
           estimatedOutputRows = rightRowCount * estimateResult.estimatedFanout;
+        } else if (joinType === "right_exclusive") {
+          estimatedOutputRows = Math.max(0, rightRowCount - innerEstimate);
         } else {
           estimatedOutputRows = leftRowCount;
         }
-        
+
         estimatedOutputRows = Math.floor(estimatedOutputRows);
 
         let riskLevel = "low";

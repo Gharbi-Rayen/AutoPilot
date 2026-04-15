@@ -13,6 +13,7 @@ export async function fetchWhatsAppRealTimeToken(): Promise<WhatsAppToken> {
     topics: ["status"],
     ...(process.env.NODE_ENV === "development"
       ? { apiBaseUrl: "http://127.0.0.1:8288/" }
-      : {}),  });
+      : {}),
+  });
   return token;
 }
