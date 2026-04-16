@@ -98,6 +98,24 @@ function sortNodes(nodes: Node[], edges: Edge[]): Node[] {
   }
 }
 
+// ─── Serialization helpers ────────────────────────────────────────────────────
+
+/**
+ * Recursively strips ArrayBuffer (and TypedArray) values so the result is safe
+ * to store in IndexedDB as inline output. The live execution context still
+ * carries the original buffers for downstream nodes.
+ */
+function toSerializable(val: unknown): unknown {
+  if (val instanceof ArrayBuffer || ArrayBuffer.isView(val)) return undefined;
+  if (typeof val !== "object" || val === null) return val;
+  if (Array.isArray(val)) return val.map(toSerializable);
+  return Object.fromEntries(
+    Object.entries(val as Record<string, unknown>)
+      .map(([k, v]) => [k, toSerializable(v)])
+      .filter(([, v]) => v !== undefined),
+  );
+}
+
 // ─── Engine ───────────────────────────────────────────────────────────────────
 
 /**
@@ -188,7 +206,7 @@ export async function runWorkflow(
           status: "SUCCESS",
           variableName: datasetRef?.variableName,
           datasetId: datasetRef?.datasetId,
-          inlineOutput: datasetRef ? undefined : newVars,
+          inlineOutput: datasetRef ? undefined : toSerializable(newVars),
         });
 
         // Persist dataset manifest if present

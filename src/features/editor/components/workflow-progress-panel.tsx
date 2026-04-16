@@ -311,8 +311,9 @@ export const WorkflowProgressPanel = ({
     queryFn: async () => {
       if (!activeExecutionId || !selectedNodeId) return null;
       return db.executionNodeOutputs
-        .where(["executionId", "nodeId"])
-        .equals([activeExecutionId, selectedNodeId])
+        .where("executionId")
+        .equals(activeExecutionId)
+        .filter((r) => r.nodeId === selectedNodeId)
         .first()
         .then((r) => r ?? null);
     },
@@ -466,6 +467,11 @@ export const WorkflowProgressPanel = ({
   const selectedDatasetVariable = useMemo(() => {
     if (!selectedWorkflowNode) return null;
 
+    // For dataset nodes inlineOutput is undefined; the engine writes variableName
+    // + datasetId as separate fields on the DB record — use them directly.
+    const dbRecord = nodeOutputQuery.data;
+    if (dbRecord?.datasetId && dbRecord?.variableName) return dbRecord.variableName;
+
     const resolveFromRecord = (record: Record<string, unknown> | null) => {
       if (!record) return null;
       for (const key of selectedWorkflowNode.variableKeys) {
@@ -481,7 +487,7 @@ export const WorkflowProgressPanel = ({
       resolveFromRecord(selectedNodeLiveOutputRecord) ??
       resolveFromRecord(outputRecord)
     );
-  }, [outputRecord, selectedNodeLiveOutputRecord, selectedWorkflowNode]);
+  }, [nodeOutputQuery.data, outputRecord, selectedNodeLiveOutputRecord, selectedWorkflowNode]);
 
   const selectedOutputPayload = selectedNodeOutput;
   const outputPayloadText = selectedOutputPayload
@@ -502,17 +508,19 @@ export const WorkflowProgressPanel = ({
 
   const selectedBlobOutput = useMemo(() => {
     if (!isRecord(selectedOutputPayload)) return null;
-    if (selectedOutputPayload.type !== "blob") return null;
+    // Accept both legacy { type: "blob" } shape and upload executor's { kind: "file" } shape
+    const isBlob = selectedOutputPayload.type === "blob";
+    const isFileKind = selectedOutputPayload.kind === "file";
+    if (!isBlob && !isFileKind) return null;
+    const rawName = selectedOutputPayload.name ?? selectedOutputPayload.fileName;
+    const rawSize = selectedOutputPayload.size ?? selectedOutputPayload.byteSize;
     return {
-      name:
-        typeof selectedOutputPayload.name === "string"
-          ? selectedOutputPayload.name
-          : "uploaded-file",
+      name: typeof rawName === "string" ? rawName : "uploaded-file",
       mimeType:
         typeof selectedOutputPayload.mimeType === "string"
           ? selectedOutputPayload.mimeType
           : "application/octet-stream",
-      size: selectedOutputPayload.size,
+      size: rawSize,
       uploadedAt:
         typeof selectedOutputPayload.uploadedAt === "string"
           ? selectedOutputPayload.uploadedAt
