@@ -24,11 +24,20 @@ export function useRunWorkflow() {
   const setError = useSetAtom(workflowExecutionErrorAtom);
   const setPanelOpen = useSetAtom(workflowProgressPanelOpenAtom);
   const isRunning = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const cancel = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+  }, []);
 
   const execute = useCallback(
     async (workflowId: string, nodes: Node[], edges: Edge[]) => {
       if (isRunning.current) return;
       isRunning.current = true;
+
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       resetState();
       setExecutionStartedAt(Date.now());
@@ -53,7 +62,7 @@ export function useRunWorkflow() {
           onError: (error) => {
             setError(error);
           },
-        });
+        }, controller.signal);
 
         setActiveExecutionId(executionId);
         return executionId;
@@ -72,5 +81,5 @@ export function useRunWorkflow() {
     ],
   );
 
-  return { execute };
+  return { execute, cancel };
 }

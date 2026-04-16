@@ -109,6 +109,7 @@ export async function runWorkflow(
   nodes: Node[],
   edges: Edge[],
   callbacks: ExecutionCallbacks,
+  signal?: AbortSignal,
 ): Promise<string> {
   const executionId = createId();
 
@@ -127,6 +128,10 @@ export async function runWorkflow(
 
   try {
     for (const node of sortedNodes) {
+      if (signal?.aborted) {
+        throw new DOMException("Workflow cancelled", "AbortError");
+      }
+
       const nodeType = node.type as NodeType;
 
       // Skip structural/trigger nodes silently
@@ -212,6 +217,15 @@ export async function runWorkflow(
     });
     callbacks.onWorkflowStatusChange("success");
   } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      await db.executions.update(executionId, {
+        status: "FAILED",
+        completedAt: new Date().toISOString(),
+        error: "Cancelled",
+      });
+      callbacks.onWorkflowStatusChange("error");
+      return executionId;
+    }
     const errorMsg = String(err);
     await db.executions.update(executionId, {
       status: "FAILED",
