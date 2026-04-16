@@ -7,22 +7,16 @@ import { memo, useState } from "react";
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
 import { useNodeStatus } from "../../hooks/use-node-status";
 import {
-  type SerializedUploadFile,
   UploadFileDialog,
   type UploadFileNodeSubmitValues,
   type UploadPreviewMetadata,
 } from "./dialog";
 
 interface UploadFileNodeData extends Record<string, unknown> {
+  fileId?: string;
   fileName?: string;
   variableName?: string;
-  maxSizeMB?: number;
-  allowedTypes?: string;
-  file?: SerializedUploadFile;
   previewMetadata?: UploadPreviewMetadata;
-  previewJobId?: string;
-  previewExecutionId?: string;
-  previewState?: "ready";
 }
 
 export const UploadFileNode = memo((props: NodeProps) => {

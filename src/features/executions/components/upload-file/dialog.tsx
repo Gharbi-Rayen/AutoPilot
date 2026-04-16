@@ -1,10 +1,13 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { createId } from "@paralleldrive/cuid2";
 import { LoaderCircle, Upload, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Papa from "papaparse";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,48 +28,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 
-type ParseJobState =
-  | "idle"
-  | "uploading"
-  | "queued"
-  | "running"
-  | "canceling"
-  | "completed"
-  | "failed";
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface ParsePreviewProgress {
-  phase?: "probing" | "parsing" | "flushing" | "done";
-  rowsParsed?: number;
-  rowsFlushed?: number;
-  chunkCount?: number;
-  bytesRead?: number;
-  totalBytes?: number;
-  pct?: number;
-}
-
-const formSchema = z.object({
-  fileName: z.string().optional(),
-  variableName: z
-    .string()
-    .min(1, { message: "Variable name is required" })
-    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, {
-      message:
-        "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
-    }),
-  maxSizeMB: z.number().positive().optional(),
-  allowedTypes: z.string().optional(),
-});
-
-export type UploadFileFormValues = z.infer<typeof formSchema>;
-
-export interface SerializedUploadFile {
-  name: string;
-  mimeType: string;
-  size: number;
-  lastModified: number;
-  fileRef?: string;
-  contentBase64?: string;
-}
+type ParseState = "idle" | "storing" | "parsing" | "completed" | "failed";
 
 export interface UploadPreviewMetadata {
   rowCount: number;
@@ -75,479 +39,240 @@ export interface UploadPreviewMetadata {
   delimiter: string;
 }
 
+const formSchema = z.object({
+  variableName: z
+    .string()
+    .min(1, { message: "Variable name is required" })
+    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, {
+      message:
+        "Must start with a letter or underscore and contain only alphanumeric characters",
+    }),
+});
+
+export type UploadFileFormValues = z.infer<typeof formSchema>;
+
 export interface UploadFileNodeSubmitValues extends UploadFileFormValues {
-  file?: SerializedUploadFile;
-  previewMetadata?: UploadPreviewMetadata;
-  previewJobId?: string;
-  previewExecutionId?: string;
-  previewState?: "ready";
+  fileId: string;
+  fileName: string;
+  previewMetadata: UploadPreviewMetadata;
 }
 
 interface UploadFileDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: UploadFileNodeSubmitValues) => void;
-  defaultValues?: Partial<UploadFileFormValues> & {
-    file?: SerializedUploadFile;
-    previewMetadata?: UploadPreviewMetadata;
-    previewJobId?: string;
-    previewExecutionId?: string;
-    previewState?: "ready";
-  };
+  defaultValues?: Partial<UploadFileNodeSubmitValues>;
   nodeId: string;
 }
 
-interface StartPreviewResponse {
-  jobId: string;
-  previewExecutionId: string;
+// ─── OPFS helpers ─────────────────────────────────────────────────────────────
+
+async function getUploadsDir(): Promise<FileSystemDirectoryHandle> {
+  const root = await navigator.storage.getDirectory();
+  const autopilot = await root.getDirectoryHandle("autopilot", {
+    create: true,
+  });
+  return autopilot.getDirectoryHandle("uploads", { create: true });
 }
 
-interface PollPreviewResponse {
-  jobId: string;
-  state:
-    | "waiting"
-    | "active"
-    | "completed"
-    | "failed"
-    | "delayed"
-    | "paused"
-    | "prioritized"
-    | "waiting-children"
-    | "unknown";
-  progress?: ParsePreviewProgress | null;
-  result?: {
-    rowCount?: number;
-    columnCount?: number;
-    headers?: string[];
-    delimiter?: string;
-  };
-  error?: string;
+async function saveToOpfs(fileId: string, file: File): Promise<void> {
+  const dir = await getUploadsDir();
+  const fh = await dir.getFileHandle(fileId, { create: true });
+  const writable = await fh.createWritable();
+  await writable.write(file);
+  await writable.close();
 }
+
+async function deleteFromOpfs(fileId: string): Promise<void> {
+  try {
+    const dir = await getUploadsDir();
+    await dir.removeEntry(fileId);
+  } catch {
+    // ignore — file may not exist
+  }
+}
+
+// ─── CSV preview (browser-side) ───────────────────────────────────────────────
+
+function parsePreview(
+  file: File,
+): Promise<{ columns: string[]; rowCount: number; delimiter: string }> {
+  return new Promise((resolve, reject) => {
+    let headers: string[] = [];
+    let rowCount = 0;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      step(result) {
+        if (rowCount === 0 && result.meta?.fields) {
+          headers = result.meta.fields as string[];
+        }
+        rowCount += 1;
+      },
+      complete(results) {
+        if (headers.length === 0 && results.meta?.fields) {
+          headers = results.meta.fields as string[];
+        }
+        resolve({
+          columns: headers,
+          rowCount,
+          delimiter: (results.meta?.delimiter as string) ?? ",",
+        });
+      },
+      error(err) {
+        reject(new Error(err.message));
+      },
+    });
+  });
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 
 const dotFrames = ["", ".", "..", "..."];
-
-const phaseLabel: Record<string, string> = {
-  probing: "Preparing file",
-  parsing: "Analyzing content",
-  flushing: "Finalizing",
-  done: "Done",
-};
-
-const computeProgressValue = (
-  parseState: ParseJobState,
-  progress?: ParsePreviewProgress | null,
-) => {
-  if (parseState === "completed") {
-    return 100;
-  }
-
-  if (parseState === "canceling") {
-    return 15;
-  }
-
-  if (parseState === "failed") {
-    return 0;
-  }
-
-  const phase = progress?.phase;
-  const pct = typeof progress?.pct === "number" ? progress.pct : undefined;
-
-  if (phase === "parsing") {
-    return pct !== undefined ? Math.max(12, Math.min(95, pct)) : 42;
-  }
-
-  if (phase === "flushing") {
-    return pct !== undefined ? Math.max(70, Math.min(98, pct)) : 82;
-  }
-
-  if (phase === "done") {
-    return 100;
-  }
-
-  return 12;
-};
-
-const formatPreviewSummary = (metadata?: UploadPreviewMetadata) => {
-  if (!metadata) {
-    return null;
-  }
-
-  return `${metadata.rowCount.toLocaleString()} rows • ${metadata.columnCount.toLocaleString()} columns`;
-};
 
 export const UploadFileDialog = ({
   open,
   onOpenChange,
   onSubmit,
   defaultValues = {},
-  nodeId,
+  nodeId: _nodeId,
 }: UploadFileDialogProps) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [parseState, setParseState] = useState<ParseJobState>("idle");
+  const [parseState, setParseState] = useState<ParseState>("idle");
   const [parseError, setParseError] = useState<string | null>(null);
-  const [parseProgress, setParseProgress] =
-    useState<ParsePreviewProgress | null>(null);
-  const [previewJobId, setPreviewJobId] = useState<string | null>(
-    defaultValues.previewJobId ?? null,
-  );
-  const [persistedFile, setPersistedFile] = useState<
-    SerializedUploadFile | undefined
-  >(defaultValues.file);
-  const [previewExecutionId, setPreviewExecutionId] = useState<string | null>(
-    defaultValues.previewExecutionId ?? null,
-  );
+  const [progress, setProgress] = useState(0);
+  const [progressLabel, setProgressLabel] = useState("");
   const [previewMetadata, setPreviewMetadata] = useState<
     UploadPreviewMetadata | undefined
   >(defaultValues.previewMetadata);
+  const [stagedFileId, setStagedFileId] = useState<string | null>(
+    defaultValues.fileId ?? null,
+  );
   const [dotFrame, setDotFrame] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pollAbortRef = useRef<AbortController | null>(null);
+  const cancelRef = useRef(false);
+  const defaultValuesRef = useRef(defaultValues);
+  defaultValuesRef.current = defaultValues;
 
   const form = useForm<UploadFileFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      fileName: defaultValues.fileName || "",
-      variableName: defaultValues.variableName || "",
-      maxSizeMB: defaultValues.maxSizeMB || 100,
-      allowedTypes: defaultValues.allowedTypes || "",
+      variableName: defaultValues.variableName ?? "",
     },
   });
 
   const watchVariableName = form.watch("variableName") || "uploadedFile";
-  const stageLabel = useMemo(() => {
-    if (parseState === "uploading") {
-      return "Uploading file";
-    }
 
-    if (parseState === "queued") {
-      return "Preparing file";
-    }
-
-    if (parseState === "canceling") {
-      return "Canceling and removing file";
-    }
-
-    if (parseState === "completed") {
-      return "File analysis completed";
-    }
-
-    if (parseState === "failed") {
-      return "File analysis failed";
-    }
-
-    if (parseProgress?.phase) {
-      return phaseLabel[parseProgress.phase] || "Analyzing content";
-    }
-
-    if (parseState === "running") {
-      return "Analyzing content";
-    }
-
-    return "Ready";
-  }, [parseProgress?.phase, parseState]);
-
-  const animatedLabel =
-    parseState === "uploading" ||
-    parseState === "queued" ||
-    parseState === "running" ||
-    parseState === "canceling"
-      ? `${stageLabel}${dotFrames[dotFrame]}`
-      : stageLabel;
-
-  const progressValue = computeProgressValue(parseState, parseProgress);
-  const previewSummary = formatPreviewSummary(previewMetadata);
-
-  const clearPolling = useCallback(() => {
-    pollAbortRef.current?.abort();
-    pollAbortRef.current = null;
-  }, []);
-
+  // Dot animation while active
   useEffect(() => {
-    if (!open) {
-      clearPolling();
+    if (parseState === "storing" || parseState === "parsing") {
+      const t = setInterval(
+        () => setDotFrame((f) => (f + 1) % dotFrames.length),
+        350,
+      );
+      return () => clearInterval(t);
     }
-  }, [open, clearPolling]);
-
-  useEffect(() => {
-    if (
-      parseState === "uploading" ||
-      parseState === "queued" ||
-      parseState === "running" ||
-      parseState === "canceling"
-    ) {
-      const timer = setInterval(() => {
-        setDotFrame((current) => (current + 1) % dotFrames.length);
-      }, 350);
-      return () => clearInterval(timer);
-    }
-
     setDotFrame(0);
-    return undefined;
   }, [parseState]);
 
+  // Reset when dialog opens — read defaults from ref to avoid stale closure
+  // without adding the whole defaultValues object to deps (it's a new object each render)
   useEffect(() => {
-    if (open) {
-      form.reset({
-        fileName: defaultValues.fileName || "",
-        variableName: defaultValues.variableName || "",
-        maxSizeMB: defaultValues.maxSizeMB || 100,
-        allowedTypes: defaultValues.allowedTypes || "",
-      });
-
-      setSelectedFile(null);
-      setParseError(null);
-      setParseProgress(null);
-      setPersistedFile(defaultValues.file);
-      setPreviewMetadata(defaultValues.previewMetadata);
-      setPreviewJobId(defaultValues.previewJobId ?? null);
-      setPreviewExecutionId(defaultValues.previewExecutionId ?? null);
-      setParseState(defaultValues.previewMetadata ? "completed" : "idle");
-    }
-  }, [open, defaultValues, form]);
-
-  const cancelExistingPreview = async () => {
-    if (!previewJobId && !previewExecutionId && !persistedFile?.fileRef) {
-      return;
-    }
-
-    clearPolling();
-
-    const payload = {
-      jobId: previewJobId || undefined,
-      previewExecutionId: previewExecutionId || undefined,
-      fileRef: persistedFile?.fileRef || undefined,
-    };
-
-    await fetch("/api/upload-file/preview-parse", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }).catch(() => undefined);
-
-    setPreviewJobId(null);
-    setPreviewExecutionId(null);
-    setPersistedFile(undefined);
-    setPreviewMetadata(undefined);
-    setParseProgress(null);
+    if (!open) return;
+    const dv = defaultValuesRef.current;
+    cancelRef.current = false;
+    form.reset({ variableName: dv.variableName ?? "" });
+    setSelectedFile(null);
     setParseError(null);
-  };
+    setProgress(0);
+    setProgressLabel("");
+    setStagedFileId(dv.fileId ?? null);
+    setPreviewMetadata(dv.previewMetadata);
+    setParseState(dv.previewMetadata ? "completed" : "idle");
+  }, [open, form]);
 
-  const pollPreview = (jobId: string, fileRef: string, executionId: string) => {
-    clearPolling();
-    const controller = new AbortController();
-    pollAbortRef.current = controller;
-
-    const tick = async () => {
-      if (controller.signal.aborted) {
+  const handleFileSelect = useCallback(
+    (file: File) => {
+      const ext = file.name.toLowerCase();
+      if (!ext.endsWith(".csv") && !ext.endsWith(".txt")) {
+        setParseError("Only .csv and .txt files are supported.");
         return;
       }
 
-      try {
-        const response = await fetch(
-          `/api/upload-file/preview-parse?jobId=${encodeURIComponent(jobId)}`,
-          {
-            method: "GET",
-            cache: "no-store",
-            signal: controller.signal,
-          },
-        );
+      setParseError(null);
+      setSelectedFile(file);
+      setPreviewMetadata(undefined);
+      cancelRef.current = false;
 
-        const payload = (await response.json()) as PollPreviewResponse & {
-          error?: string;
-        };
-
-        if (!response.ok) {
-          throw new Error(payload.error || "Failed to fetch parse progress.");
+      void (async () => {
+        // Clean up previous staged file
+        if (stagedFileId) {
+          await deleteFromOpfs(stagedFileId);
+          setStagedFileId(null);
         }
 
-        setParseProgress(payload.progress || null);
+        const newFileId = createId();
 
-        if (payload.state === "completed") {
-          const rowCount =
-            typeof payload.result?.rowCount === "number"
-              ? Math.max(0, payload.result.rowCount)
-              : 0;
-          const headers = Array.isArray(payload.result?.headers)
-            ? payload.result.headers.filter(
-                (entry): entry is string => typeof entry === "string",
-              )
-            : [];
+        try {
+          // Step 1 — write to OPFS
+          setParseState("storing");
+          setProgress(15);
+          setProgressLabel("Saving file to local storage");
+          await saveToOpfs(newFileId, file);
 
-          const metadata: UploadPreviewMetadata = {
-            rowCount,
-            columns: headers,
-            columnCount:
-              typeof payload.result?.columnCount === "number"
-                ? Math.max(0, payload.result.columnCount)
-                : headers.length,
-            delimiter:
-              typeof payload.result?.delimiter === "string"
-                ? payload.result.delimiter
-                : ",",
-          };
+          if (cancelRef.current) return;
 
-          setPreviewMetadata(metadata);
+          // Step 2 — parse preview in browser
+          setParseState("parsing");
+          setProgress(40);
+          setProgressLabel("Analyzing file");
+
+          const { columns, rowCount, delimiter } = await parsePreview(file);
+
+          if (cancelRef.current) {
+            await deleteFromOpfs(newFileId);
+            return;
+          }
+
+          setStagedFileId(newFileId);
+          setPreviewMetadata({ columns, rowCount, columnCount: columns.length, delimiter });
+          setProgress(100);
+          setProgressLabel("Done");
           setParseState("completed");
-          setParseError(null);
-          clearPolling();
-          return;
-        }
-
-        if (payload.state === "failed") {
+        } catch (err) {
+          await deleteFromOpfs(newFileId).catch(() => undefined);
+          if (cancelRef.current) return;
           setParseState("failed");
-          setParseError(payload.error || "Failed to parse file.");
-          clearPolling();
-          return;
+          setParseError(
+            err instanceof Error ? err.message : "Failed to process file.",
+          );
         }
+      })();
+    },
+    [stagedFileId],
+  );
 
-        if (payload.state === "active") {
-          setParseState("running");
-        } else {
-          setParseState("queued");
-        }
-
-        setTimeout(() => {
-          void tick();
-        }, 600);
-      } catch (error) {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setParseState("failed");
-        setParseError(
-          error instanceof Error ? error.message : "Failed to parse file.",
-        );
-        clearPolling();
-
-        await fetch("/api/upload-file/preview-parse", {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jobId,
-            fileRef,
-            previewExecutionId: executionId,
-          }),
-        }).catch(() => undefined);
-
-        setPersistedFile(undefined);
-        setPreviewJobId(null);
-        setPreviewExecutionId(null);
-        setPreviewMetadata(undefined);
-      }
-    };
-
-    void tick();
-  };
-
-  const startPreviewParse = async (
-    asset: SerializedUploadFile,
-    fileName: string,
-  ) => {
-    if (!asset.fileRef) {
-      throw new Error("Uploaded file reference is missing.");
+  const handleCancel = useCallback(async () => {
+    cancelRef.current = true;
+    if (stagedFileId) {
+      await deleteFromOpfs(stagedFileId);
+      setStagedFileId(null);
     }
-
-    setParseState("queued");
-
-    const response = await fetch("/api/upload-file/preview-parse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fileRef: asset.fileRef,
-        nodeId,
-      }),
-    });
-
-    const payload = (await response.json()) as StartPreviewResponse & {
-      error?: string;
-    };
-
-    if (!response.ok) {
-      await fetch("/api/upload-file/preview-parse", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileRef: asset.fileRef }),
-      }).catch(() => undefined);
-
-      throw new Error(payload.error || "Failed to start parsing.");
-    }
-
-    setPreviewJobId(payload.jobId);
-    setPreviewExecutionId(payload.previewExecutionId);
-    setPersistedFile(asset);
-    form.setValue("fileName", fileName, {
-      shouldDirty: true,
-      shouldTouch: true,
-      shouldValidate: true,
-    });
-
-    pollPreview(payload.jobId, asset.fileRef, payload.previewExecutionId);
-  };
-
-  const persistSelectedFile = async (
-    file: File,
-  ): Promise<SerializedUploadFile> => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/api/workflow-file-assets", {
-      method: "POST",
-      body: formData,
-    });
-
-    const payload = (await response.json()) as {
-      error?: string;
-      asset?: SerializedUploadFile;
-    };
-
-    if (!response.ok || !payload.asset) {
-      throw new Error(payload.error ?? "Failed to store uploaded file.");
-    }
-
-    return payload.asset;
-  };
-
-  const handleFileSelect = (file: File) => {
-    if (
-      !file.name.toLowerCase().endsWith(".csv") &&
-      !file.name.toLowerCase().endsWith(".txt")
-    ) {
-      setParseError("Only .csv and .txt files are supported right now.");
-      setSelectedFile(null);
-      return;
-    }
-
+    setSelectedFile(null);
     setParseError(null);
-    setSelectedFile(file);
     setPreviewMetadata(undefined);
-    setParseProgress(null);
-
-    void (async () => {
-      try {
-        setParseState("uploading");
-        await cancelExistingPreview();
-
-        const asset = await persistSelectedFile(file);
-        await startPreviewParse(asset, file.name);
-      } catch (error) {
-        setParseState("failed");
-        setPersistedFile(undefined);
-        setParseError(
-          error instanceof Error ? error.message : "Failed to prepare file.",
-        );
-      }
-    })();
-  };
+    setProgress(0);
+    setProgressLabel("");
+    setParseState("idle");
+    form.setValue("variableName", "", { shouldDirty: true });
+  }, [stagedFileId, form]);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      handleFileSelect(files[0]);
-    }
+    if (e.dataTransfer.files.length > 0) handleFileSelect(e.dataTransfer.files[0]);
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -556,81 +281,33 @@ export const UploadFileDialog = ({
     }
   };
 
-  const isSaveDisabled =
-    parseState === "uploading" ||
-    parseState === "queued" ||
-    parseState === "running" ||
-    parseState === "canceling" ||
-    parseState !== "completed" ||
-    !previewMetadata;
-
-  const handleCancelPreview = async () => {
-    setParseState("canceling");
-
-    try {
-      await fetch("/api/upload-file/preview-parse", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId: previewJobId || undefined,
-          fileRef: persistedFile?.fileRef || undefined,
-          previewExecutionId: previewExecutionId || undefined,
-        }),
-      });
-
-      setSelectedFile(null);
-      setPersistedFile(undefined);
-      setPreviewMetadata(undefined);
-      setPreviewJobId(null);
-      setPreviewExecutionId(null);
-      setParseProgress(null);
-      setParseError(null);
-      setParseState("idle");
-      form.setValue("fileName", "", {
-        shouldDirty: true,
-        shouldTouch: true,
-      });
-    } catch (error) {
-      setParseState("failed");
-      setParseError(
-        error instanceof Error ? error.message : "Failed to cancel parsing.",
-      );
-    }
-  };
-
-  const handleSubmit = async (values: UploadFileFormValues) => {
-    if (!persistedFile?.fileRef) {
-      form.setError("fileName", {
-        message: "Please upload and parse a file first.",
+  const handleSubmit = (values: UploadFileFormValues) => {
+    if (!stagedFileId || !previewMetadata || !selectedFile) {
+      form.setError("variableName", {
+        message: "Upload and process a file first.",
       });
       return;
     }
-
-    if (!previewMetadata) {
-      form.setError("fileName", {
-        message: "File analysis is required before saving.",
-      });
-      return;
-    }
-
-    const allowedTypes = values.allowedTypes
-      ?.split(",")
-      .map((type) => type.trim())
-      .filter(Boolean)
-      .join(",");
 
     onSubmit({
       ...values,
-      allowedTypes,
-      file: persistedFile,
+      fileId: stagedFileId,
+      fileName: selectedFile.name,
       previewMetadata,
-      previewJobId: previewJobId || undefined,
-      previewExecutionId: previewExecutionId || undefined,
-      previewState: "ready",
     });
-
     onOpenChange(false);
   };
+
+  const isBusy = parseState === "storing" || parseState === "parsing";
+  const isSaveDisabled = isBusy || parseState !== "completed" || !previewMetadata;
+
+  const label = isBusy
+    ? `${parseState === "storing" ? "Saving to local storage" : "Analyzing file"}${dotFrames[dotFrame]}`
+    : parseState === "completed"
+      ? "Ready"
+      : parseState === "failed"
+        ? "Failed"
+        : progressLabel;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -641,10 +318,7 @@ export const UploadFileDialog = ({
 
         <div className="space-y-4 py-4">
           <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(handleSubmit)}
-              className="space-y-5"
-            >
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -653,6 +327,7 @@ export const UploadFileDialog = ({
                 onChange={handleFileInputChange}
               />
 
+              {/* Drop zone */}
               <button
                 type="button"
                 className={`relative w-full rounded-lg border-2 border-dashed transition-colors ${
@@ -668,126 +343,64 @@ export const UploadFileDialog = ({
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
+                  if (e.key === "Enter" || e.key === " ")
                     fileInputRef.current?.click();
-                  }
                 }}
               >
                 <div className="text-center w-full">
                   <Upload className="size-8 mx-auto mb-2 text-muted-foreground" />
                   <p className="font-medium text-sm">
-                    {selectedFile?.name ||
-                      persistedFile?.name ||
-                      "Drag file here or click to select"}
+                    {selectedFile?.name ??
+                      (defaultValues.fileName
+                        ? `${defaultValues.fileName} (saved)`
+                        : "Drag file here or click to select")}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {selectedFile
-                      ? `${(selectedFile.size / 1024).toFixed(2)} KB`
-                      : persistedFile
-                        ? `${(persistedFile.size / 1024).toFixed(2)} KB${
-                            previewMetadata
-                              ? ` • ${previewMetadata.rowCount.toLocaleString()} rows • ${previewMetadata.columnCount.toLocaleString()} columns`
-                              : ""
-                          } (saved)`
+                      ? `${(selectedFile.size / 1024).toFixed(1)} KB`
+                      : previewMetadata
+                        ? `${previewMetadata.rowCount.toLocaleString()} rows • ${previewMetadata.columnCount.toLocaleString()} columns`
                         : "Supports .csv and .txt"}
                   </p>
 
-                  {(parseState === "uploading" ||
-                    parseState === "queued" ||
-                    parseState === "running" ||
-                    parseState === "canceling" ||
-                    parseState === "completed") && (
+                  {(isBusy || parseState === "completed") && (
                     <div className="mt-4 space-y-2 text-left">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {(parseState === "uploading" ||
-                          parseState === "queued" ||
-                          parseState === "running" ||
-                          parseState === "canceling") && (
-                          <LoaderCircle className="size-3 animate-spin" />
-                        )}
-                        <span>{animatedLabel}</span>
+                        {isBusy && <LoaderCircle className="size-3 animate-spin" />}
+                        <span>{label}</span>
                       </div>
-                      <Progress value={progressValue} />
-                      {previewSummary ? (
+                      <Progress value={progress} />
+                      {previewMetadata && (
                         <p className="text-xs text-muted-foreground">
-                          {previewSummary}
+                          {previewMetadata.rowCount.toLocaleString()} rows •{" "}
+                          {previewMetadata.columnCount.toLocaleString()} columns
                         </p>
-                      ) : null}
+                      )}
                     </div>
                   )}
 
-                  {parseError ? (
-                    <p className="text-xs text-destructive mt-2">
-                      {parseError}
-                    </p>
-                  ) : null}
+                  {parseError && (
+                    <p className="text-xs text-destructive mt-2">{parseError}</p>
+                  )}
                 </div>
               </button>
 
-              {(parseState === "uploading" ||
-                parseState === "queued" ||
-                parseState === "running" ||
-                parseState === "canceling" ||
-                parseState === "completed") && (
+              {/* Cancel button */}
+              {(isBusy || parseState === "completed") && (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   className="w-fit"
-                  onClick={handleCancelPreview}
-                  disabled={parseState === "canceling"}
+                  onClick={handleCancel}
+                  disabled={false}
                 >
                   <X className="size-4" />
-                  {parseState === "canceling" ? "Canceling" : "Cancel File"}
+                  Cancel File
                 </Button>
               )}
 
-              <FormField
-                control={form.control}
-                name="maxSizeMB"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Max File Size (MB)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="1000"
-                        {...field}
-                        onChange={(e) =>
-                          field.onChange(
-                            e.target.value
-                              ? parseInt(e.target.value, 10)
-                              : undefined,
-                          )
-                        }
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Maximum file size allowed (0 = unlimited)
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="allowedTypes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Allowed File Types (Optional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="text/csv, .txt, .csv" {...field} />
-                    </FormControl>
-                    <FormDescription>
-                      Comma-separated MIME types or extensions
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
+              {/* Variable name */}
               <FormField
                 control={form.control}
                 name="variableName"
@@ -798,7 +411,8 @@ export const UploadFileDialog = ({
                       <Input placeholder="uploadedFile" {...field} />
                     </FormControl>
                     <FormDescription>
-                      Store uploaded file as {`{{${watchVariableName}}}`}
+                      Access this file as {`{{${watchVariableName}}}`} in
+                      downstream nodes
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
