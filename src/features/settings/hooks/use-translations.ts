@@ -1,15 +1,13 @@
 "use client";
 
-import { useAtomValue } from "jotai";
 import ar from "@/messages/ar.json";
 import en from "@/messages/en.json";
 import fr from "@/messages/fr.json";
-import { localeAtom } from "../store/language-atom";
 
-// All message files indexed by locale
-const messages = { en, fr, ar };
+// Offline PWA — default to English (language switching removed)
+const messages = { en, fr, ar } as const;
+type Locale = keyof typeof messages;
 
-// Dot-notation key lookup, e.g. t("nav.workflows") → "Workflows"
 function getNestedValue(obj: Record<string, unknown>, path: string): string {
   const keys = path.split(".");
   let current: unknown = obj;
@@ -21,9 +19,8 @@ function getNestedValue(obj: Record<string, unknown>, path: string): string {
 }
 
 export function useTranslations() {
-  const locale = useAtomValue(localeAtom);
+  const locale: Locale = "en";
   const msgs = messages[locale] as Record<string, unknown>;
-
   return {
     t: (key: string) => getNestedValue(msgs, key),
     locale,

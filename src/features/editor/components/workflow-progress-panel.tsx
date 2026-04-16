@@ -1,9 +1,8 @@
 "use client";
 
-import { useInngestSubscription } from "@inngest/realtime/hooks";
 import { useQuery } from "@tanstack/react-query";
 import type { Edge, Node } from "@xyflow/react";
-import { useAtom, useAtomValue, useSetAtom } from "jotai";
+import { useAtom, useAtomValue } from "jotai";
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -27,8 +26,8 @@ import {
   ExecutionCompareViewer,
   type CompareResult,
 } from "@/features/executions/components/execution-compare-viewer";
-import { fetchFileRealTimeToken } from "@/features/executions/components/upload-file/actions";
-import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
+import { executionKeys } from "@/features/executions/hooks/use-executions";
+import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import {
   activeExecutionIdAtom,
@@ -40,7 +39,6 @@ import {
   workflowExecutionStateAtom,
   workflowProgressPanelCollapsedAtom,
 } from "@/store/execution-status";
-import { useTRPC } from "@/trpc/client";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -54,15 +52,6 @@ interface WorkflowTraceNode {
   type?: string;
   data?: Record<string, unknown>;
 }
-
-type SortProgressSnapshot = {
-  stage: string;
-  label: string;
-  rowsScanned?: number;
-  rowsWritten?: number;
-  runCount?: number;
-  elapsedMs?: number;
-};
 
 // ─── Config maps ─────────────────────────────────────────────────────────────
 
@@ -140,14 +129,6 @@ const PANEL_ANIMATION_CSS = `
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const readOptionalNumber = (
-  record: Record<string, unknown>,
-  key: string,
-): number | undefined => {
-  const value = record[key];
-  return typeof value === "number" ? value : undefined;
-};
-
 const humanizeNodeType = (type: string) =>
   type
     .toLowerCase()
@@ -196,12 +177,10 @@ const formatBytes = (value: unknown) => {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     return "-";
   }
-
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 * 1024 * 1024)
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-
   return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 };
 
@@ -246,40 +225,6 @@ const getDurationLabel = ({
   if (ms < 1000) return `${ms} ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`;
   return `${(ms / 60_000).toFixed(1)} min`;
-};
-
-const formatSortProgressLabel = (snapshot: SortProgressSnapshot): string => {
-  if (snapshot.stage === "scanning") {
-    if (typeof snapshot.rowsScanned === "number" && snapshot.rowsScanned > 0) {
-      return `Scanning ${snapshot.rowsScanned.toLocaleString()} rows...`;
-    }
-    return "Scanning source rows...";
-  }
-
-  if (snapshot.stage === "building_runs") {
-    return "Building sorted runs...";
-  }
-
-  if (snapshot.stage === "merging") {
-    return "Merging pass 1...";
-  }
-
-  if (snapshot.stage === "persisting") {
-    if (typeof snapshot.rowsWritten === "number" && snapshot.rowsWritten > 0) {
-      return `Persisting dataset (${snapshot.rowsWritten.toLocaleString()} rows written)...`;
-    }
-    return "Persisting dataset...";
-  }
-
-  if (snapshot.stage === "sorting") {
-    return "Sorting rows...";
-  }
-
-  if (snapshot.stage === "completed") {
-    return "Dataset persisted.";
-  }
-
-  return "Processing...";
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -331,8 +276,6 @@ export const WorkflowProgressPanel = ({
   edges: Edge[];
   workflowId: string;
 }) => {
-  const trpc = useTRPC();
-
   const [isCollapsed, setIsCollapsed] = useAtom(
     workflowProgressPanelCollapsedAtom,
   );
@@ -347,6 +290,8 @@ export const WorkflowProgressPanel = ({
   const splitContainerRef = useRef<HTMLDivElement | null>(null);
   const splitDraggingRef = useRef(false);
 
+  // ── Atom reads (source of truth — populated by execution engine) ──────────
+
   const executionState = useAtomValue(workflowExecutionStateAtom);
   const activeExecutionId = useAtomValue(activeExecutionIdAtom);
   const executionStartedAt = useAtomValue(executionStartedAtAtom);
@@ -354,143 +299,31 @@ export const WorkflowProgressPanel = ({
   const executionError = useAtomValue(workflowExecutionErrorAtom);
   const executionResult = useAtomValue(workflowExecutionResultAtom);
 
-  const setExecutionStartedAt = useSetAtom(executionStartedAtAtom);
-  const setExecutionState = useSetAtom(workflowExecutionStateAtom);
-  const setExecutionResult = useSetAtom(workflowExecutionResultAtom);
-  const setExecutionError = useSetAtom(workflowExecutionErrorAtom);
+  // ── Per-node output (Dexie) ────────────────────────────────────────────────
 
-  // ── Execution polling ──────────────────────────────────────────────────────
-
-  const executionQuery = useQuery({
-    ...trpc.executions.getOne.queryOptions({ id: activeExecutionId ?? "" }),
-    enabled: Boolean(activeExecutionId),
-    retry: false,
-    refetchInterval: (query) => {
-      const current = query.state.data;
-      if (!current) return 1000;
-      return current.status === "RUNNING" ? 1000 : false;
+  const nodeOutputQuery = useQuery({
+    queryKey: executionKeys.nodeOutput(
+      activeExecutionId ?? "",
+      selectedNodeId ?? "",
+    ),
+    queryFn: async () => {
+      if (!activeExecutionId || !selectedNodeId) return null;
+      return db.executionNodeOutputs
+        .where(["executionId", "nodeId"])
+        .equals([activeExecutionId, selectedNodeId])
+        .first()
+        .then((r) => r ?? null);
     },
-  });
-
-  const executionRawOutputQuery = useQuery({
-    ...trpc.executions.getOneRawOutput.queryOptions({
-      id: activeExecutionId ?? "",
-    }),
-    enabled: Boolean(activeExecutionId),
-    retry: false,
-    refetchInterval: (query) => {
-      const status = executionQuery.data?.status;
-
-      if (status === "RUNNING") return 1000;
-
-      if (status === "SUCCESS") {
-        const output = query.state.data?.output;
-        const finishedAt = executionQuery.data?.finishedAt
-          ? new Date(executionQuery.data.finishedAt).getTime()
-          : null;
-
-        if (output == null && finishedAt && Date.now() - finishedAt < 30_000) {
-          return 1000;
-        }
-      }
-
-      return false;
-    },
-  });
-
-  const executionNodeOutputQuery = useQuery({
-    ...trpc.executions.getNodeOutput.queryOptions({
-      executionId: activeExecutionId ?? "",
-      nodeId: selectedNodeId ?? "",
-    }),
     enabled: Boolean(activeExecutionId && selectedNodeId),
+    refetchInterval: executionState === "running" ? 1000 : false,
     retry: false,
-    refetchInterval: (query) => {
-      const status = executionQuery.data?.status;
-      if (status === "RUNNING") {
-        return 1000;
-      }
-
-      if (status === "SUCCESS" && !query.state.data) {
-        return 1000;
-      }
-
-      return false;
-    },
   });
-
-  const { data: realtimeMessages } = useInngestSubscription({
-    refreshToken: fetchFileRealTimeToken,
-    enabled: Boolean(activeExecutionId),
-  });
-
-  const executionStatus = executionQuery.data?.status;
-
-  useEffect(() => {
-    if (
-      !activeExecutionId ||
-      !executionStatus ||
-      executionStatus === "RUNNING"
-    ) {
-      return;
-    }
-
-    void executionRawOutputQuery.refetch();
-  }, [activeExecutionId, executionRawOutputQuery.refetch, executionStatus]);
-
-  useEffect(() => {
-    if (!activeExecutionId) {
-      setExecutionResult(null);
-      return;
-    }
-    setExecutionResult(null);
-  }, [activeExecutionId, setExecutionResult]);
-
-  useEffect(() => {
-    const current = executionQuery.data;
-    if (!current) return;
-
-    if (current.startedAt)
-      setExecutionStartedAt(new Date(current.startedAt).getTime());
-
-    if (current.status === "RUNNING") {
-      setExecutionState("running");
-      setExecutionError(null);
-      return;
-    }
-    if (current.status === "SUCCESS") {
-      setExecutionState("success");
-      setExecutionError(null);
-      return;
-    }
-    const normalizedError = current.error?.toLowerCase() ?? "";
-    if (
-      current.status === "FAILED" &&
-      /(paused|canceled|cancelled)/.test(normalizedError)
-    ) {
-      setExecutionState("paused");
-      setExecutionError(current.error);
-      return;
-    }
-    setExecutionState("error");
-    setExecutionError(current.error ?? "Workflow execution failed.");
-  }, [
-    executionQuery.data,
-    setExecutionError,
-    setExecutionStartedAt,
-    setExecutionState,
-  ]);
-
-  useEffect(() => {
-    setExecutionResult(executionRawOutputQuery.data?.output ?? null);
-  }, [executionRawOutputQuery.data, setExecutionResult]);
 
   // ── Derived data ───────────────────────────────────────────────────────────
 
   const stateConfig = workflowStateConfig[executionState];
 
-  const outputPreview =
-    executionResult ?? executionRawOutputQuery.data?.output ?? null;
+  const outputPreview = executionResult ?? null;
   const outputRecord =
     typeof outputPreview === "object" && outputPreview !== null
       ? (outputPreview as Record<string, unknown>)
@@ -532,7 +365,6 @@ export const WorkflowProgressPanel = ({
       : [];
   }, [outputRecord]);
 
-  // Per-node timing derived from real metrics or synthetic fallback
   const nodeTimingMap = useMemo(() => {
     const map = new Map<string, { startMs: number; endMs: number }>();
 
@@ -553,8 +385,7 @@ export const WorkflowProgressPanel = ({
       workflowNodes.forEach((node, index) => {
         const startMs =
           index *
-          (FALLBACK_SYNTHETIC_STEP_DURATION_MS +
-            FALLBACK_SYNTHETIC_STEP_GAP_MS);
+          (FALLBACK_SYNTHETIC_STEP_DURATION_MS + FALLBACK_SYNTHETIC_STEP_GAP_MS);
         map.set(node.id, {
           startMs,
           endMs: startMs + FALLBACK_SYNTHETIC_STEP_DURATION_MS,
@@ -590,104 +421,9 @@ export const WorkflowProgressPanel = ({
     : null;
 
   const selectedNodeLiveOutputRecord = useMemo(() => {
-    const output = executionNodeOutputQuery.data?.output;
+    const output = nodeOutputQuery.data?.inlineOutput;
     return isRecord(output) ? output : null;
-  }, [executionNodeOutputQuery.data?.output]);
-
-  const selectedSortProgress = useMemo<SortProgressSnapshot | null>(() => {
-    if (
-      !selectedWorkflowNode ||
-      selectedWorkflowNode.status !== "loading" ||
-      !activeExecutionId ||
-      !realtimeMessages?.length
-    ) {
-      return null;
-    }
-
-    const progressEntries: Array<{
-      createdAtMs: number;
-      payload: Record<string, unknown>;
-    }> = [];
-
-    for (const message of realtimeMessages) {
-      if (
-        message.kind !== "data" ||
-        message.channel !== FILE_CHANNEL_NAME ||
-        message.topic !== "progress" ||
-        !isRecord(message.data)
-      ) {
-        continue;
-      }
-
-      const messageExecutionId =
-        typeof message.data.executionId === "string"
-          ? message.data.executionId
-          : null;
-      const messageNodeId =
-        typeof message.data.nodeId === "string" ? message.data.nodeId : null;
-
-      if (
-        messageExecutionId !== activeExecutionId ||
-        messageNodeId !== selectedWorkflowNode.id
-      ) {
-        continue;
-      }
-
-      const rawCreatedAt = (message as { createdAt?: unknown }).createdAt;
-      if (
-        typeof rawCreatedAt !== "string" &&
-        typeof rawCreatedAt !== "number" &&
-        !(rawCreatedAt instanceof Date)
-      ) {
-        continue;
-      }
-
-      const createdAtMs = new Date(rawCreatedAt).getTime();
-      if (Number.isNaN(createdAtMs)) {
-        continue;
-      }
-
-      if (executionStartedAt && createdAtMs < executionStartedAt) {
-        continue;
-      }
-
-      progressEntries.push({
-        createdAtMs,
-        payload: message.data,
-      });
-    }
-
-    const latestProgressEntry = progressEntries.sort(
-      (left, right) => right.createdAtMs - left.createdAtMs,
-    )[0];
-
-    if (!latestProgressEntry) {
-      return null;
-    }
-
-    const payload = latestProgressEntry.payload;
-    const stage = typeof payload.stage === "string" ? payload.stage : null;
-    if (!stage) {
-      return null;
-    }
-
-    const snapshot: SortProgressSnapshot = {
-      stage,
-      label: "",
-      rowsScanned: readOptionalNumber(payload, "rowsScanned"),
-      rowsWritten: readOptionalNumber(payload, "rowsWritten"),
-      runCount: readOptionalNumber(payload, "runCount"),
-      elapsedMs: readOptionalNumber(payload, "elapsedMs"),
-    };
-
-    snapshot.label = formatSortProgressLabel(snapshot);
-    return snapshot;
-  }, [
-    activeExecutionId,
-    executionStartedAt,
-    realtimeMessages,
-    selectedWorkflowNode,
-  ]);
+  }, [nodeOutputQuery.data?.inlineOutput]);
 
   // Auto-select most relevant node
   useEffect(() => {
@@ -706,30 +442,16 @@ export const WorkflowProgressPanel = ({
   }, [executionState, workflowNodes, selectedNodeId]);
 
   const selectedNodeOutput = useMemo(() => {
-    if (!selectedWorkflowNode) {
-      return null;
-    }
+    if (!selectedWorkflowNode) return null;
 
     const resolveFromRecord = (record: Record<string, unknown> | null) => {
-      if (!record) {
-        return null;
-      }
-
+      if (!record) return null;
       for (const key of selectedWorkflowNode.variableKeys) {
-        if (key in record) {
-          return record[key];
-        }
+        if (key in record) return record[key];
       }
-
-      if (selectedWorkflowNode.id in record) {
-        return record[selectedWorkflowNode.id];
-      }
-
+      if (selectedWorkflowNode.id in record) return record[selectedWorkflowNode.id];
       const entries = Object.entries(record);
-      if (entries.length === 1) {
-        return entries[0]?.[1] ?? null;
-      }
-
+      if (entries.length === 1) return entries[0]?.[1] ?? null;
       return null;
     };
 
@@ -740,25 +462,16 @@ export const WorkflowProgressPanel = ({
   }, [outputRecord, selectedNodeLiveOutputRecord, selectedWorkflowNode]);
 
   const selectedDatasetVariable = useMemo(() => {
-    if (!selectedWorkflowNode) {
-      return null;
-    }
+    if (!selectedWorkflowNode) return null;
 
     const resolveFromRecord = (record: Record<string, unknown> | null) => {
-      if (!record) {
-        return null;
-      }
-
+      if (!record) return null;
       for (const key of selectedWorkflowNode.variableKeys) {
-        if (isDatasetLikeValue(record[key])) {
-          return key;
-        }
+        if (isDatasetLikeValue(record[key])) return key;
       }
-
       const firstDatasetEntry = Object.entries(record).find(([, value]) =>
         isDatasetLikeValue(value),
       );
-
       return firstDatasetEntry?.[0] ?? null;
     };
 
@@ -779,12 +492,7 @@ export const WorkflowProgressPanel = ({
     ? `${outputPayloadText.slice(0, 1200)}\n\n... (output truncated)`
     : outputPayloadText;
 
-  const effectiveError =
-    executionError ??
-    executionQuery.data?.error ??
-    (executionRawOutputQuery.isError
-      ? "Failed to load raw execution output."
-      : null);
+  const effectiveError = executionError;
 
   const outputLimitInfo = isRecord(outputRecord?.__outputLimit)
     ? (outputRecord.__outputLimit as Record<string, unknown>)
@@ -793,7 +501,6 @@ export const WorkflowProgressPanel = ({
   const selectedBlobOutput = useMemo(() => {
     if (!isRecord(selectedOutputPayload)) return null;
     if (selectedOutputPayload.type !== "blob") return null;
-
     return {
       name:
         typeof selectedOutputPayload.name === "string"
@@ -823,24 +530,8 @@ export const WorkflowProgressPanel = ({
     return selectedOutputPayload as unknown as CompareResult;
   }, [selectedWorkflowNode, selectedOutputPayload]);
 
-  const stackTraceText = executionQuery.data?.errorStack ?? "";
-  const stackTraceLines = useMemo(
-    () =>
-      stackTraceText
-        .split(/\r?\n/)
-        .map((l) => l.trimEnd())
-        .filter((l) => l.length > 0),
-    [stackTraceText],
-  );
-
-  const startedAt = executionQuery.data?.startedAt
-    ? new Date(executionQuery.data.startedAt)
-    : executionStartedAt
-      ? new Date(executionStartedAt)
-      : null;
-  const finishedAt = executionQuery.data?.finishedAt
-    ? new Date(executionQuery.data.finishedAt)
-    : null;
+  const startedAt = executionStartedAt ? new Date(executionStartedAt) : null;
+  const finishedAt: Date | null = null; // not persisted in offline model
 
   const inspectorName = selectedWorkflowNode?.label ?? "Inspector";
   const inspectorStatus: TraceStatus =
@@ -906,60 +597,60 @@ export const WorkflowProgressPanel = ({
     URL.revokeObjectURL(url);
   };
 
+  // ── Execution status label ─────────────────────────────────────────────────
+
+  const executionStatusLabel =
+    executionState === "running"
+      ? "RUNNING"
+      : executionState === "success"
+        ? "SUCCESS"
+        : executionState === "error" || executionState === "paused"
+          ? "FAILED"
+          : "PENDING";
+
   // ── Right panel renderer ───────────────────────────────────────────────────
 
-  const renderRightPanel = () => {
-    const executionStatusLabel =
-      executionQuery.data?.status ??
-      (executionState === "running"
-        ? "RUNNING"
-        : executionState === "success"
-          ? "SUCCESS"
-          : executionState === "error" || executionState === "paused"
-            ? "FAILED"
-            : "PENDING");
-
-    const metadataView = (
-      <div className="rounded-md border border-border bg-muted/25 px-3 py-2 text-xs">
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
-          <div className="space-y-0.5">
-            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-              Status
-            </p>
-            <p
-              className={cn(
-                "font-medium",
-                executionStatusLabel === "FAILED"
-                  ? "text-red-600"
-                  : "text-foreground",
-              )}
-            >
-              {executionStatusLabel}
-            </p>
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-              Started
-            </p>
-            <p className="text-foreground">{formatDateTime(startedAt)}</p>
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-              Finished
-            </p>
-            <p className="text-foreground">{formatDateTime(finishedAt)}</p>
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-              Duration
-            </p>
-            <p className="text-foreground">{durationLabel}</p>
-          </div>
+  const metadataView = (
+    <div className="rounded-md border border-border bg-muted/25 px-3 py-2 text-xs">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+        <div className="space-y-0.5">
+          <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Status
+          </p>
+          <p
+            className={cn(
+              "font-medium",
+              executionStatusLabel === "FAILED"
+                ? "text-red-600"
+                : "text-foreground",
+            )}
+          >
+            {executionStatusLabel}
+          </p>
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Started
+          </p>
+          <p className="text-foreground">{formatDateTime(startedAt)}</p>
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Finished
+          </p>
+          <p className="text-foreground">{formatDateTime(finishedAt)}</p>
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
+            Duration
+          </p>
+          <p className="text-foreground">{durationLabel}</p>
         </div>
       </div>
-    );
+    </div>
+  );
 
-    // No execution started
+  const renderRightPanel = () => {
     if (executionState === "idle") {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
@@ -978,7 +669,6 @@ export const WorkflowProgressPanel = ({
       );
     }
 
-    // No node selected yet
     if (!selectedWorkflowNode) {
       return (
         <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
@@ -992,36 +682,15 @@ export const WorkflowProgressPanel = ({
 
     const { status, label } = selectedWorkflowNode;
 
-    // Node is actively running
     if (status === "loading") {
-      const runningText = selectedSortProgress?.label ?? `Running ${label}…`;
-      const rowStats =
-        selectedSortProgress &&
-        (selectedSortProgress.rowsScanned || selectedSortProgress.rowsWritten)
-          ? [
-              selectedSortProgress.rowsScanned
-                ? `${selectedSortProgress.rowsScanned.toLocaleString()} scanned`
-                : "",
-              selectedSortProgress.rowsWritten
-                ? `${selectedSortProgress.rowsWritten.toLocaleString()} written`
-                : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")
-          : null;
-
       return (
         <div className="space-y-3">
           {metadataView}
-          <NodeStatusLine text={runningText} />
-          {rowStats && (
-            <p className="px-1 text-[11px] text-muted-foreground">{rowStats}</p>
-          )}
+          <NodeStatusLine text={`Running ${label}…`} />
         </div>
       );
     }
 
-    // Execution is running but this node hasn't started
     if (executionState === "running" && status === "initial") {
       return (
         <div className="space-y-3">
@@ -1039,7 +708,6 @@ export const WorkflowProgressPanel = ({
       );
     }
 
-    // Error state
     if (status === "error" || executionState === "error") {
       return (
         <div className="space-y-3">
@@ -1051,52 +719,14 @@ export const WorkflowProgressPanel = ({
               <span className="text-xs leading-relaxed">{effectiveError}</span>
             </div>
           )}
-
-          <div className="overflow-hidden rounded-md border border-border bg-muted/25">
-            <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-              <span className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
-                Stack trace
-              </span>
-              <button
-                type="button"
-                onClick={() => handleCopy(stackTraceText, "error")}
-                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
-                disabled={!stackTraceText}
-              >
-                <CopyIcon className="size-3" />
-                {copiedState === "error" ? "Copied" : "Copy"}
-              </button>
-            </div>
-            <div className="max-h-[280px] overflow-auto px-3 py-2 font-mono text-xs leading-6">
-              {stackTraceLines.length > 0 ? (
-                stackTraceLines.map((line, i) => (
-                  <div key={`${i + 1}-${line}`} className="flex gap-3">
-                    <span className="w-5 shrink-0 select-none text-right text-[11px] text-muted-foreground">
-                      {i + 1}
-                    </span>
-                    <span
-                      className={
-                        i === 0 ? "text-red-600" : "text-muted-foreground"
-                      }
-                    >
-                      {line}
-                    </span>
-                  </div>
-                ))
-              ) : (
-                <div className="px-1 py-1 text-muted-foreground">
-                  No stack trace available.
-                </div>
-              )}
-            </div>
+          <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            Execution failed. Check the error above for details.
           </div>
         </div>
       );
     }
 
-    // Success — show dataset or JSON output
     if (status === "success") {
-      // Manual trigger has no output — show workflow status instead
       if (selectedWorkflowNode.type === "MANUAL_TRIGGER") {
         const statusText =
           executionState === "running"
@@ -1111,25 +741,8 @@ export const WorkflowProgressPanel = ({
             {metadataView}
             <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
               <CheckCircle2Icon className="size-4 shrink-0 text-green-500" />
-              <p className="text-sm font-medium text-foreground">
-                {statusText}
-              </p>
+              <p className="text-sm font-medium text-foreground">{statusText}</p>
             </div>
-          </div>
-        );
-      }
-
-      const isWaitingForNodeOutput =
-        executionState === "running" &&
-        !selectedNodeOutput &&
-        (executionNodeOutputQuery.isFetching ||
-          executionRawOutputQuery.isFetching);
-
-      if (isWaitingForNodeOutput) {
-        return (
-          <div className="space-y-3">
-            {metadataView}
-            <NodeStatusLine text="Waiting for node output…" />
           </div>
         );
       }
@@ -1147,10 +760,7 @@ export const WorkflowProgressPanel = ({
                   <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
                     Name
                   </p>
-                  <p
-                    className="truncate text-foreground"
-                    title={selectedBlobOutput.name}
-                  >
+                  <p className="truncate text-foreground" title={selectedBlobOutput.name}>
                     {selectedBlobOutput.name}
                   </p>
                 </div>
@@ -1158,10 +768,7 @@ export const WorkflowProgressPanel = ({
                   <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
                     Type
                   </p>
-                  <p
-                    className="truncate text-foreground"
-                    title={selectedBlobOutput.mimeType}
-                  >
+                  <p className="truncate text-foreground" title={selectedBlobOutput.mimeType}>
                     {selectedBlobOutput.mimeType}
                   </p>
                 </div>
@@ -1169,9 +776,7 @@ export const WorkflowProgressPanel = ({
                   <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
                     Size
                   </p>
-                  <p className="text-foreground">
-                    {formatBytes(selectedBlobOutput.size)}
-                  </p>
+                  <p className="text-foreground">{formatBytes(selectedBlobOutput.size)}</p>
                 </div>
                 <div className="rounded border border-border bg-background/70 px-2 py-1.5">
                   <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground">
@@ -1295,7 +900,7 @@ export const WorkflowProgressPanel = ({
             <div className="rounded-md border border-amber-300 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
               {typeof outputLimitInfo.message === "string"
                 ? outputLimitInfo.message
-                : "Execution output exceeded the limit, so this node output is not available in the summary."}
+                : "Execution output exceeded the limit."}
             </div>
           ) : (
             <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -1306,7 +911,6 @@ export const WorkflowProgressPanel = ({
       );
     }
 
-    // Paused / other fallback
     return (
       <div className="space-y-3">
         {metadataView}
@@ -1325,16 +929,13 @@ export const WorkflowProgressPanel = ({
     <>
       <style>{PANEL_ANIMATION_CSS}</style>
 
-      {/* Expanded output dialog */}
       <Dialog open={isOutputExpanded} onOpenChange={setIsOutputExpanded}>
         <DialogContent className="max-h-[80vh] max-w-4xl overflow-hidden p-0">
           <DialogTitle className="border-b border-border px-4 py-3 text-sm font-medium">
             {inspectorName} — Full Output
           </DialogTitle>
           <div className="overflow-auto p-4">
-            <pre className="font-mono text-xs leading-5">
-              {outputPayloadText}
-            </pre>
+            <pre className="font-mono text-xs leading-5">{outputPayloadText}</pre>
           </div>
         </DialogContent>
       </Dialog>
@@ -1435,7 +1036,6 @@ export const WorkflowProgressPanel = ({
                 className="flex h-full min-w-[220px] flex-col border-r border-border"
                 style={{ width: `${splitPercent}%` }}
               >
-                {/* Timeline header */}
                 <div className="shrink-0 border-b border-border bg-muted/40 px-2.5 py-1.5">
                   <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                     Trace
@@ -1452,7 +1052,6 @@ export const WorkflowProgressPanel = ({
                   </div>
                 </div>
 
-                {/* Node rows */}
                 <div className="min-h-0 flex-1 overflow-y-auto">
                   {workflowNodes.length === 0 ? (
                     <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
@@ -1554,7 +1153,6 @@ export const WorkflowProgressPanel = ({
 
               {/* ── Right: Output / Error / Loading ────────────────────── */}
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                {/* Inspector header */}
                 <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
                   <div className="flex min-w-0 items-center gap-2">
                     <TraceStatusIcon status={inspectorStatus} size={16} />
@@ -1588,7 +1186,6 @@ export const WorkflowProgressPanel = ({
                     )}
                 </div>
 
-                {/* Content */}
                 <div className="min-h-0 flex-1 overflow-auto p-4">
                   {renderRightPanel()}
                 </div>

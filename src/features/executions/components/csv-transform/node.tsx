@@ -5,9 +5,7 @@ import { ScanSearch } from "lucide-react";
 import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
-import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
-import { fetchFileRealTimeToken } from "../upload-file/actions";
 import { CsvTransformDialog, type CsvTransformFormValues } from "./dialog";
 
 interface CsvTransformNodeData extends Record<string, unknown> {
@@ -40,12 +38,7 @@ export const CsvTransformNode = memo((props: NodeProps) => {
       ? `${ruleCount} rule${ruleCount === 1 ? "" : "s"} · ${data.matchMode ?? "all"} match`
       : "Search, replace, delete rows";
 
-  const nodeStatus = useNodeStatus({
-    nodeId: props.id,
-    channel: FILE_CHANNEL_NAME,
-    topic: "status",
-    refreshToken: fetchFileRealTimeToken,
-  });
+  const nodeStatus = useNodeStatus(props.id);
 
   return (
     <>

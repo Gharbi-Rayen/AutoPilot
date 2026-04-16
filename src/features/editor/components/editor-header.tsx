@@ -18,7 +18,7 @@ import {
   useUpdateWorkflow,
   useUpdateWorkflowName,
 } from "@/features/workflows/hooks/use-workflows";
-import type { NodeType } from "@/generated/prisma";
+import type { NodeType } from "@/types/node-type";
 import { cn } from "@/lib/utils";
 import { editorAtom } from "../store/atoms";
 
@@ -133,9 +133,10 @@ export const EditorSaveButtons = ({ workflowId }: { workflowId: string }) => {
       id: node.id,
       type: node.type as NodeType,
       position: node.position,
-      data: node.data as Record<string, unknown> | undefined,
+      data: (node.data as Record<string, unknown>) ?? {},
     }));
     const edges = editor.getEdges().map((edge) => ({
+      id: edge.id,
       source: edge.source,
       target: edge.target,
       sourceHandle: edge.sourceHandle,

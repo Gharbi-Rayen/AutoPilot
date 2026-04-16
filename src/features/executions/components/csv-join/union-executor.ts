@@ -1,7 +1,6 @@
-import { NonRetriableError } from "inngest";
-import { UNION_DEDUP_MAX_ROWS } from "@/config/constants";
+import { getPerformanceSettings } from "@/lib/performance-settings";
 
-export class BudgetExceededError extends NonRetriableError {
+export class BudgetExceededError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "BudgetExceededError";
@@ -23,12 +22,13 @@ export async function* unionRows(
   rightRows: AsyncIterable<Record<string, unknown>>,
 ) {
   const seen = new Set<string>();
+  const maxUnionRows = getPerformanceSettings().maxUnionRows;
   let count = 0;
   for await (const row of unionAllRows(leftRows, rightRows)) {
-    if (++count > UNION_DEDUP_MAX_ROWS) {
+    if (++count > maxUnionRows) {
       throw new BudgetExceededError(
-        `Union deduplication exceeded ${UNION_DEDUP_MAX_ROWS} rows. ` +
-          `Use CSV Deduplicate node for larger datasets.`,
+        `Union deduplication exceeded ${maxUnionRows.toLocaleString()} rows. ` +
+          `Increase the limit in Settings → Performance, or use the CSV Deduplicate node.`,
       );
     }
     const hash = JSON.stringify(row);

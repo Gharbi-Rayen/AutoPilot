@@ -1,16 +1,9 @@
 "use client";
 
-import {
-  FolderOpenIcon,
-  HistoryIcon,
-  KeyIcon,
-  Loader2Icon,
-  LogOutIcon,
-  SettingsIcon,
-} from "lucide-react";
+import { FolderOpenIcon, HistoryIcon, Loader2Icon, SettingsIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import React, { useState } from "react";
 import {
   Sidebar,
@@ -24,46 +17,17 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { useTranslations } from "@/features/settings/hooks/use-translations";
-import { authClient } from "@/lib/auth-client";
 
 const menuItems = [
-  {
-    title: "Home",
-    items: [
-      {
-        title: "workflows",
-        icon: FolderOpenIcon,
-        url: "/workflows",
-      },
-      {
-        title: "credentials",
-        icon: KeyIcon,
-        url: "/credentials",
-      },
-      {
-        title: "executions",
-        icon: HistoryIcon,
-        url: "/executions",
-      },
-      {
-        title: "settings",
-        icon: SettingsIcon,
-        url: "/settings",
-      },
-    ],
-  },
+  { title: "Workflows", icon: FolderOpenIcon, url: "/workflows" },
+  { title: "Executions", icon: HistoryIcon, url: "/executions" },
 ];
 
 export const AppSidebar = () => {
-  const { t } = useTranslations();
-  const router = useRouter();
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
 
-  // Clear the loading state and close mobile sidebar when navigation completes
   React.useEffect(() => {
     if (pathname) {
       setNavigatingTo(null);
@@ -95,84 +59,55 @@ export const AppSidebar = () => {
       </SidebarHeader>
 
       <SidebarContent>
-        {menuItems.map((group) => (
-          <SidebarGroup key={group.title}>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {group.items.map((item) => {
-                  const isActive =
-                    item.url === "/"
-                      ? pathname === "/"
-                      : pathname.startsWith(item.url);
-                  const isNavigating = navigatingTo === item.url && !isActive;
-
-                  return (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton
-                        tooltip={t(`nav.${item.title}`)}
-                        isActive={isActive}
-                        asChild
-                        className="gap-x-4 h-10 px-4"
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {menuItems.map((item) => {
+                const isActive = pathname.startsWith(item.url);
+                const isNavigating = navigatingTo === item.url && !isActive;
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      tooltip={item.title}
+                      isActive={isActive}
+                      asChild
+                      className="gap-x-4 h-10 px-4"
+                    >
+                      <Link
+                        href={item.url}
+                        onClick={() => {
+                          if (!isActive) setNavigatingTo(item.url);
+                        }}
                       >
-                        <Link
-                          href={item.url}
-                          onClick={() => {
-                            if (!isActive) {
-                              setNavigatingTo(item.url);
-                            }
-                          }}
-                        >
-                          {isNavigating ? (
-                            <Loader2Icon className="size-4 animate-spin" />
-                          ) : (
-                            <item.icon className="size-4" />
-                          )}
-                          <span className="capitalize">
-                            {t(`nav.${item.title}`)}
-                          </span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+                        {isNavigating ? (
+                          <Loader2Icon className="size-4 animate-spin" />
+                        ) : (
+                          <item.icon className="size-4" />
+                        )}
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="Settings"
+              isActive={pathname.startsWith("/settings")}
               asChild
-              tooltip={t("nav.logOut")}
-              isActive={false}
               className="gap-x-4 h-10 px-4"
             >
-              <button
-                type="button"
-                disabled={isLoggingOut}
-                onClick={() => {
-                  setIsLoggingOut(true);
-                  authClient.signOut({
-                    fetchOptions: {
-                      onSuccess: () => {
-                        router.push("/login");
-                      },
-                    },
-                  });
-                }}
-              >
-                {isLoggingOut ? (
-                  <Loader2Icon className="size-4 animate-spin" />
-                ) : (
-                  <LogOutIcon className="size-4" />
-                )}
-                <span>
-                  {isLoggingOut ? t("nav.loggingOut") : t("nav.logOut")}
-                </span>
-              </button>
+              <Link href="/settings">
+                <SettingsIcon className="size-4" />
+                <span>Settings</span>
+              </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -4,10 +4,8 @@ import { type NodeProps, useReactFlow } from "@xyflow/react";
 import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
-import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 
 import { useNodeStatus } from "../../hooks/use-node-status";
-import { fetchFileRealTimeToken } from "../upload-file/actions";
 import { PdfSignDialog, type PdfSignFormValues } from "./dialog";
 
 interface PdfSignNodeData extends Record<string, unknown> {
@@ -45,12 +43,7 @@ export const PdfSignNode = memo((props: NodeProps) => {
     ? `Sign: ${data.pdfVariable}`
     : "Apply signature to PDF";
 
-  const nodeStatus = useNodeStatus({
-    nodeId: props.id,
-    channel: FILE_CHANNEL_NAME,
-    topic: "status",
-    refreshToken: fetchFileRealTimeToken,
-  });
+  const nodeStatus = useNodeStatus(props.id);
 
   return (
     <>

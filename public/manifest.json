@@ -1,20 +1,47 @@
 {
   "name": "AutoPilot",
   "short_name": "AutoPilot",
-  "description": "Automated workflow execution for CSV and document processing",
-  "start_url": "/workflows",
+  "description": "Offline workflow automation for CSV and document file processing",
+  "start_url": "/workflows/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#09090b",
   "theme_color": "#09090b",
   "orientation": "any",
+  "lang": "en",
   "icons": [
     {
       "src": "/icons/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [],
-  "categories": ["productivity", "utilities"]
+  "shortcuts": [
+    {
+      "name": "Workflows",
+      "url": "/workflows/",
+      "description": "Open workflow editor"
+    },
+    {
+      "name": "Executions",
+      "url": "/executions/",
+      "description": "View execution history"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "prefer_related_applications": false
 }

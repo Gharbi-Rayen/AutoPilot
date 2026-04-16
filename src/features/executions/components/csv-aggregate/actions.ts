@@ -1,4 +1,2 @@
-"use server";
-
-// CsvAggregateNode uses the shared FileChannel and actions from download-file
-// No additional server actions needed
+// Offline PWA: server actions removed. All operations run client-side via Web Workers.
+export {};

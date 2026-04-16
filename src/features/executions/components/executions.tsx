@@ -31,6 +31,12 @@ import { useSuspenseExecutions } from "../hooks/use-executions";
 import { useExecutionsParams } from "../hooks/use-executions-params";
 
 const statusConfig = {
+  CANCELED: {
+    label: "Canceled",
+    icon: XCircleIcon,
+    className: "bg-amber-100 text-amber-700 border-amber-200",
+    iconClassName: "",
+  },
   QUEUED: {
     label: "Queued",
     icon: Clock3Icon,
@@ -144,27 +150,20 @@ export const ExecutionsEmpty = () => {
 
 type ExecutionItemData = {
   id: string;
-  status: "RUNNING" | "SUCCESS" | "FAILED";
-  queueState?: "QUEUED" | "RUNNING" | null;
-  startedAt: Date;
-  finishedAt: Date | null;
-  error: string | null;
-  workflow: {
-    id: string;
-    name: string;
-  };
+  status: "RUNNING" | "SUCCESS" | "FAILED" | "CANCELED";
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+  workflowId: string;
 };
 
 const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
-  const statusKey =
-    data.status === "RUNNING" && data.queueState === "QUEUED"
-      ? "QUEUED"
-      : data.status;
-  const config = statusConfig[statusKey];
+  const statusKey = data.status;
+  const config = statusConfig[statusKey] ?? statusConfig.FAILED;
   const StatusIcon = config.icon;
 
   return (
-    <Link href={`/executions/${data.id}`} prefetch>
+    <Link href={`/executions/detail?id=${data.id}`} prefetch>
       <Card className="p-4 shadow-none hover:shadow cursor-pointer transition-all duration-150">
         <CardContent className="flex flex-row items-center justify-between p-0">
           <div className="flex items-center gap-3">
@@ -172,17 +171,15 @@ const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
               <CircleDotIcon className="size-5 text-muted-foreground" />
             </div>
             <div>
-              <CardTitle className="text-base font-medium">
-                {data.workflow.name}
-              </CardTitle>
+              <CardTitle className="text-base font-medium">{data.workflowId}</CardTitle>
               <CardDescription className="text-xs">
                 Started{" "}
-                {formatDistanceToNow(data.startedAt, { addSuffix: true })}
-                {data.finishedAt && (
+                {formatDistanceToNow(new Date(data.startedAt), { addSuffix: true })}
+                {data.completedAt && (
                   <>
                     {" "}
                     &bull; Finished{" "}
-                    {formatDistanceToNow(data.finishedAt, { addSuffix: true })}
+                    {formatDistanceToNow(new Date(data.completedAt ?? data.startedAt), { addSuffix: true })}
                   </>
                 )}
               </CardDescription>
@@ -197,3 +194,9 @@ const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
     </Link>
   );
 };
+
+export const ExecutionsComponent = () => (
+  <ExecutionsContainer>
+    <ExecutionsList />
+  </ExecutionsContainer>
+);

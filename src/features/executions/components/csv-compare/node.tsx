@@ -5,10 +5,8 @@ import { ArrowLeftRight } from "lucide-react";
 import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
-import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 
 import { useNodeStatus } from "../../hooks/use-node-status";
-import { fetchFileRealTimeToken } from "../upload-file/actions";
 import { CsvCompareDialog, type CsvCompareFormValues } from "./dialog";
 
 interface CsvCompareNodeData extends Record<string, unknown> {
@@ -48,12 +46,7 @@ export const CsvCompareNode = memo((props: NodeProps) => {
     ? `Compare by ${data.keyField}`
     : "Compare two datasets";
 
-  const nodeStatus = useNodeStatus({
-    nodeId: props.id,
-    channel: FILE_CHANNEL_NAME,
-    topic: "status",
-    refreshToken: fetchFileRealTimeToken,
-  });
+  const nodeStatus = useNodeStatus(props.id);
 
   return (
     <>

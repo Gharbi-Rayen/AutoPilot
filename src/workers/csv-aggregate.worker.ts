@@ -1,265 +1,74 @@
-import { type Job, UnrecoverableError, Worker } from "bullmq";
-import Redis from "ioredis";
-import { DATASET_STORAGE } from "@/config/constants";
-import {
-  extractInlineRows,
-  parseNumber,
-  streamContextRows,
-  toDatasetRefOutput,
-} from "@/features/executions/components/csv-shared/executor-utils";
-import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
-import { datasetService } from "@/features/executions/server/datasets/dataset-service";
-import {
-  applySchemaToRows,
-  inferDatasetSchema,
-} from "@/features/executions/server/datasets/schema-inference";
-import { inngest } from "@/inngest/client";
-import {
-  DEFAULT_WORKER_SETTINGS,
-  DEFAULT_WORKER_STALL_OPTIONS,
-} from "@/workers/worker-settings";
+/**
+ * CSV Aggregate — Browser Web Worker
+ * Groups rows by key fields and computes aggregations.
+ */
 
-const HEAVY_CONCURRENCY = 2;
-const QUEUE_NAME = "csv-aggregate";
+import { createId } from "@paralleldrive/cuid2";
+import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manager";
+import type { DatasetRow, DatasetRef } from "@/types/dataset";
+import { DATASET_MANIFEST_VERSION } from "@/types/dataset";
+import { readFromOPFS, writeToOPFS } from "./_opfs-helpers";
 
-type AggregateOperation = "count" | "sum" | "avg" | "min" | "max";
+type AggFunc = "sum" | "avg" | "min" | "max" | "count" | "count_distinct" | "first" | "last";
 
-export interface CsvAggregateJobData {
-  executionId: string;
-  variableName: string;
-  sourceRef: unknown;
-  sourceRows: number;
-  groupBy: string;
-  operation: AggregateOperation;
-  targetField?: string;
+interface Aggregation {
+  field: string;
+  func: AggFunc;
+  alias?: string;
 }
 
-export interface CsvAggregateJobResult {
-  kind: "dataset";
-  datasetId: string;
-  executionId: string;
-  variableName: string;
-  storage: string;
-  manifestVersion: number;
-  rowCount: number;
-  chunkCount: number;
-  byteSize: number;
-  schema?: Record<string, unknown>;
-  summary: {
-    sourceRows: number;
-    groupCount: number;
-    operation: AggregateOperation;
-    targetField: string | null;
+self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
+  const { jobId, input } = event.data;
+  const { inputRef, groupByFields, aggregations, executionId, variableName, chunkSize = 10_000 } = input as {
+    inputRef: DatasetRef;
+    groupByFields: string[];
+    aggregations: Aggregation[];
+    executionId: string;
+    variableName: string;
+    chunkSize?: number;
   };
-}
-
-const workerConnection = new Redis(
-  process.env.REDIS_URL ?? "redis://localhost:6379",
-  {
-    maxRetriesPerRequest: null,
-  },
-);
-
-const aggregateRows = async (
-  job: Job<CsvAggregateJobData, CsvAggregateJobResult>,
-): Promise<CsvAggregateJobResult> => {
-  const {
-    executionId,
-    variableName,
-    sourceRef,
-    sourceRows,
-    groupBy,
-    operation,
-    targetField,
-  } = job.data;
-
-  if (operation !== "count" && !targetField) {
-    throw new UnrecoverableError(
-      "targetField is required for sum/avg/min/max operations",
-    );
-  }
-
-  const buckets = new Map<
-    string,
-    {
-      count: number;
-      numericCount: number;
-      sum: number;
-      min: number | null;
-      max: number | null;
-    }
-  >();
-
-  const inlineRows = extractInlineRows(sourceRef);
-  const useFastPath =
-    !isDatasetRef(sourceRef) &&
-    inlineRows.length > 0 &&
-    inlineRows.length <= DATASET_STORAGE.MAX_INLINE_DATASET_ROWS;
-
-  const consumeRow = (row: Record<string, unknown>) => {
-    const key = String(row[groupBy] ?? "");
-    const bucket = buckets.get(key) || {
-      count: 0,
-      numericCount: 0,
-      sum: 0,
-      min: null,
-      max: null,
-    };
-
-    bucket.count += 1;
-
-    if (operation !== "count" && targetField) {
-      const numberValue = parseNumber(row[targetField]);
-      if (numberValue !== null) {
-        bucket.numericCount += 1;
-        bucket.sum += numberValue;
-        bucket.min =
-          bucket.min === null ? numberValue : Math.min(bucket.min, numberValue);
-        bucket.max =
-          bucket.max === null ? numberValue : Math.max(bucket.max, numberValue);
-      }
-    }
-
-    buckets.set(key, bucket);
-  };
-
-  if (useFastPath) {
-    for (const row of inlineRows) {
-      consumeRow(row);
-    }
-  } else {
-    for await (const row of streamContextRows(sourceRef)) {
-      consumeRow(row);
-    }
-  }
-
-  const records = Array.from(buckets.entries()).map(([groupKey, bucket]) => {
-    const result: Record<string, unknown> = {
-      [groupBy]: groupKey,
-      count: bucket.count,
-      numericCount: bucket.numericCount,
-    };
-
-    if (operation === "count") {
-      result.value = bucket.count;
-      return result;
-    }
-
-    if (bucket.numericCount === 0) {
-      result.value = null;
-      return result;
-    }
-
-    if (operation === "sum") {
-      result.value = bucket.sum;
-      return result;
-    }
-
-    if (operation === "avg") {
-      result.value = bucket.sum / bucket.numericCount;
-      return result;
-    }
-
-    if (operation === "min") {
-      result.value = bucket.min;
-      return result;
-    }
-
-    result.value = bucket.max;
-    return result;
-  });
-
-  const schema = inferDatasetSchema(records);
-  const typedRecords = applySchemaToRows(records, schema);
-
-  const manifest = await datasetService.persistRowsFromStream({
-    executionId,
-    variableName,
-    rows: typedRecords,
-    chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-    schema,
-  });
-
-  return {
-    ...toDatasetRefOutput(manifest),
-    summary: {
-      sourceRows,
-      groupCount: records.length,
-      operation,
-      targetField: targetField ?? null,
-    },
-  };
-};
-
-const worker = new Worker<CsvAggregateJobData, CsvAggregateJobResult>(
-  QUEUE_NAME,
-  async (job) => {
-    console.log(`[csv-aggregate] job ${job.id} started`);
-    return aggregateRows(job);
-  },
-  {
-    connection: workerConnection,
-    concurrency: HEAVY_CONCURRENCY,
-    settings: DEFAULT_WORKER_SETTINGS,
-    ...DEFAULT_WORKER_STALL_OPTIONS,
-  },
-);
-
-worker.on("completed", async (job, result) => {
+  const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
   try {
-    await inngest.send({
-      name: "csv/aggregate.complete",
-      data: {
-        executionId: job.data.executionId,
-        variableName: job.data.variableName,
-        result,
-      },
-    });
-  } catch {
-    // Ignore notification failures.
-  }
-});
+    post({ kind: "progress", jobId, progress: 10, message: "Reading..." });
+    const rows = await readFromOPFS(inputRef.executionId, inputRef.datasetId, inputRef.chunkCount);
+    post({ kind: "progress", jobId, progress: 50, message: "Aggregating..." });
 
-worker.on("failed", async (job, error) => {
-  const isUnrecoverable = error instanceof UnrecoverableError;
-
-  if (
-    isUnrecoverable ||
-    (job && job.attemptsMade >= (job.opts.attempts ?? 3))
-  ) {
-    const failurePayload = {
-      executionId: job?.data.executionId,
-      variableName: job?.data.variableName,
-      error: error.message,
-      reason: error.message,
-      status: "failed" as const,
-    };
-
-    try {
-      await inngest.send({
-        name: "csv/aggregate.failed",
-        data: failurePayload,
-      });
-
-      await inngest.send({
-        name: "csv/aggregate.complete",
-        data: failurePayload,
-      });
-    } catch {
-      // Ignore notification failures.
+    const groups = new Map<string, DatasetRow[]>();
+    for (const row of rows) {
+      const key = groupByFields.map((f) => String(row[f] ?? "")).join("|");
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
     }
-  }
-});
 
-const shutdown = async (signal: string) => {
-  console.log(`[csv-aggregate] ${signal} received - draining worker`);
-  await worker.close();
-  process.exit(0);
+    const result: DatasetRow[] = [];
+    for (const [, groupRows] of groups) {
+      const out: DatasetRow = {};
+      for (const f of groupByFields) out[f] = groupRows[0][f];
+      for (const agg of aggregations) {
+        const alias = agg.alias ?? `${agg.func}_${agg.field}`;
+        const vals = groupRows.map((r) => r[agg.field]);
+        const nums = vals.map(Number).filter((n) => !Number.isNaN(n));
+        switch (agg.func) {
+          case "sum": out[alias] = nums.reduce((a, b) => a + b, 0); break;
+          case "avg": out[alias] = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null; break;
+          case "min": out[alias] = nums.length ? Math.min(...nums) : null; break;
+          case "max": out[alias] = nums.length ? Math.max(...nums) : null; break;
+          case "count": out[alias] = groupRows.length; break;
+          case "count_distinct": out[alias] = new Set(vals.map(String)).size; break;
+          case "first": out[alias] = vals[0] ?? null; break;
+          case "last": out[alias] = vals[vals.length - 1] ?? null; break;
+        }
+      }
+      result.push(out);
+    }
+
+    post({ kind: "progress", jobId, progress: 75, message: "Writing..." });
+    const datasetId = createId();
+    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, result, chunkSize);
+    const now = new Date().toISOString();
+    const manifest = { version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName, createdAt: now, updatedAt: now, rowCount: result.length, chunkCount: chunks.length, byteSize: totalBytes, chunks };
+    const datasetRef: DatasetRef = { kind: "dataset", datasetId, executionId, variableName, rowCount: result.length, chunkCount: chunks.length, byteSize: totalBytes };
+    post({ kind: "result", jobId, output: { manifest, datasetRef } });
+  } catch (err) { post({ kind: "error", jobId, error: String(err) }); }
 };
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
-
-console.log(
-  `[csv-aggregate] Worker online - queue="${QUEUE_NAME}" concurrency=${HEAVY_CONCURRENCY}`,
-);
+export {};

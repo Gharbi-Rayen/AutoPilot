@@ -29,7 +29,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { NodeType } from "@/generated/prisma";
+import { NodeType } from "@/types/node-type";
 
 export type NodeTypeOption = {
   type: NodeType;
@@ -48,13 +48,6 @@ const triggerNodes: NodeTypeOption[] = [
 ];
 
 const executionNodes: NodeTypeOption[] = [
-  {
-    type: NodeType.WHATSAPP,
-    label: "WhatsApp",
-    description: "Send messages via WhatsApp Cloud API.",
-    icon: "/logos/whatsapp.svg",
-  },
-
   {
     type: NodeType.UPLOAD_FILE,
     label: "Upload File",

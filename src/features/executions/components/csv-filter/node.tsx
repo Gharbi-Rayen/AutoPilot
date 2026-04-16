@@ -5,9 +5,7 @@ import { Filter } from "lucide-react";
 import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
-import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 import { useNodeStatus } from "../../hooks/use-node-status";
-import { fetchFileRealTimeToken } from "../upload-file/actions";
 import { CsvFilterDialog, type CsvFilterFormValues } from "./dialog";
 
 interface CsvFilterNodeData extends Record<string, unknown> {
@@ -58,12 +56,7 @@ export const CsvFilterNode = memo((props: NodeProps) => {
     ? `Filter by ${data.field}`
     : "Filter CSV records";
 
-  const nodeStatus = useNodeStatus({
-    nodeId: props.id,
-    channel: FILE_CHANNEL_NAME,
-    topic: "status",
-    refreshToken: fetchFileRealTimeToken,
-  });
+  const nodeStatus = useNodeStatus(props.id);
 
   return (
     <>

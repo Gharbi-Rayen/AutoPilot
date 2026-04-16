@@ -14,9 +14,8 @@ import {
   ErrorView,
   LoadingView,
 } from "@/components/entity-components";
-import type { Workflow } from "@/generated/prisma";
+import type { WorkflowRecord } from "@/lib/db";
 import { useEntitySearch } from "@/hooks/use-entity-search";
-import { useUpgradeModal } from "@/hooks/use-upgrade-modal";
 import {
   useCreateWorkflow,
   useRemoveWorkflow,
@@ -55,23 +54,20 @@ export const WorkflowsHeader = ({ disabled }: { disabled?: boolean }) => {
   const router = useRouter();
 
   const createWorkflow = useCreateWorkflow();
-  const { handleError, modal } = useUpgradeModal();
+  
 
   const handleCreateWorkflow = () => {
     createWorkflow.mutate(undefined, {
-      onSuccess: (data) => {
-        router.push(`/workflows/${data.id}`);
-      },
+      onSuccess: (data) => { if (data) router.push(`/workflows/editor?id=${data.id}`); },
       // todo : open upgrade modal
       onError: (error) => {
-        handleError(error);
+        console.error(error);
       },
     });
   };
 
   return (
     <>
-      {modal}
       <EntityHeader
         title="workflows"
         description="create and manage your workflows"
@@ -127,22 +123,19 @@ export const WorkflowsError = () => {
 
 export const WorkflowsEmpty = () => {
   const createWorkflow = useCreateWorkflow();
-  const { handleError, modal } = useUpgradeModal();
+  
   const router = useRouter();
   const handleCreate = () => {
     createWorkflow.mutate(undefined, {
       onError: (error) => {
-        handleError(error);
+        console.error(error);
       },
-      onSuccess: (data) => {
-        router.push(`/workflows/${data.id}`);
-      },
+      onSuccess: (data) => { if (data) router.push(`/workflows/editor?id=${data.id}`); },
     });
   };
 
   return (
     <>
-      {modal}
       <EmptyView
         onNew={handleCreate}
         message="you haven't created any workflows yet. get started by creating your first workflow."
@@ -153,23 +146,20 @@ export const WorkflowsEmpty = () => {
 
 export const WorkflowsSearchEmpty = () => {
   const createWorkflow = useCreateWorkflow();
-  const { handleError, modal } = useUpgradeModal();
+  
   const router = useRouter();
 
   const handleCreate = () => {
     createWorkflow.mutate(undefined, {
       onError: (error) => {
-        handleError(error);
+        console.error(error);
       },
-      onSuccess: (data) => {
-        router.push(`/workflows/${data.id}`);
-      },
+      onSuccess: (data) => { if (data) router.push(`/workflows/editor?id=${data.id}`); },
     });
   };
 
   return (
     <>
-      {modal}
       <EmptyView
         message="No workflows found matching your search."
         onNew={handleCreate}
@@ -178,22 +168,22 @@ export const WorkflowsSearchEmpty = () => {
   );
 };
 
-export const WorkflowItem = ({ data }: { data: Workflow }) => {
+export const WorkflowItem = ({ data }: { data: WorkflowRecord }) => {
   const removeWorkflow = useRemoveWorkflow();
 
   const handleRemove = () => {
-    removeWorkflow.mutate({ id: data.id });
+    removeWorkflow.mutate(data.id);
   };
 
   return (
     <EntityItem
-      href={`/workflows/${data.id}`}
+      href={`/workflows/editor?id=${data.id}`}
       title={data.name}
       subtitle={
         <>
-          Updated {formatDistanceToNow(data.updatedAt, { addSuffix: true })}{" "}
+          Updated {formatDistanceToNow(new Date(data.updatedAt), { addSuffix: true })}{" "}
           &bull; created{" "}
-          {formatDistanceToNow(data.createdAt, { addSuffix: true })}
+          {formatDistanceToNow(new Date(data.createdAt), { addSuffix: true })}
         </>
       }
       image={
@@ -206,3 +196,9 @@ export const WorkflowItem = ({ data }: { data: Workflow }) => {
     />
   );
 };
+
+export const WorkflowsComponent = () => (
+  <WorkflowsContainer>
+    <WorkflowsList />
+  </WorkflowsContainer>
+);

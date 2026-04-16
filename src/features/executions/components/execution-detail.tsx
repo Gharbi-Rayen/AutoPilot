@@ -4,14 +4,11 @@ import { format, formatDistanceToNow } from "date-fns";
 import {
   ArrowLeftIcon,
   CheckCircle2Icon,
-  Clock3Icon,
   ClockIcon,
-  DownloadIcon,
   Loader2Icon,
   XCircleIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,19 +19,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import {
-  useExecutionRawOutput,
-  useSuspenseExecutionSummary,
-} from "../hooks/use-executions";
+import { useSuspenseExecutionSummary } from "../hooks/use-executions";
 import { ExecutionDatasetViewer } from "./execution-dataset-viewer";
 
 const statusConfig = {
-  QUEUED: {
-    label: "Queued",
-    icon: Clock3Icon,
-    className: "bg-amber-100 text-amber-700 border-amber-200",
-    iconClassName: "",
-  },
   RUNNING: {
     label: "Running",
     icon: Loader2Icon,
@@ -53,141 +41,32 @@ const statusConfig = {
     className: "bg-red-100 text-red-700 border-red-200",
     iconClassName: "",
   },
+  CANCELED: {
+    label: "Canceled",
+    icon: XCircleIcon,
+    className: "bg-amber-100 text-amber-700 border-amber-200",
+    iconClassName: "",
+  },
 } as const;
-
-type FileOutput = {
-  name: string;
-  mimeType: string;
-  buffer: { type: "Buffer"; data: number[] };
-};
-
-const isFileOutput = (value: unknown): value is FileOutput => {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Record<string, unknown>;
-
-  return (
-    typeof candidate.name === "string" &&
-    typeof candidate.mimeType === "string" &&
-    typeof candidate.buffer === "object" &&
-    candidate.buffer !== null &&
-    (candidate.buffer as { type: string }).type === "Buffer" &&
-    Array.isArray((candidate.buffer as { data: unknown }).data)
-  );
-};
-
-const FileDownloadCard = ({
-  label,
-  file,
-}: {
-  label: string;
-  file: FileOutput;
-}) => {
-  const handleDownload = () => {
-    const { data } = file.buffer;
-    const blob = new Blob([new Uint8Array(data)], { type: file.mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <Card>
-      <CardHeader className="p-4 pb-2">
-        <CardTitle className="text-sm font-medium truncate" title={label}>
-          {label}
-        </CardTitle>
-        <CardDescription className="text-xs truncate" title={file.name}>
-          {file.name}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="p-4 pt-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full gap-2"
-          onClick={handleDownload}
-        >
-          <DownloadIcon className="size-3.5" />
-          Download
-        </Button>
-      </CardContent>
-    </Card>
-  );
-};
-
-const ExecutionOutputFiles = ({
-  output,
-}: {
-  output: Record<string, unknown>;
-}) => {
-  if (!output || typeof output !== "object") return null;
-
-  const fileEntries = Object.entries(output).filter(([_, value]) =>
-    isFileOutput(value),
-  );
-
-  if (fileEntries.length === 0) return null;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold">Generated Files</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {fileEntries.map(([key, file]) => (
-          <FileDownloadCard key={key} label={key} file={file as FileOutput} />
-        ))}
-      </div>
-    </div>
-  );
-};
 
 export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
   const { data: execution } = useSuspenseExecutionSummary(executionId);
-  const [isRawOutputRequested, setIsRawOutputRequested] = useState(false);
-  const rawOutputQuery = useExecutionRawOutput(
-    executionId,
-    isRawOutputRequested,
-  );
 
-  const output = rawOutputQuery.data?.output;
-  const outputRecord =
-    typeof output === "object" && output !== null
-      ? (output as Record<string, unknown>)
-      : null;
-
-  const datasetVariable = outputRecord
-    ? Object.entries(outputRecord).find(([, value]) => {
-        if (typeof value !== "object" || value === null) {
-          return false;
-        }
-
-        const candidate = value as { kind?: unknown };
-        return (
-          candidate.kind === "dataset" || candidate.kind === "dataset-summary"
-        );
-      })?.[0]
-    : undefined;
-
-  const statusKey =
-    execution.status === "RUNNING" && execution.queueState === "QUEUED"
-      ? "QUEUED"
-      : execution.status;
-
-  const config = statusConfig[statusKey];
+  const config = statusConfig[execution.status] ?? statusConfig.FAILED;
   const StatusIcon = config.icon;
 
+  const completedAt = execution.completedAt;
   const duration =
-    execution.startedAt && execution.finishedAt
+    execution.startedAt && completedAt
       ? Math.round(
-          (new Date(execution.finishedAt).getTime() -
+          (new Date(completedAt).getTime() -
             new Date(execution.startedAt).getTime()) /
             1000,
         )
       : null;
+
+  // Find any dataset output variables across node outputs
+  const datasetOutputs = execution.nodeOutputs.filter((n) => n.datasetId);
 
   return (
     <div className="p-4 md:px-10 md:py-6 h-full">
@@ -202,8 +81,8 @@ export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
             <h1 className="text-lg md:text-xl font-semibold">
               Execution Details
             </h1>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              {execution.workflow.name}
+            <p className="text-xs md:text-sm text-muted-foreground font-mono">
+              {execution.workflowId}
             </p>
           </div>
           <Badge
@@ -240,16 +119,16 @@ export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
               <CardDescription>Finished</CardDescription>
             </CardHeader>
             <CardContent>
-              {execution.finishedAt ? (
+              {completedAt ? (
                 <>
                   <div className="flex items-center gap-2">
                     <ClockIcon className="size-4 text-muted-foreground" />
                     <span className="text-sm">
-                      {format(new Date(execution.finishedAt), "PPpp")}
+                      {format(new Date(completedAt), "PPpp")}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {formatDistanceToNow(new Date(execution.finishedAt), {
+                    {formatDistanceToNow(new Date(completedAt), {
                       addSuffix: true,
                     })}
                   </p>
@@ -273,13 +152,9 @@ export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
                 </p>
               ) : (
                 <div className="flex items-center gap-2">
-                  {statusKey === "QUEUED" ? (
-                    <Clock3Icon className="size-4 text-muted-foreground" />
-                  ) : (
-                    <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
-                  )}
+                  <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
-                    {statusKey === "QUEUED" ? "Queued..." : "Running..."}
+                    Running...
                   </span>
                 </div>
               )}
@@ -296,77 +171,58 @@ export const ExecutionDetail = ({ executionId }: { executionId: string }) => {
               <pre className="text-sm text-red-600 whitespace-pre-wrap break-words bg-red-50 p-4 rounded-md overflow-auto max-h-64">
                 {execution.error}
               </pre>
-              {execution.errorStack && (
-                <details className="mt-2">
-                  <summary className="text-xs text-muted-foreground cursor-pointer">
-                    Stack trace
-                  </summary>
-                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap break-words bg-muted p-4 rounded-md mt-2 overflow-auto max-h-64">
-                    {execution.errorStack}
-                  </pre>
-                </details>
-              )}
             </CardContent>
           </Card>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Output</CardTitle>
-            <CardDescription>
-              Raw output is loaded only when requested.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!isRawOutputRequested ? (
-              <Button
-                variant="outline"
-                onClick={() => setIsRawOutputRequested(true)}
-              >
-                <DownloadIcon className="size-3.5" />
-                Load raw output
-              </Button>
-            ) : rawOutputQuery.isFetching ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2Icon className="size-4 animate-spin" />
-                Loading output...
-              </div>
-            ) : rawOutputQuery.isError ? (
-              <p className="text-sm text-destructive">
-                Failed to load raw output for this execution.
-              </p>
-            ) : output ? (
-              <>
-                {datasetVariable && (
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Dataset Preview</CardTitle>
-                      <CardDescription className="text-xs">
-                        Variable: {datasetVariable}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ExecutionDatasetViewer
-                        executionId={executionId}
-                        variable={datasetVariable}
-                        enabled={isRawOutputRequested}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
+        {datasetOutputs.length > 0 && (
+          <div className="flex flex-col gap-4">
+            {datasetOutputs.map((nodeOutput) => (
+              <Card key={nodeOutput.id}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Dataset Output</CardTitle>
+                  <CardDescription className="text-xs">
+                    Variable: {nodeOutput.variableName ?? nodeOutput.nodeId}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExecutionDatasetViewer
+                    executionId={executionId}
+                    variable={nodeOutput.variableName ?? ""}
+                    enabled={Boolean(nodeOutput.variableName)}
+                  />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
-                {outputRecord && <ExecutionOutputFiles output={outputRecord} />}
-                <pre className="text-sm whitespace-pre-wrap break-words bg-muted p-4 rounded-md overflow-auto max-h-96">
-                  {JSON.stringify(output, null, 2)}
-                </pre>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No output was produced for this execution.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        {execution.nodeOutputs.some(
+          (n) => n.inlineOutput !== undefined && n.inlineOutput !== null,
+        ) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Node Outputs</CardTitle>
+              <CardDescription>
+                Inline outputs produced by each node.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {execution.nodeOutputs
+                .filter((n) => n.inlineOutput !== undefined && n.inlineOutput !== null)
+                .map((n) => (
+                  <div key={n.id} className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {n.variableName ?? n.nodeId} ({n.nodeType})
+                    </p>
+                    <pre className="text-xs whitespace-pre-wrap break-words bg-muted p-3 rounded-md overflow-auto max-h-48">
+                      {JSON.stringify(n.inlineOutput, null, 2)}
+                    </pre>
+                  </div>
+                ))}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

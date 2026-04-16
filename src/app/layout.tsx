@@ -5,9 +5,10 @@ import "./globals.css";
 import { Provider } from "jotai";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { LocaleHtmlAttrs } from "@/components/locale-html-attrs";
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
+import { QueryProvider } from "@/components/query-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
-import { TRPCReactProvider } from "@/trpc/client";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +22,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AutoPilot",
-  description: "Automated workflow execution for CSV and document processing",
+  description: "Offline workflow automation for CSV and document processing",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -47,15 +48,16 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TRPCReactProvider>
-            <NuqsAdapter>
-              <Provider>
+          <NuqsAdapter>
+            <Provider>
+              <QueryProvider>
                 <LocaleHtmlAttrs />
                 {children}
                 <Toaster position="top-right" />
-              </Provider>
-            </NuqsAdapter>
-          </TRPCReactProvider>
+                <PwaInstallPrompt />
+              </QueryProvider>
+            </Provider>
+          </NuqsAdapter>
         </ThemeProvider>
       </body>
     </html>

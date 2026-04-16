@@ -221,14 +221,7 @@ const ExportDatasetDialog = ({
       if (!res.data) throw new Error("No payload returned");
 
       let allRows: Record<string, unknown>[];
-      if (res.data.format === "jsonl") {
-        allRows = (res.data.content as string)
-          .split("\n")
-          .filter(Boolean)
-          .map((l) => JSON.parse(l) as Record<string, unknown>);
-      } else {
-        allRows = res.data.data as Record<string, unknown>[];
-      }
+      allRows = res.data.data as Record<string, unknown>[];
 
       const cols =
         columns.length > 0
@@ -599,9 +592,7 @@ export const ExecutionDatasetViewer = ({
     return Array.from(discovered);
   }, [datasetMetaQuery.data?.schema, rows]);
 
-  const chunkHint = datasetPageQuery.data?.window
-    ? `Chunk ${datasetPageQuery.data.window.chunkIndex} at offset ${datasetPageQuery.data.window.offset}`
-    : undefined;
+  const chunkHint: string | undefined = undefined;
 
   if (!enabled) {
     return null;
@@ -699,9 +690,7 @@ export const ExecutionDatasetViewer = ({
                 <TableBody>
                   {rows.map((row, index) => {
                     const absoluteIndex =
-                      (datasetPageQuery.data?.window?.globalOffset ?? 0) +
-                      index +
-                      1;
+                      (page - 1) * pageSize + index + 1;
 
                     return (
                       <TableRow key={absoluteIndex}>

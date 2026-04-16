@@ -1,358 +1,139 @@
-import { type Job, UnrecoverableError, Worker } from "bullmq";
-import Redis from "ioredis";
-import { DATASET_STORAGE } from "@/config/constants";
-import {
-  applyCsvPredicate,
-  type CsvOperator,
-  extractInlineRows,
-  streamContextRows,
-} from "@/features/executions/components/csv-shared/executor-utils";
-import { isDatasetRef } from "@/features/executions/server/datasets/dataset-ref";
-import { datasetService } from "@/features/executions/server/datasets/dataset-service";
-import type { DatasetSchema } from "@/features/executions/server/datasets/schema-types";
-import { inngest } from "@/inngest/client";
-import {
-  DEFAULT_WORKER_SETTINGS,
-  DEFAULT_WORKER_STALL_OPTIONS,
-} from "@/workers/worker-settings";
+/**
+ * CSV Filter — Browser Web Worker
+ * Filters rows by field/operator/value, writes result to OPFS.
+ */
 
-const HEAVY_CONCURRENCY = 3;
-const QUEUE_NAME = "csv-filter";
-const FILTER_PROGRESS_EVENT_NAME = "csv/filter.progress";
-const FILTER_WORKER_CODE_VERSION = "csv-filter@2026-04-09-v1";
-const FILTER_PROGRESS_EMIT_INTERVAL_ROWS = 1_000_000;
+import { createId } from "@paralleldrive/cuid2";
+import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manager";
+import type { DatasetRow, DatasetRef } from "@/types/dataset";
+import { DATASET_MANIFEST_VERSION } from "@/types/dataset";
 
-export interface CsvFilterJobData {
-  executionId: string;
-  datasetId: string;
-  nodeId: string;
-  variableName: string;
-  sourceRef: unknown;
+type FilterOperator =
+  | "equals"
+  | "not_equals"
+  | "contains"
+  | "not_contains"
+  | "starts_with"
+  | "ends_with"
+  | "greater_than"
+  | "less_than"
+  | "greater_than_or_equal"
+  | "less_than_or_equal"
+  | "is_empty"
+  | "is_not_empty";
+
+interface FilterCondition {
   field: string;
-  operator: CsvOperator;
-  value?: string;
-  sourceRows: number;
-  sourceSchema?: DatasetSchema;
+  operator: FilterOperator;
+  value: string;
 }
 
-export interface CsvFilterJobResult {
-  datasetRef: {
-    kind: "dataset";
-    datasetId: string;
+function applyFilter(row: DatasetRow, condition: FilterCondition): boolean {
+  const raw = row[condition.field];
+  const cell = raw === null || raw === undefined ? "" : String(raw);
+  const val = condition.value ?? "";
+
+  switch (condition.operator) {
+    case "equals": return cell === val;
+    case "not_equals": return cell !== val;
+    case "contains": return cell.includes(val);
+    case "not_contains": return !cell.includes(val);
+    case "starts_with": return cell.startsWith(val);
+    case "ends_with": return cell.endsWith(val);
+    case "greater_than": return Number(cell) > Number(val);
+    case "less_than": return Number(cell) < Number(val);
+    case "greater_than_or_equal": return Number(cell) >= Number(val);
+    case "less_than_or_equal": return Number(cell) <= Number(val);
+    case "is_empty": return cell === "";
+    case "is_not_empty": return cell !== "";
+    default: return true;
+  }
+}
+
+async function readDatasetFromOPFS(executionId: string, datasetId: string, chunkCount: number): Promise<DatasetRow[]> {
+  const opfsRoot = await navigator.storage.getDirectory();
+  const dir = await opfsRoot
+    .getDirectoryHandle("autopilot", { create: false })
+    .then((a) => a.getDirectoryHandle("executions", { create: false }))
+    .then((e) => e.getDirectoryHandle(executionId, { create: false }))
+    .then((ex) => ex.getDirectoryHandle(datasetId, { create: false }));
+
+  const rows: DatasetRow[] = [];
+  for (let i = 0; i < chunkCount; i++) {
+    const fileName = `chunk-${String(i).padStart(6, "0")}.json`;
+    const fh = await dir.getFileHandle(fileName);
+    const file = await fh.getFile();
+    const parsed = JSON.parse(await file.text()) as DatasetRow[];
+    rows.push(...parsed);
+  }
+  return rows;
+}
+
+async function writeToOPFS(executionId: string, datasetId: string, rows: DatasetRow[], chunkSize = 10_000) {
+  const opfsRoot = await navigator.storage.getDirectory();
+  const dir = await opfsRoot
+    .getDirectoryHandle("autopilot", { create: true })
+    .then((a) => a.getDirectoryHandle("executions", { create: true }))
+    .then((e) => e.getDirectoryHandle(executionId, { create: true }))
+    .then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
+
+  const chunks = [];
+  let cumulativeRows = 0;
+  let totalBytes = 0;
+  const now = new Date().toISOString();
+
+  for (let i = 0; i * chunkSize < rows.length || (i === 0 && rows.length === 0); i++) {
+    const chunkRows = rows.slice(i * chunkSize, (i + 1) * chunkSize);
+    if (chunkRows.length === 0) break;
+    const fileName = `chunk-${String(i).padStart(6, "0")}.json`;
+    const bytes = new TextEncoder().encode(JSON.stringify(chunkRows));
+    const fh = await dir.getFileHandle(fileName, { create: true });
+    const w = await fh.createWritable();
+    await w.write(bytes);
+    await w.close();
+    cumulativeRows += chunkRows.length;
+    totalBytes += bytes.byteLength;
+    chunks.push({ chunkIndex: i, fileName, rowStart: i * chunkSize, rowEnd: i * chunkSize + chunkRows.length - 1, rowCount: chunkRows.length, cumulativeRowCount: cumulativeRows, byteSize: bytes.byteLength, createdAt: now });
+  }
+  return { chunks, totalBytes };
+}
+
+self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
+  const { jobId, input } = event.data;
+  const { inputRef, conditions, logic = "AND", executionId, variableName, chunkSize = 10_000 } = input as {
+    inputRef: DatasetRef;
+    conditions: FilterCondition[];
+    logic?: "AND" | "OR";
     executionId: string;
     variableName: string;
-    storage: string;
-    manifestVersion: number;
-    rowCount: number;
-    chunkCount: number;
-    byteSize: number;
-    schema?: DatasetSchema;
+    chunkSize?: number;
   };
-  summary: {
-    sourceRows: number;
-    matchedRows: number;
-    filteredOut: number;
-    field: string;
-    operator: CsvOperator;
-    value?: string;
-  };
-}
 
-const emitFilterProgress = (
-  job: Job<CsvFilterJobData, CsvFilterJobResult>,
-  stage: string,
-  details: Record<string, unknown>,
-): void => {
-  inngest
-    .send({
-      name: FILTER_PROGRESS_EVENT_NAME,
-      data: {
-        executionId: job.data.executionId,
-        datasetId: job.data.datasetId,
-        nodeId: job.data.nodeId,
-        variableName: job.data.variableName,
-        stage,
-        ...details,
-      },
-    })
-    .catch(() => {
-      // Best effort only.
-    });
-};
-
-const logFilterLifecycle = (
-  job: Job<CsvFilterJobData, CsvFilterJobResult>,
-  message: string,
-  details?: Record<string, unknown>,
-) => {
-  if (details && Object.keys(details).length > 0) {
-    console.log(
-      `[csv-filter] job ${job.id} ${message} ${JSON.stringify(details)}`,
-    );
-    return;
-  }
-  console.log(`[csv-filter] job ${job.id} ${message}`);
-};
-
-const filterRows = async (
-  job: Job<CsvFilterJobData, CsvFilterJobResult>,
-): Promise<CsvFilterJobResult> => {
-  const startedAt = Date.now();
-  const {
-    executionId,
-    datasetId,
-    variableName,
-    sourceRef,
-    field,
-    operator,
-    value,
-    sourceRows,
-    sourceSchema,
-  } = job.data;
-
-  if (!field || field.trim().length === 0) {
-    throw new UnrecoverableError("Filter field is required");
-  }
-
-  if (!Number.isInteger(sourceRows) || sourceRows <= 0) {
-    throw new UnrecoverableError("Source dataset is empty or invalid");
-  }
-
-  logFilterLifecycle(job, "received payload", {
-    sourceRows,
-    sourceType: isDatasetRef(sourceRef) ? "dataset-ref" : "inline",
-    field,
-    operator,
-    hasValue: value !== undefined,
-  });
-
-  emitFilterProgress(job, "filtering", {
-    sourceRows,
-    rowsScanned: 0,
-    rowsMatched: 0,
-    elapsedMs: 0,
-  });
-
-  let rowsScanned = 0;
-  let rowsMatched = 0;
-
-  const inlineRows = extractInlineRows(sourceRef);
-  const useInlinePath =
-    !isDatasetRef(sourceRef) &&
-    inlineRows.length > 0 &&
-    inlineRows.length <= DATASET_STORAGE.MAX_INLINE_DATASET_ROWS;
-
-  const filteredStream = (async function* () {
-    if (useInlinePath) {
-      for (const row of inlineRows) {
-        rowsScanned += 1;
-        if (applyCsvPredicate(row, field, operator, value)) {
-          rowsMatched += 1;
-          yield row;
-        }
-      }
-      return;
-    }
-
-    for await (const row of streamContextRows(sourceRef)) {
-      rowsScanned += 1;
-
-      if (applyCsvPredicate(row, field, operator, value)) {
-        rowsMatched += 1;
-        yield row;
-      }
-
-      if (rowsScanned % FILTER_PROGRESS_EMIT_INTERVAL_ROWS === 0) {
-        emitFilterProgress(job, "filtering", {
-          sourceRows,
-          rowsScanned,
-          rowsMatched,
-          elapsedMs: Date.now() - startedAt,
-        });
-      }
-
-      if (rowsScanned % 500_000 === 0) {
-        await job.updateProgress({
-          phase: "filtering",
-          sourceRows,
-          rowsScanned,
-          rowsMatched,
-        });
-      }
-
-      if (rowsScanned % 100_000 === 0) {
-        logFilterLifecycle(job, "filter progress", {
-          rowsScanned,
-          rowsMatched,
-          sourceRows,
-          elapsedMs: Date.now() - startedAt,
-        });
-      }
-    }
-  })();
-
-  emitFilterProgress(job, "persisting", {
-    sourceRows,
-    rowsScanned: 0,
-    rowsMatched: 0,
-    elapsedMs: Date.now() - startedAt,
-  });
-
-  const manifest = await datasetService.persistRowsFromStream({
-    executionId,
-    datasetId,
-    variableName,
-    rows: filteredStream,
-    chunkSize: DATASET_STORAGE.DEFAULT_CHUNK_SIZE_ROWS,
-    schema: sourceSchema,
-  });
-
-  await job.updateProgress({
-    phase: "done",
-    sourceRows,
-    rowsScanned,
-    rowsMatched,
-    rowsWritten: manifest.rowCount,
-    completed: true,
-  });
-
-  emitFilterProgress(job, "completed", {
-    sourceRows,
-    rowsScanned,
-    rowsMatched,
-    rowsWritten: manifest.rowCount,
-    elapsedMs: Date.now() - startedAt,
-  });
-
-  logFilterLifecycle(job, "completed", {
-    rowsScanned,
-    rowsMatched,
-    filteredOut: Math.max(sourceRows - rowsMatched, 0),
-    elapsedMs: Date.now() - startedAt,
-  });
-
-  return {
-    datasetRef: {
-      kind: "dataset",
-      datasetId: manifest.datasetId,
-      executionId: manifest.executionId,
-      variableName: manifest.variableName,
-      storage: manifest.storage,
-      manifestVersion: manifest.version,
-      rowCount: manifest.rowCount,
-      chunkCount: manifest.chunkCount,
-      byteSize: manifest.byteSize,
-      schema: manifest.schema,
-    },
-    summary: {
-      sourceRows,
-      matchedRows: rowsMatched,
-      filteredOut: Math.max(sourceRows - rowsMatched, 0),
-      field,
-      operator,
-      value,
-    },
-  };
-};
-
-const workerConnection = new Redis(
-  process.env.REDIS_URL ?? "redis://localhost:6379",
-  {
-    maxRetriesPerRequest: null,
-  },
-);
-
-workerConnection.on("connect", () => {
-  console.log(
-    "[csv-filter] Redis connected:",
-    process.env.REDIS_URL ?? "redis://localhost:6379",
-  );
-});
-
-const worker = new Worker<CsvFilterJobData, CsvFilterJobResult>(
-  QUEUE_NAME,
-  async (job) => {
-    console.log(`[csv-filter] job ${job.id} started`);
-    return filterRows(job);
-  },
-  {
-    connection: workerConnection,
-    concurrency: HEAVY_CONCURRENCY,
-    settings: DEFAULT_WORKER_SETTINGS,
-    ...DEFAULT_WORKER_STALL_OPTIONS,
-  },
-);
-
-worker.on("completed", async (job, result) => {
-  console.log(
-    `[csv-filter] job ${job.id} complete - ${result.summary.matchedRows.toLocaleString()} / ${result.summary.sourceRows.toLocaleString()} rows matched`,
-  );
+  const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
 
   try {
-    await inngest.send({
-      name: "csv/filter.complete",
-      data: {
-        executionId: job.data.executionId,
-        datasetId: result.datasetRef.datasetId,
-        nodeId: job.data.nodeId,
-        variableName: job.data.variableName,
-        result,
-      },
-    });
-  } catch (error) {
-    console.error("[csv-filter] failed to signal filter completion", error);
+    post({ kind: "progress", jobId, progress: 10, message: "Reading dataset..." });
+    const rows = await readDatasetFromOPFS(inputRef.executionId, inputRef.datasetId, inputRef.chunkCount);
+
+    post({ kind: "progress", jobId, progress: 40, message: "Filtering..." });
+    const filtered = rows.filter((row) =>
+      logic === "AND"
+        ? conditions.every((c) => applyFilter(row, c))
+        : conditions.some((c) => applyFilter(row, c)),
+    );
+
+    post({ kind: "progress", jobId, progress: 70, message: "Writing result..." });
+    const datasetId = createId();
+    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, filtered, chunkSize);
+
+    const now = new Date().toISOString();
+    const manifest = { version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName, createdAt: now, updatedAt: now, rowCount: filtered.length, chunkCount: chunks.length, byteSize: totalBytes, schema: inputRef.schema, chunks };
+    const datasetRef: DatasetRef = { kind: "dataset", datasetId, executionId, variableName, rowCount: filtered.length, chunkCount: chunks.length, byteSize: totalBytes, schema: inputRef.schema };
+
+    post({ kind: "result", jobId, output: { manifest, datasetRef, filteredCount: filtered.length, totalCount: rows.length } });
+  } catch (err) {
+    post({ kind: "error", jobId, error: String(err) });
   }
-});
-
-worker.on("failed", async (job, error) => {
-  const isUnrecoverable = error instanceof UnrecoverableError;
-
-  console.error(`[csv-filter] job ${job?.id} failed:`, error.message);
-
-  if (
-    isUnrecoverable ||
-    (job && job.attemptsMade >= (job.opts.attempts ?? 3))
-  ) {
-    const failurePayload = {
-      executionId: job?.data.executionId,
-      datasetId: job?.data.datasetId,
-      nodeId: job?.data.nodeId,
-      variableName: job?.data.variableName,
-      error: error.message,
-      reason: error.message,
-      status: "failed" as const,
-    };
-
-    try {
-      await inngest.send({
-        name: "csv/filter.failed",
-        data: failurePayload,
-      });
-
-      await inngest.send({
-        name: "csv/filter.complete",
-        data: failurePayload,
-      });
-    } catch {
-      // Ignore notification failures.
-    }
-  }
-});
-
-const shutdown = async (signal: string) => {
-  console.log(`[csv-filter] ${signal} received - draining worker`);
-  await worker.close();
-  process.exit(0);
 };
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
-
-console.log(
-  `[csv-filter] boot ${JSON.stringify({
-    version: FILTER_WORKER_CODE_VERSION,
-    queue: QUEUE_NAME,
-    concurrency: HEAVY_CONCURRENCY,
-    progressInterval: FILTER_PROGRESS_EMIT_INTERVAL_ROWS,
-  })}`,
-);
+export {};

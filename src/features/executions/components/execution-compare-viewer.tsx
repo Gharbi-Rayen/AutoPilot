@@ -244,11 +244,7 @@ const CompareChangedTable = ({
             ))}
           </div>
         </div>
-        {pageQuery.data?.window && (
-          <p className="text-[11px] text-muted-foreground">
-            Chunk {pageQuery.data.window.chunkIndex} at offset {pageQuery.data.window.offset}
-          </p>
-        )}
+        
       </div>
 
       {/* ── Column group legend ── */}
@@ -338,7 +334,7 @@ const CompareChangedTable = ({
                 <TableBody>
                   {rows.map((row, idx) => {
                     const absoluteIdx =
-                      (pageQuery.data?.window?.globalOffset ?? 0) + idx + 1;
+                      (page - 1) * pageSize + idx + 1;
                     const changedSet = new Set(
                       String(row._diff_changed ?? "").split(",").filter(Boolean),
                     );

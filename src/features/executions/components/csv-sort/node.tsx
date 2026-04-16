@@ -5,10 +5,8 @@ import { ArrowUpDown } from "lucide-react";
 import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
-import { FILE_CHANNEL_NAME } from "@/inngest/channels/file";
 
 import { useNodeStatus } from "../../hooks/use-node-status";
-import { fetchFileRealTimeToken } from "../upload-file/actions";
 import { CsvSortDialog, type CsvSortFormValues } from "./dialog";
 
 interface CsvSortNodeData extends Record<string, unknown> {
@@ -49,12 +47,7 @@ export const CsvSortNode = memo((props: NodeProps) => {
     ? `Sort by ${data.sortField}`
     : "Sort CSV records";
 
-  const nodeStatus = useNodeStatus({
-    nodeId: props.id,
-    channel: FILE_CHANNEL_NAME,
-    topic: "status",
-    refreshToken: fetchFileRealTimeToken,
-  });
+  const nodeStatus = useNodeStatus(props.id);
 
   return (
     <>
