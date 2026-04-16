@@ -1,17 +1,18 @@
 import type { NodeTypes } from "@xyflow/react";
 
 import { InitialNode } from "@/components/initial-node";
+import { ManualTriggerNode } from "@/components/manual-trigger-node";
 import { CsvAggregateNode } from "@/features/executions/components/csv-aggregate/node";
 import { CsvColumnStatsNode } from "@/features/executions/components/csv-column-stats/node";
 import { CsvCompareNode } from "@/features/executions/components/csv-compare/node";
 import { CsvConsecutiveSequenceNode } from "@/features/executions/components/csv-consecutive-sequence/node";
 import { CsvDeduplicateNode } from "@/features/executions/components/csv-deduplicate/node";
-import { CsvTransformNode } from "@/features/executions/components/csv-transform/node";
 import { CsvFilterNode } from "@/features/executions/components/csv-filter/node";
 import { CsvGenerateNode } from "@/features/executions/components/csv-generate/node";
 import { CsvJoinNode } from "@/features/executions/components/csv-join/node";
 import { CsvParseNode } from "@/features/executions/components/csv-parse/node";
 import { CsvSortNode } from "@/features/executions/components/csv-sort/node";
+import { CsvTransformNode } from "@/features/executions/components/csv-transform/node";
 import { PdfExtractTablesNode } from "@/features/executions/components/pdf-extract-tables/node";
 import { PdfExtractTextNode } from "@/features/executions/components/pdf-extract-text/node";
 import { PdfFillFormNode } from "@/features/executions/components/pdf-fill-form/node";
@@ -24,6 +25,7 @@ import { NodeType } from "@/types/node-type";
 
 export const nodeComponents: NodeTypes = {
   [NodeType.INITIAL]: InitialNode,
+  [NodeType.MANUAL_TRIGGER]: ManualTriggerNode,
   [NodeType.UPLOAD_FILE]: UploadFileNode,
   [NodeType.CSV_PARSE]: CsvParseNode,
   [NodeType.CSV_FILTER]: CsvFilterNode,

@@ -202,14 +202,24 @@ export function NodeSelector({
 
   const handleNodeSelect = useCallback(
     (selection: NodeTypeOption) => {
+      const nodes = getNodes();
+
       if (selection.type === NodeType.MANUAL_TRIGGER) {
-        const nodes = getNodes();
         const hasManualTrigger = nodes.some(
           (node) => node.type === NodeType.MANUAL_TRIGGER,
         );
 
         if (hasManualTrigger) {
           toast.error("Only one manual trigger is allowed per workflow.");
+          return;
+        }
+      } else {
+        const hasTrigger = nodes.some(
+          (node) => node.type === NodeType.MANUAL_TRIGGER,
+        );
+
+        if (!hasTrigger) {
+          toast.error("Add a trigger node first before adding execution nodes.");
           return;
         }
       }

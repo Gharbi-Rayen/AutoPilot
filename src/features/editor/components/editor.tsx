@@ -31,9 +31,9 @@ import dynamic from "next/dynamic";
 import { ErrorView, LoadingView } from "@/components/entity-components";
 import { nodeComponents } from "@/config/node-components";
 import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
-import { NodeType } from "@/types/node-type";
 import { cn } from "@/lib/utils";
 import { workflowProgressPanelCollapsedAtom } from "@/store/execution-status";
+import { NodeType } from "@/types/node-type";
 import { editorAtom, workflowIdAtom } from "../store/atoms";
 
 const AddNodeButton = dynamic(
@@ -106,7 +106,11 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
     [],
   );
   const hasManualTrigger = useMemo(() => {
-    return nodes.some((node) => node.type === NodeType.MANUAL_TRIGGER);
+    return nodes.some(
+      (node) =>
+        node.type !== NodeType.INITIAL &&
+        node.type !== undefined,
+    );
   }, [nodes]);
 
   const clampPanelHeight = useCallback((height: number) => {
