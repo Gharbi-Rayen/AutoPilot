@@ -196,27 +196,38 @@ export async function runWorkflow(
         // Merge new variables into context
         Object.assign(context, newVars);
 
-        // Persist success + output
-        const datasetRef = Object.values(newVars).find(
+        // Collect ALL DatasetRefs from the output (nodes like CSV Compare emit several)
+        const allDatasetRefs = Object.values(newVars).filter(
           (v): v is DatasetRef =>
             typeof v === "object" && v !== null && (v as DatasetRef).kind === "dataset",
         );
+        const primaryRef = allDatasetRefs[0];
+
+        // Build inline output: non-DatasetRef, non-manifest vars (e.g. CompareResult)
+        const inlineVars = Object.fromEntries(
+          Object.entries(newVars as Record<string, unknown>).filter(
+            ([k, v]) =>
+              !(typeof v === "object" && v !== null && (v as DatasetRef).kind === "dataset") &&
+              !k.endsWith("_manifest"),
+          ),
+        );
+        const hasInline = Object.keys(inlineVars).length > 0;
 
         await db.executionNodeOutputs.update(outputId, {
           status: "SUCCESS",
-          variableName: datasetRef?.variableName,
-          datasetId: datasetRef?.datasetId,
-          inlineOutput: datasetRef ? undefined : toSerializable(newVars),
+          variableName: primaryRef?.variableName,
+          datasetId: primaryRef?.datasetId,
+          inlineOutput: hasInline ? toSerializable(inlineVars) : undefined,
         });
 
-        // Persist dataset manifest if present
-        if (datasetRef) {
-          const manifest = (newVars as Record<string, unknown>)[`${datasetRef.variableName}_manifest`];
+        // Persist manifests for ALL datasets emitted by this node
+        for (const ref of allDatasetRefs) {
+          const manifest = (newVars as Record<string, unknown>)[`${ref.variableName}_manifest`];
           if (manifest) {
             await db.datasets.add({
-              id: datasetRef.datasetId,
+              id: ref.datasetId,
               executionId,
-              variableName: datasetRef.variableName,
+              variableName: ref.variableName,
               // biome-ignore lint/suspicious/noExplicitAny: manifest is typed loosely
               manifest: manifest as any,
             });
