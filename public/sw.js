@@ -115,9 +115,9 @@ self.addEventListener("fetch", (event) => {
     fetch(request)
       .then((response) => {
         if (response.ok) {
-          caches
-            .open(SHELL_CACHE)
-            .then((cache) => cache.put(request, response.clone()));
+          // Clone synchronously before any async gap; the original is returned below
+          const cloned = response.clone();
+          caches.open(SHELL_CACHE).then((cache) => cache.put(request, cloned));
         }
         return response;
       })

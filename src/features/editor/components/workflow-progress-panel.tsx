@@ -1066,7 +1066,7 @@ export const WorkflowProgressPanel = ({
                       const isSelected = selectedNodeId === node.id;
                       const isLoading = node.status === "loading";
                       const visualStatus: TraceStatus = node.status;
-                      const statusCfg = traceStatusConfig[visualStatus];
+                      const statusCfg = traceStatusConfig[visualStatus] ?? traceStatusConfig.initial;
                       const leftPercent =
                         (timing.startMs / timelineMaxMs) * 100;
                       const widthPercent = Math.max(

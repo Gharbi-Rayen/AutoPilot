@@ -46,9 +46,11 @@ export function useRunWorkflow() {
       try {
         const executionId = await runWorkflow(workflowId, nodes, edges, {
           onNodeStatusChange: (nodeId, status) => {
+            // execution-engine emits "running"; map to "loading" for the UI
+            const uiStatus: NodeStatus = status === "running" ? "loading" : (status as NodeStatus);
             setNodeStatusMap((prev) => ({
               ...prev,
-              [nodeId]: status as NodeStatus,
+              [nodeId]: uiStatus,
             }));
           },
           onWorkflowStatusChange: (status) => {
