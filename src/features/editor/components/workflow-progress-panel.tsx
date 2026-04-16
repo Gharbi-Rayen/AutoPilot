@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import {
   activeExecutionIdAtom,
   executionStartedAtAtom,
+  nodeProgressMapAtom,
   nodeStatusMapAtom,
   type WorkflowExecutionState,
   workflowExecutionErrorAtom,
@@ -296,6 +297,7 @@ export const WorkflowProgressPanel = ({
   const activeExecutionId = useAtomValue(activeExecutionIdAtom);
   const executionStartedAt = useAtomValue(executionStartedAtAtom);
   const nodeStatusMap = useAtomValue(nodeStatusMapAtom);
+  const nodeProgressMap = useAtomValue(nodeProgressMapAtom);
   const executionError = useAtomValue(workflowExecutionErrorAtom);
   const executionResult = useAtomValue(workflowExecutionResultAtom);
 
@@ -683,10 +685,20 @@ export const WorkflowProgressPanel = ({
     const { status, label } = selectedWorkflowNode;
 
     if (status === "loading") {
+      const liveProgress = nodeProgressMap[selectedWorkflowNode.id];
+      const progressText = liveProgress?.message ?? `Running ${label}…`;
       return (
         <div className="space-y-3">
           {metadataView}
-          <NodeStatusLine text={`Running ${label}…`} />
+          <NodeStatusLine text={progressText} />
+          {typeof liveProgress?.progress === "number" && (
+            <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-blue-500 transition-all duration-300"
+                style={{ width: `${liveProgress.progress}%` }}
+              />
+            </div>
+          )}
         </div>
       );
     }

@@ -10,6 +10,8 @@ export type WorkflowExecutionState =
 
 export const nodeStatusMapAtom = atom<Record<string, NodeStatus>>({});
 
+export const nodeProgressMapAtom = atom<Record<string, { progress: number; message?: string }>>({});
+
 export const workflowExecutionStateAtom = atom<WorkflowExecutionState>("idle");
 
 export const activeExecutionIdAtom = atom<string | null>(null);
@@ -26,6 +28,7 @@ export const workflowProgressPanelCollapsedAtom = atom(false);
 
 export const resetWorkflowExecutionStateAtom = atom(null, (_get, set) => {
   set(nodeStatusMapAtom, {});
+  set(nodeProgressMapAtom, {});
   set(workflowExecutionStateAtom, "idle");
   set(activeExecutionIdAtom, null);
   set(executionStartedAtAtom, null);

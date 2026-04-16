@@ -35,6 +35,7 @@ export type NodeExecutor = (
 export type NodeStatus = "idle" | "running" | "success" | "error";
 
 export interface ExecutionCallbacks {
+  onExecutionCreated: (executionId: string) => void;
   onNodeStatusChange: (nodeId: string, status: NodeStatus) => void;
   onWorkflowStatusChange: (status: "running" | "success" | "error") => void;
   onProgress: (nodeId: string, progress: number, message?: string) => void;
@@ -85,7 +86,7 @@ const executorRegistry: Partial<Record<NodeType, () => Promise<NodeExecutor>>> =
 function sortNodes(nodes: Node[], edges: Edge[]): Node[] {
   if (nodes.length === 0) return [];
   try {
-    const deps: [string, string][] = edges.map((e) => [e.target, e.source]);
+    const deps: [string, string][] = edges.map((e) => [e.source, e.target]);
     const sorted = toposort.array(
       nodes.map((n) => n.id),
       deps,
@@ -121,6 +122,8 @@ export async function runWorkflow(
     startedAt: new Date().toISOString(),
   });
 
+  // Notify immediately so the panel can activate its DB query before nodes start
+  callbacks.onExecutionCreated(executionId);
   callbacks.onWorkflowStatusChange("running");
 
   const context: ExecutionContext = {};
@@ -134,8 +137,12 @@ export async function runWorkflow(
 
       const nodeType = node.type as NodeType;
 
-      // Skip structural/trigger nodes silently
+      // Skip structural/trigger nodes — mark trigger as "success" so the panel
+      // shows it with a green checkmark and includes it in the completed count.
       if (nodeType === NodeType.INITIAL || nodeType === NodeType.MANUAL_TRIGGER) {
+        if (nodeType === NodeType.MANUAL_TRIGGER) {
+          callbacks.onNodeStatusChange(node.id, "success");
+        }
         continue;
       }
 

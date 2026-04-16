@@ -1,23 +1,25 @@
 "use client";
 
+import type { Edge, Node } from "@xyflow/react";
 import { useSetAtom } from "jotai";
 import { useCallback, useRef } from "react";
-import type { Edge, Node } from "@xyflow/react";
+import type { NodeStatus } from "@/components/react-flow/node-status-indicator";
 import { runWorkflow } from "@/lib/execution-engine";
 import {
   activeExecutionIdAtom,
   executionStartedAtAtom,
+  nodeProgressMapAtom,
   nodeStatusMapAtom,
   resetWorkflowExecutionStateAtom,
   workflowExecutionErrorAtom,
   workflowExecutionStateAtom,
   workflowProgressPanelOpenAtom,
 } from "@/store/execution-status";
-import type { NodeStatus } from "@/components/react-flow/node-status-indicator";
 
 export function useRunWorkflow() {
   const resetState = useSetAtom(resetWorkflowExecutionStateAtom);
   const setNodeStatusMap = useSetAtom(nodeStatusMapAtom);
+  const setNodeProgressMap = useSetAtom(nodeProgressMapAtom);
   const setWorkflowState = useSetAtom(workflowExecutionStateAtom);
   const setActiveExecutionId = useSetAtom(activeExecutionIdAtom);
   const setExecutionStartedAt = useSetAtom(executionStartedAtAtom);
@@ -44,29 +46,43 @@ export function useRunWorkflow() {
       setPanelOpen(true);
 
       try {
-        const executionId = await runWorkflow(workflowId, nodes, edges, {
-          onNodeStatusChange: (nodeId, status) => {
-            // execution-engine emits "running"; map to "loading" for the UI
-            const uiStatus: NodeStatus = status === "running" ? "loading" : (status as NodeStatus);
-            setNodeStatusMap((prev) => ({
-              ...prev,
-              [nodeId]: uiStatus,
-            }));
+        const executionId = await runWorkflow(
+          workflowId,
+          nodes,
+          edges,
+          {
+            onExecutionCreated: (id) => {
+              // Set immediately so the panel's DB query activates before nodes run
+              setActiveExecutionId(id);
+            },
+            onNodeStatusChange: (nodeId, status) => {
+              // execution-engine emits "running"; map to "loading" for the UI
+              const uiStatus: NodeStatus =
+                status === "running" ? "loading" : (status as NodeStatus);
+              setNodeStatusMap((prev) => ({ ...prev, [nodeId]: uiStatus }));
+            },
+            onWorkflowStatusChange: (status) => {
+              setWorkflowState(
+                status === "running"
+                  ? "running"
+                  : status === "success"
+                    ? "success"
+                    : "error",
+              );
+            },
+            onProgress: (nodeId, progress, message) => {
+              setNodeProgressMap((prev) => ({
+                ...prev,
+                [nodeId]: { progress, message },
+              }));
+            },
+            onError: (error) => {
+              setError(error);
+            },
           },
-          onWorkflowStatusChange: (status) => {
-            setWorkflowState(
-              status === "running" ? "running" : status === "success" ? "success" : "error",
-            );
-          },
-          onProgress: (_nodeId, _progress, _message) => {
-            // Future: could drive per-node progress bars here
-          },
-          onError: (error) => {
-            setError(error);
-          },
-        }, controller.signal);
+          controller.signal,
+        );
 
-        setActiveExecutionId(executionId);
         return executionId;
       } finally {
         isRunning.current = false;
@@ -75,6 +91,7 @@ export function useRunWorkflow() {
     [
       resetState,
       setNodeStatusMap,
+      setNodeProgressMap,
       setWorkflowState,
       setActiveExecutionId,
       setExecutionStartedAt,
