@@ -9,5 +9,9 @@ export const executor: NodeExecutor = async (_nodeId, nodeData, context, executi
   if (!isDatasetRef(baseRef)) throw new Error("CSV Compare: base dataset not found.");
   if (!isDatasetRef(compareRef)) throw new Error("CSV Compare: compare dataset not found.");
   const result = await dispatchWorkerJob<unknown, { datasetRef: DatasetRef; manifest: unknown; summary: unknown }>("csv-compare", { baseRef, compareRef, ...rest, executionId, variableName }, onProgress);
-  return { [variableName as string]: result.datasetRef };
+  return {
+    [variableName as string]: result.datasetRef,
+    [`${variableName as string}_manifest`]: result.manifest,
+    [`${variableName as string}_summary`]: result.summary,
+  };
 };

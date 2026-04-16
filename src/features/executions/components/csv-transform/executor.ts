@@ -7,5 +7,8 @@ export const executor: NodeExecutor = async (_nodeId, nodeData, context, executi
   const inputRef = typeof inputVariable === "string" ? context[inputVariable] : Object.values(context).find((v) => isDatasetRef(v));
   if (!isDatasetRef(inputRef)) throw new Error("csv-transform: no dataset in context.");
   const result = await dispatchWorkerJob<unknown, { datasetRef: DatasetRef; manifest: unknown }>("csv-transform", { inputRef, ...rest, executionId, variableName }, onProgress);
-  return { [variableName as string]: result.datasetRef };
+  return {
+    [variableName as string]: result.datasetRef,
+    [`${variableName as string}_manifest`]: result.manifest,
+  };
 };

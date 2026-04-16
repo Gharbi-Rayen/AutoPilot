@@ -78,7 +78,7 @@ function getWorkerUrl(type: WorkerJobType): string {
     "csv-transform": "/workers/csv-transform.worker.js",
     "csv-consecutive-sequence": "/workers/csv-consecutive-sequence.worker.js",
     "pdf-extract-text": "/workers/pdf-extract-text.worker.js",
-    "pdf-extract-tables": "/workers/pdf-extract-text.worker.js",
+    "pdf-extract-tables": "/workers/pdf-extract-tables.worker.js",
   };
   return map[type];
 }
@@ -106,7 +106,12 @@ function getOrCreateWorker(type: WorkerJobType): Worker {
   };
 
   worker.onerror = (event) => {
-    console.error(`[WorkerManager] Worker ${type} error:`, event.message);
+    console.error(`[WorkerManager] Worker ${type} crashed:`, event.message);
+    for (const [jobId, pending] of pendingJobs.entries()) {
+      pending.reject(new Error(`Worker ${type} crashed: ${event.message ?? "unknown error"}`));
+      pendingJobs.delete(jobId);
+    }
+    workerPool.delete(type);
   };
 
   workerPool.set(type, worker);

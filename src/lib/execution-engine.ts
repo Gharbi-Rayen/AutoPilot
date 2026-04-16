@@ -193,7 +193,7 @@ export async function runWorkflow(
 
         // Persist dataset manifest if present
         if (datasetRef) {
-          const manifest = (newVars as Record<string, unknown>).manifest;
+          const manifest = (newVars as Record<string, unknown>)[`${datasetRef.variableName}_manifest`];
           if (manifest) {
             await db.datasets.add({
               id: datasetRef.datasetId,

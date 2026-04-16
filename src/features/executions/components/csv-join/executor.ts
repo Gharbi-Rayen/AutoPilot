@@ -9,5 +9,8 @@ export const executor: NodeExecutor = async (_nodeId, nodeData, context, executi
   if (!isDatasetRef(leftRef)) throw new Error("CSV Join: left dataset not found.");
   if (!isDatasetRef(rightRef)) throw new Error("CSV Join: right dataset not found.");
   const result = await dispatchWorkerJob<unknown, { datasetRef: DatasetRef; manifest: unknown }>("csv-join", { leftRef, rightRef, ...rest, executionId, variableName }, onProgress);
-  return { [variableName as string]: result.datasetRef };
+  return {
+    [variableName as string]: result.datasetRef,
+    [`${variableName as string}_manifest`]: result.manifest,
+  };
 };
