@@ -1753,40 +1753,149 @@ async function writeToOPFS(executionId, datasetId, rows, chunkSize = 1e4) {
 }
 
 // src/workers/csv-compare.worker.ts
+var makeRef = (datasetId, executionId, variableName, rowCount, chunkCount, byteSize) => ({
+  kind: "dataset",
+  datasetId,
+  executionId,
+  variableName,
+  rowCount,
+  chunkCount,
+  byteSize
+});
+var makeManifest = (datasetId, executionId, variableName, rowCount, byteSize, chunks) => {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  return {
+    version: DATASET_MANIFEST_VERSION,
+    datasetId,
+    executionId,
+    variableName,
+    createdAt: now,
+    updatedAt: now,
+    rowCount,
+    chunkCount: chunks.length,
+    byteSize,
+    chunks
+  };
+};
 self.onmessage = async (event) => {
   const { jobId, input } = event.data;
-  const { baseRef, compareRef, keyFields, executionId, variableName, chunkSize = 1e4 } = input;
+  const {
+    baseRef,
+    compareRef,
+    keyField = "",
+    compareFields = "",
+    executionId,
+    variableName = "diffData",
+    chunkSize = 1e4
+  } = input;
   const post = (msg) => self.postMessage(msg);
   try {
-    post({ kind: "progress", jobId, progress: 10, message: "Reading base..." });
-    const base = await readFromOPFS(baseRef.executionId, baseRef.datasetId, baseRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 30, message: "Reading compare..." });
-    const compare2 = await readFromOPFS(compareRef.executionId, compareRef.datasetId, compareRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 50, message: "Comparing..." });
-    const rowKey = (r) => keyFields.map((f) => String(r[f] ?? "")).join("|");
-    const baseMap = new Map(base.map((r) => [rowKey(r), r]));
-    const compareMap = new Map(compare2.map((r) => [rowKey(r), r]));
+    const keyFields = String(keyField || "").split(",").map((s) => s.trim()).filter(Boolean);
+    const cmpFields = String(compareFields || "").split(",").map((s) => s.trim()).filter(Boolean);
+    post({ kind: "progress", jobId, progress: 5, message: "Reading base dataset\u2026" });
+    const base = await readFromOPFS(
+      baseRef.executionId,
+      baseRef.datasetId,
+      baseRef.chunkCount
+    );
+    post({ kind: "progress", jobId, progress: 25, message: "Reading compare dataset\u2026" });
+    const compare2 = await readFromOPFS(
+      compareRef.executionId,
+      compareRef.datasetId,
+      compareRef.chunkCount
+    );
+    post({ kind: "progress", jobId, progress: 45, message: "Comparing rows\u2026" });
+    const rowKey = (r) => {
+      if (keyFields.length > 0) {
+        return keyFields.map((f) => String(r[f] ?? "")).join("|");
+      }
+      return JSON.stringify(r);
+    };
+    const allBaseFields = base.length > 0 ? Object.keys(base[0]) : [];
+    const allCmpFields = compare2.length > 0 ? Object.keys(compare2[0]) : [];
+    const sharedFields = allBaseFields.filter((f) => allCmpFields.includes(f));
+    const fieldsToCompare = cmpFields.length > 0 ? cmpFields.filter((f) => sharedFields.includes(f)) : sharedFields;
+    const baseMap = /* @__PURE__ */ new Map();
+    for (const r of base) baseMap.set(rowKey(r), r);
+    const compareMap = /* @__PURE__ */ new Map();
+    for (const r of compare2) compareMap.set(rowKey(r), r);
     const added = [];
     const removed = [];
     const changed = [];
-    for (const [key, row] of compareMap) {
+    for (const [key, cmpRow] of compareMap) {
       if (!baseMap.has(key)) {
-        added.push({ ...row, _diff: "added" });
-      } else if (JSON.stringify(row) !== JSON.stringify(baseMap.get(key))) {
-        changed.push({ ...row, _diff: "changed" });
+        added.push(cmpRow);
+      } else {
+        const baseRow = baseMap.get(key);
+        const changedFields = fieldsToCompare.filter(
+          (f) => String(cmpRow[f] ?? "") !== String(baseRow[f] ?? "")
+        );
+        if (changedFields.length > 0) {
+          const diffRow = {};
+          if (keyFields.length > 0) {
+            diffRow._diff_key = keyFields.map((f) => String(baseRow[f] ?? "")).join("|");
+          }
+          diffRow._diff_changed = changedFields.join(",");
+          for (const f of fieldsToCompare) {
+            diffRow[`_before_${f}`] = baseRow[f];
+            diffRow[`_after_${f}`] = cmpRow[f];
+          }
+          changed.push(diffRow);
+        }
       }
     }
-    for (const [key, row] of baseMap) {
-      if (!compareMap.has(key)) removed.push({ ...row, _diff: "removed" });
+    for (const [key, baseRow] of baseMap) {
+      if (!compareMap.has(key)) removed.push(baseRow);
     }
-    const diffRows = [...added, ...removed, ...changed];
-    post({ kind: "progress", jobId, progress: 75, message: "Writing diff..." });
-    const datasetId = createId();
-    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, diffRows, chunkSize);
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const manifest = { version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName, createdAt: now, updatedAt: now, rowCount: diffRows.length, chunkCount: chunks.length, byteSize: totalBytes, chunks };
-    const datasetRef = { kind: "dataset", datasetId, executionId, variableName, rowCount: diffRows.length, chunkCount: chunks.length, byteSize: totalBytes };
-    post({ kind: "result", jobId, output: { manifest, datasetRef, summary: { added: added.length, removed: removed.length, changed: changed.length, unchanged: base.length - removed.length - changed.length } } });
+    const unchangedCount = base.length - removed.length - changed.length;
+    post({ kind: "progress", jobId, progress: 60, message: "Writing diff datasets\u2026" });
+    const addedId = createId();
+    const removedId = createId();
+    const changedId = createId();
+    const addedVar = `${variableName}_added`;
+    const removedVar = `${variableName}_removed`;
+    const changedVar = `${variableName}_changed`;
+    const [addedResult, removedResult, changedResult] = await Promise.all([
+      writeToOPFS(executionId, addedId, added, chunkSize),
+      writeToOPFS(executionId, removedId, removed, chunkSize),
+      writeToOPFS(executionId, changedId, changed, chunkSize)
+    ]);
+    post({ kind: "progress", jobId, progress: 90, message: "Building result\u2026" });
+    const addedRef = makeRef(addedId, executionId, addedVar, added.length, addedResult.chunks.length, addedResult.totalBytes);
+    const removedRef = makeRef(removedId, executionId, removedVar, removed.length, removedResult.chunks.length, removedResult.totalBytes);
+    const changedRef = makeRef(changedId, executionId, changedVar, changed.length, changedResult.chunks.length, changedResult.totalBytes);
+    const addedManifest = makeManifest(addedId, executionId, addedVar, added.length, addedResult.totalBytes, addedResult.chunks);
+    const removedManifest = makeManifest(removedId, executionId, removedVar, removed.length, removedResult.totalBytes, removedResult.chunks);
+    const changedManifest = makeManifest(changedId, executionId, changedVar, changed.length, changedResult.totalBytes, changedResult.chunks);
+    const isIdentical = added.length === 0 && removed.length === 0 && changed.length === 0;
+    const compareResult = {
+      _compareResult: true,
+      isIdentical,
+      summary: isIdentical ? `${base.length} matching rows` : `${added.length} added, ${removed.length} removed, ${changed.length} changed`,
+      keyField: keyFields.length > 0 ? keyFields.join(", ") : null,
+      compareFields: fieldsToCompare,
+      addedCount: added.length,
+      removedCount: removed.length,
+      changedCount: changed.length,
+      unchangedCount: Math.max(0, unchangedCount),
+      changedDiffRowCount: changed.length,
+      addedVarName: added.length > 0 ? addedVar : null,
+      removedVarName: removed.length > 0 ? removedVar : null,
+      changedVarName: changed.length > 0 ? changedVar : null
+    };
+    post({
+      kind: "result",
+      jobId,
+      output: {
+        compareResult,
+        addedRef,
+        removedRef,
+        changedRef,
+        addedManifest,
+        removedManifest,
+        changedManifest
+      }
+    });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }
