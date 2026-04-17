@@ -574,17 +574,28 @@ export const WorkflowProgressPanel = ({
     return selectedOutputPayload as unknown as CompareResult;
   }, [selectedWorkflowNode, selectedOutputPayload]);
 
-  const startedAt = executionStartedAt ? new Date(executionStartedAt) : null;
-  const finishedAt: Date | null = null; // not persisted in offline model
+  // Per-node times from DB record (fall back to workflow-level startedAt)
+  const nodeRecord = nodeOutputQuery.data;
+  const startedAt = nodeRecord?.startedAt
+    ? new Date(nodeRecord.startedAt as string)
+    : executionStartedAt ? new Date(executionStartedAt) : null;
+  const finishedAt = nodeRecord?.finishedAt
+    ? new Date(nodeRecord.finishedAt as string)
+    : null;
+  const durationMs = typeof nodeRecord?.durationMs === "number" ? nodeRecord.durationMs : null;
 
   const inspectorName = selectedWorkflowNode?.label ?? "Inspector";
   const inspectorStatus: TraceStatus =
     selectedWorkflowNode?.status ?? "initial";
-  const durationLabel = getDurationLabel({
-    startedAt,
-    finishedAt,
-    isRunning: executionState === "running",
-  });
+  const durationLabel = durationMs !== null
+    ? durationMs < 1000
+      ? `${durationMs}ms`
+      : `${(durationMs / 1000).toFixed(2)}s`
+    : getDurationLabel({
+        startedAt,
+        finishedAt,
+        isRunning: executionState === "running" && selectedWorkflowNode?.status === "loading",
+      });
 
   // ── Split drag ─────────────────────────────────────────────────────────────
 

@@ -89,11 +89,13 @@ async function writeChunksToOPFS(
 
 self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   const { jobId, input } = event.data;
-  const { fileContent, fileName, executionId, variableName, chunkSize = 10_000 } = input as {
+  const { fileContent, fileName, executionId, variableName, hasHeader = true, delimiter = "auto", chunkSize = 10_000 } = input as {
     fileContent: string;
     fileName: string;
     executionId: string;
     variableName: string;
+    hasHeader?: boolean;
+    delimiter?: string;
     chunkSize?: number;
   };
 
@@ -102,13 +104,38 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   try {
     post({ kind: "progress", jobId, progress: 5, message: "Parsing CSV..." });
 
-    const result = Papa.parse<DatasetRow>(fileContent, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: false,
-    });
+    const explicitDelimiter = delimiter && delimiter !== "auto" ? delimiter : "";
 
-    const rows = result.data;
+    let rows: DatasetRow[];
+    let parseWarnings: string[] = [];
+
+    if (hasHeader) {
+      const parsed = Papa.parse<DatasetRow>(fileContent, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        delimiter: explicitDelimiter,
+      });
+      rows = parsed.data;
+      parseWarnings = parsed.errors.map((e) => e.message);
+    } else {
+      // No header: parse as arrays, generate col_0, col_1, ... names
+      const parsed = Papa.parse<string[]>(fileContent, {
+        header: false,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        delimiter: explicitDelimiter,
+      });
+      const colCount = parsed.data[0]?.length ?? 0;
+      const colNames = Array.from({ length: colCount }, (_, i) => `col_${i}`);
+      rows = parsed.data.map((arr) => {
+        const row: DatasetRow = {};
+        for (let i = 0; i < colNames.length; i++) row[colNames[i]] = arr[i] ?? null;
+        return row;
+      });
+      parseWarnings = parsed.errors.map((e) => e.message);
+    }
+
     post({ kind: "progress", jobId, progress: 40, message: `Parsed ${rows.length} rows` });
 
     const schema = inferSchema(rows.slice(0, 1000));
@@ -149,7 +176,7 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
           byteSize: totalBytes,
           schema,
         },
-        warnings: result.errors.map((e) => e.message),
+        warnings: parseWarnings,
         fileName,
       },
     });

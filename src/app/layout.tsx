@@ -7,6 +7,7 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { LocaleHtmlAttrs } from "@/components/locale-html-attrs";
 import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { QueryProvider } from "@/components/query-provider";
+import { StoragePersist } from "@/components/storage-persist";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -55,6 +56,7 @@ export default function RootLayout({
                 {children}
                 <Toaster position="top-right" />
                 <PwaInstallPrompt />
+                <StoragePersist />
               </QueryProvider>
             </Provider>
           </NuqsAdapter>

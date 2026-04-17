@@ -2211,16 +2211,38 @@ async function writeChunksToOPFS(executionId, datasetId, rows, chunkSize = 1e4) 
 }
 self.onmessage = async (event) => {
   const { jobId, input } = event.data;
-  const { fileContent, fileName, executionId, variableName, chunkSize = 1e4 } = input;
+  const { fileContent, fileName, executionId, variableName, hasHeader = true, delimiter = "auto", chunkSize = 1e4 } = input;
   const post = (msg) => self.postMessage(msg);
   try {
     post({ kind: "progress", jobId, progress: 5, message: "Parsing CSV..." });
-    const result = import_papaparse.default.parse(fileContent, {
-      header: true,
-      skipEmptyLines: true,
-      dynamicTyping: false
-    });
-    const rows = result.data;
+    const explicitDelimiter = delimiter && delimiter !== "auto" ? delimiter : "";
+    let rows;
+    let parseWarnings = [];
+    if (hasHeader) {
+      const parsed = import_papaparse.default.parse(fileContent, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        delimiter: explicitDelimiter
+      });
+      rows = parsed.data;
+      parseWarnings = parsed.errors.map((e) => e.message);
+    } else {
+      const parsed = import_papaparse.default.parse(fileContent, {
+        header: false,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        delimiter: explicitDelimiter
+      });
+      const colCount = parsed.data[0]?.length ?? 0;
+      const colNames = Array.from({ length: colCount }, (_, i) => `col_${i}`);
+      rows = parsed.data.map((arr) => {
+        const row = {};
+        for (let i = 0; i < colNames.length; i++) row[colNames[i]] = arr[i] ?? null;
+        return row;
+      });
+      parseWarnings = parsed.errors.map((e) => e.message);
+    }
     post({ kind: "progress", jobId, progress: 40, message: `Parsed ${rows.length} rows` });
     const schema = inferSchema(rows.slice(0, 1e3));
     const datasetId = createId();
@@ -2256,7 +2278,7 @@ self.onmessage = async (event) => {
           byteSize: totalBytes,
           schema
         },
-        warnings: result.errors.map((e) => e.message),
+        warnings: parseWarnings,
         fileName
       }
     });

@@ -60,6 +60,9 @@ export interface ExecutionNodeOutputRecord {
   /** small inline output (if the result fits in memory) */
   inlineOutput?: unknown;
   error?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  durationMs?: number;
 }
 
 export interface DatasetRecord {

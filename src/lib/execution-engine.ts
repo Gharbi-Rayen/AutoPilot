@@ -200,6 +200,8 @@ export async function runWorkflow(
 
       callbacks.onNodeStatusChange(node.id, "running");
 
+      const nodeStartedAt = new Date().toISOString();
+
       // Persist node output as RUNNING
       const outputId = createId();
       await db.executionNodeOutputs.add({
@@ -208,6 +210,7 @@ export async function runWorkflow(
         nodeId: node.id,
         nodeType,
         status: "RUNNING",
+        startedAt: nodeStartedAt,
       });
 
       try {
@@ -240,11 +243,16 @@ export async function runWorkflow(
         );
         const hasInline = Object.keys(inlineVars).length > 0;
 
+        const nodeFinishedAt = new Date().toISOString();
+        const durationMs = new Date(nodeFinishedAt).getTime() - new Date(nodeStartedAt).getTime();
+
         await db.executionNodeOutputs.update(outputId, {
           status: "SUCCESS",
           variableName: primaryRef?.variableName,
           datasetId: primaryRef?.datasetId,
           inlineOutput: hasInline ? toSerializable(inlineVars) : undefined,
+          finishedAt: nodeFinishedAt,
+          durationMs,
         });
 
         // Persist manifests for ALL datasets emitted by this node
@@ -263,10 +271,13 @@ export async function runWorkflow(
 
         callbacks.onNodeStatusChange(node.id, "success");
       } catch (nodeError) {
+        const nodeFailedAt = new Date().toISOString();
         const errorMsg = String(nodeError);
         await db.executionNodeOutputs.update(outputId, {
           status: "FAILED",
           error: errorMsg,
+          finishedAt: nodeFailedAt,
+          durationMs: new Date(nodeFailedAt).getTime() - new Date(nodeStartedAt).getTime(),
         });
         callbacks.onNodeStatusChange(node.id, "error");
         throw nodeError; // bubble up to stop the workflow

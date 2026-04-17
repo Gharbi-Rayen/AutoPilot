@@ -3,10 +3,12 @@ import { dispatchWorkerJob } from "@/lib/worker-manager";
 import type { DatasetRef } from "@/types/dataset";
 
 export const executor: NodeExecutor = async (_nodeId, nodeData, context, executionId, onProgress) => {
-  const { csvVariable, inputVariable, variableName = "parsedData" } = nodeData as {
+  const { csvVariable, inputVariable, variableName = "parsedData", hasHeader = true, delimiter = "auto" } = nodeData as {
     csvVariable?: string;
     inputVariable?: string;
     variableName?: string;
+    hasHeader?: boolean;
+    delimiter?: string;
   };
 
   const resolvedVar = csvVariable ?? inputVariable;
@@ -23,7 +25,7 @@ export const executor: NodeExecutor = async (_nodeId, nodeData, context, executi
   const fileContent = await new Blob([buffer], { type: mimeType }).text();
   const result = await dispatchWorkerJob<unknown, { manifest: unknown; datasetRef: DatasetRef }>(
     "csv-parse",
-    { fileContent, fileName, executionId, variableName },
+    { fileContent, fileName, executionId, variableName, hasHeader, delimiter },
     onProgress,
   );
 
