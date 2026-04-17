@@ -49,6 +49,7 @@ export const executor: NodeExecutor = async (
       fileName,
       mimeType,
       byteSize: buffer.byteLength,
+      uploadedAt: new Date().toISOString(),
       buffer,
     },
   };

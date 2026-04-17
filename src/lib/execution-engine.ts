@@ -12,7 +12,6 @@
  */
 
 import { createId } from "@paralleldrive/cuid2";
-import toposort from "toposort";
 import type { Edge, Node } from "@xyflow/react";
 import { db } from "@/lib/db";
 import { NodeType } from "@/types/node-type";
@@ -83,16 +82,44 @@ const executorRegistry: Partial<Record<NodeType, () => Promise<NodeExecutor>>> =
 
 // ─── Topological sort ─────────────────────────────────────────────────────────
 
+/**
+ * DFS post-order topological sort. Compared to `toposort`'s BFS-like ordering,
+ * this ensures each pipeline branch is processed depth-first before the next
+ * branch starts (e.g. upload1→parse1 fully before upload2→parse2).
+ */
 function sortNodes(nodes: Node[], edges: Edge[]): Node[] {
   if (nodes.length === 0) return [];
   try {
-    const deps: [string, string][] = edges.map((e) => [e.source, e.target]);
-    const sorted = toposort.array(
-      nodes.map((n) => n.id),
-      deps,
-    );
     const nodeById = new Map(nodes.map((n) => [n.id, n]));
-    return sorted.map((id) => nodeById.get(id)!).filter(Boolean);
+    const children = new Map<string, string[]>();
+    const hasParent = new Set<string>();
+
+    for (const n of nodes) children.set(n.id, []);
+    for (const e of edges) {
+      if (nodeById.has(e.source) && nodeById.has(e.target)) {
+        children.get(e.source)?.push(e.target);
+        hasParent.add(e.target);
+      }
+    }
+
+    const visited = new Set<string>();
+    const result: string[] = [];
+
+    const dfs = (id: string) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const kids = children.get(id) ?? [];
+      // Iterate in reverse so the first child wins when result is reversed.
+      for (let i = kids.length - 1; i >= 0; i--) dfs(kids[i]);
+      result.push(id);
+    };
+
+    for (const n of nodes) {
+      if (!hasParent.has(n.id)) dfs(n.id);
+    }
+
+    result.reverse();
+    return result.map((id) => nodeById.get(id)!).filter(Boolean);
   } catch {
     return nodes;
   }

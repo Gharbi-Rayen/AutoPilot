@@ -282,7 +282,7 @@ export const UploadFileDialog = ({
   };
 
   const handleSubmit = (values: UploadFileFormValues) => {
-    if (!stagedFileId || !previewMetadata || !selectedFile) {
+    if (!stagedFileId || !previewMetadata) {
       form.setError("variableName", {
         message: "Upload and process a file first.",
       });
@@ -292,7 +292,7 @@ export const UploadFileDialog = ({
     onSubmit({
       ...values,
       fileId: stagedFileId,
-      fileName: selectedFile.name,
+      fileName: selectedFile?.name ?? defaultValues.fileName ?? "",
       previewMetadata,
     });
     onOpenChange(false);

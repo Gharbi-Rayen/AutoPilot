@@ -16,7 +16,6 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import toposort from "toposort";
 import { NodeStatusLine } from "@/components/node-status-line";
 import type { NodeStatus } from "@/components/react-flow/node-status-indicator";
 import { Badge } from "@/components/ui/badge";
@@ -149,21 +148,39 @@ const sortNodesByExecutionOrder = (
   nodes: Node[],
   edges: Pick<Edge, "source" | "target">[],
 ): Node[] => {
-  if (edges.length === 0) return nodes;
-
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-  const edgePairs: [string, string][] = edges
-    .filter((e) => nodeMap.has(e.source) && nodeMap.has(e.target))
-    .map((e) => [e.source, e.target]);
-
-  if (edgePairs.length === 0) return nodes;
-
+  if (nodes.length === 0) return nodes;
   try {
-    const sortedIds = [...new Set(toposort(edgePairs))];
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    const children = new Map<string, string[]>();
+    const hasParent = new Set<string>();
+
+    for (const n of nodes) children.set(n.id, []);
+    for (const e of edges) {
+      if (nodeMap.has(e.source) && nodeMap.has(e.target)) {
+        children.get(e.source)?.push(e.target);
+        hasParent.add(e.target);
+      }
+    }
+
+    const visited = new Set<string>();
+    const result: string[] = [];
+
+    const dfs = (id: string) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const kids = children.get(id) ?? [];
+      for (let i = kids.length - 1; i >= 0; i--) dfs(kids[i]);
+      result.push(id);
+    };
+
+    for (const n of nodes) {
+      if (!hasParent.has(n.id)) dfs(n.id);
+    }
+
+    result.reverse();
+    const sortedIds = result;
     const connectedIds = new Set(sortedIds);
-    const sorted = sortedIds
-      .map((id) => nodeMap.get(id))
-      .filter((n): n is Node => Boolean(n));
+    const sorted = sortedIds.map((id) => nodeMap.get(id)).filter((n): n is Node => Boolean(n));
     const isolated = nodes.filter((n) => !connectedIds.has(n.id));
     return [...sorted, ...isolated];
   } catch {
@@ -469,8 +486,14 @@ export const WorkflowProgressPanel = ({
 
     // For dataset nodes inlineOutput is undefined; the engine writes variableName
     // + datasetId as separate fields on the DB record — use them directly.
+    // Skip for CSV_COMPARE: the compare viewer renders its own dataset tables.
     const dbRecord = nodeOutputQuery.data;
-    if (dbRecord?.datasetId && dbRecord?.variableName) return dbRecord.variableName;
+    if (
+      dbRecord?.datasetId &&
+      dbRecord?.variableName &&
+      selectedWorkflowNode.type !== "CSV_COMPARE"
+    )
+      return dbRecord.variableName;
 
     const resolveFromRecord = (record: Record<string, unknown> | null) => {
       if (!record) return null;
