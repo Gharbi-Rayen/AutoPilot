@@ -48,8 +48,9 @@ async function fetchExecution(id: string) {
 
 async function fetchNodeOutput(executionId: string, nodeId: string) {
   const output = await db.executionNodeOutputs
-    .where(["executionId", "nodeId"])
-    .equals([executionId, nodeId])
+    .where("executionId")
+    .equals(executionId)
+    .filter((r) => r.nodeId === nodeId)
     .first();
   return output ?? null;
 }
