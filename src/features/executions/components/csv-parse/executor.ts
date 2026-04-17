@@ -3,13 +3,15 @@ import { dispatchWorkerJob } from "@/lib/worker-manager";
 import type { DatasetRef } from "@/types/dataset";
 
 export const executor: NodeExecutor = async (_nodeId, nodeData, context, executionId, onProgress) => {
-  const { inputVariable, variableName = "parsedData" } = nodeData as {
+  const { csvVariable, inputVariable, variableName = "parsedData" } = nodeData as {
+    csvVariable?: string;
     inputVariable?: string;
     variableName?: string;
   };
 
-  const fileVar = inputVariable
-    ? context[inputVariable]
+  const resolvedVar = csvVariable ?? inputVariable;
+  const fileVar = resolvedVar
+    ? context[resolvedVar]
     : Object.values(context).find((v) => typeof v === "object" && v !== null && (v as { kind?: string }).kind === "file");
 
   if (!fileVar || typeof fileVar !== "object")

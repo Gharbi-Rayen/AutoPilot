@@ -339,6 +339,17 @@ export const WorkflowProgressPanel = ({
     retry: false,
   });
 
+  // Refetch node output once when execution transitions from running to done
+  // so the final DB write is always reflected without waiting for another poll.
+  const prevExecutionStateRef = useRef(executionState);
+  useEffect(() => {
+    const prev = prevExecutionStateRef.current;
+    prevExecutionStateRef.current = executionState;
+    if (prev === "running" && (executionState === "success" || executionState === "error")) {
+      void nodeOutputQuery.refetch();
+    }
+  }, [executionState, nodeOutputQuery]);
+
   // ── Derived data ───────────────────────────────────────────────────────────
 
   const stateConfig = workflowStateConfig[executionState];
