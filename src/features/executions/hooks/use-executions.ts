@@ -32,7 +32,17 @@ async function fetchExecutions(params: {
   if (workflowId) all = all.filter((e) => e.workflowId === workflowId);
   const totalCount = all.length;
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const items = all.slice((page - 1) * pageSize, page * pageSize);
+  const pageItems = all.slice((page - 1) * pageSize, page * pageSize);
+
+  // Join workflow names
+  const workflowIds = [...new Set(pageItems.map((e) => e.workflowId))];
+  const workflows = await db.workflows.bulkGet(workflowIds);
+  const nameMap = new Map(workflows.map((w) => [w?.id, w?.name]));
+  const items = pageItems.map((e) => ({
+    ...e,
+    workflowName: nameMap.get(e.workflowId) ?? e.workflowId,
+  }));
+
   return { items, page, pageSize, totalCount, totalPages };
 }
 

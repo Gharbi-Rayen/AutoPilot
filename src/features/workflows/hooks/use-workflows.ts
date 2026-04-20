@@ -7,7 +7,6 @@ import {
   useSuspenseQuery,
 } from "@tanstack/react-query";
 import { createId } from "@paralleldrive/cuid2";
-import { generateSlug } from "random-word-slugs";
 import { toast } from "sonner";
 import type { Edge, Node } from "@xyflow/react";
 import { db } from "@/lib/db";
@@ -103,10 +102,10 @@ export const useWorkflow = (id: string) =>
 export const useCreateWorkflow = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (name: string) => {
       const id = createId();
       const now = new Date().toISOString();
-      await db.workflows.add({ id, name: generateSlug(3), createdAt: now, updatedAt: now });
+      await db.workflows.add({ id, name, createdAt: now, updatedAt: now });
       await db.workflowNodes.add({
         id: createId(),
         workflowId: id,

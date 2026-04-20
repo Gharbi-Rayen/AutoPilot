@@ -8,9 +8,13 @@ interface CompareWorkerOutput {
   addedRef: DatasetRef;
   removedRef: DatasetRef;
   changedRef: DatasetRef;
+  commonRef: DatasetRef;
+  schemaDiffRef: DatasetRef;
   addedManifest: unknown;
   removedManifest: unknown;
   changedManifest: unknown;
+  commonManifest: unknown;
+  schemaDiffManifest: unknown;
 }
 
 export const executor: NodeExecutor = async (
@@ -60,8 +64,12 @@ export const executor: NodeExecutor = async (
     [`${variableName as string}_added`]: result.addedRef,
     [`${variableName as string}_removed`]: result.removedRef,
     [`${variableName as string}_changed`]: result.changedRef,
+    [`${variableName as string}_common`]: result.commonRef,
+    [`${variableName as string}_schema_diff`]: result.schemaDiffRef,
     [`${variableName as string}_added_manifest`]: result.addedManifest,
     [`${variableName as string}_removed_manifest`]: result.removedManifest,
     [`${variableName as string}_changed_manifest`]: result.changedManifest,
+    [`${variableName as string}_common_manifest`]: result.commonManifest,
+    [`${variableName as string}_schema_diff_manifest`]: result.schemaDiffManifest,
   };
 };

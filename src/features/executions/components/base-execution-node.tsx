@@ -13,6 +13,7 @@ import {
   BaseNode,
   BaseNodeContent,
 } from "../../../components/react-flow/base-node";
+import { PlusConnectHandle } from "../../../components/react-flow/plus-connect-handle";
 import { WorkflowNode } from "../../../components/workflow-node";
 
 interface BaseExecutionNodeProps extends NodeProps {
@@ -58,6 +59,7 @@ export const BaseExecutionNode = memo(
         onSettings={onSettings}
         onDelete={handleDelete}
       >
+        <PlusConnectHandle nodeId={id} />
         <NodeStatusIndicator status={status} variant="border">
           <BaseNode status={status} onDoubleClick={onDoubleClick}>
             <BaseNodeContent>

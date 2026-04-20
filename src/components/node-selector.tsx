@@ -1,7 +1,7 @@
 "use client";
 
 import { createId } from "@paralleldrive/cuid2";
-import { useReactFlow } from "@xyflow/react";
+import { addEdge, useReactFlow } from "@xyflow/react";
 import {
   ArrowLeftRight,
   ArrowUpDown,
@@ -169,15 +169,18 @@ const executionNodes: NodeTypeOption[] = [
 interface NodeSelectorProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When set, a new node will be auto-connected from this source node id */
+  pendingSourceNodeId?: string | null;
   children?: ReactNode;
 }
 
 export function NodeSelector({
   open,
   onOpenChange,
+  pendingSourceNodeId,
   children,
 }: NodeSelectorProps) {
-  const { setNodes, getNodes, screenToFlowPosition } = useReactFlow();
+  const { setNodes, setEdges, getNodes, getNode, screenToFlowPosition } = useReactFlow();
   const [search, setSearch] = useState("");
 
   const filteredTriggerNodes = useMemo(() => {
@@ -203,57 +206,85 @@ export function NodeSelector({
   const handleNodeSelect = useCallback(
     (selection: NodeTypeOption) => {
       const nodes = getNodes();
+      const isQuickConnect = Boolean(pendingSourceNodeId);
 
       if (selection.type === NodeType.MANUAL_TRIGGER) {
         const hasManualTrigger = nodes.some(
           (node) => node.type === NodeType.MANUAL_TRIGGER,
         );
-
         if (hasManualTrigger) {
           toast.error("Only one manual trigger is allowed per workflow.");
           return;
         }
-      } else {
+      } else if (!isQuickConnect) {
+        // In quick-connect mode the trigger already exists — skip this check
         const hasTrigger = nodes.some(
           (node) => node.type === NodeType.MANUAL_TRIGGER,
         );
-
         if (!hasTrigger) {
           toast.error("Add a trigger node first before adding execution nodes.");
           return;
         }
       }
-      setNodes((nodes) => {
-        const centerX = window.innerWidth / 2;
-        const centerY = window.innerHeight / 2;
-        const flowPosition = screenToFlowPosition({
-          x: centerX + (Math.random() - 0.5) * 200,
-          y: centerY + (Math.random() - 0.5) * 200,
-        });
+
+      const newNodeId = createId();
+
+      if (isQuickConnect && pendingSourceNodeId) {
+        // Place the new node to the right of the source node
+        const sourceNode = getNode(pendingSourceNodeId);
+        const sourceX = sourceNode?.position.x ?? 0;
+        const sourceY = sourceNode?.position.y ?? 0;
+        const sourceWidth = (sourceNode?.measured?.width as number | undefined) ?? 120;
+        const sourceVariableName = (sourceNode?.data as Record<string, unknown>)?.variableName as string | undefined;
+
         const newNode = {
-          id: createId(),
-          data: {},
-          position: flowPosition,
+          id: newNodeId,
+          data: sourceVariableName ? { sourceVariable: sourceVariableName } : {},
+          position: { x: sourceX + sourceWidth + 100, y: sourceY },
           type: selection.type,
         };
 
-        const hasInitialTrigger = nodes.some(
-          (node) => node.type === NodeType.INITIAL,
+        setNodes((nds) => [...nds, newNode]);
+        setEdges((eds) =>
+          addEdge(
+            {
+              id: createId(),
+              source: pendingSourceNodeId,
+              sourceHandle: "source-1",
+              target: newNodeId,
+              targetHandle: "target-1",
+            },
+            eds,
+          ),
         );
-        if (hasInitialTrigger) {
-          // Replace only the INITIAL node(s) while preserving other nodes
-          const remainingNodes = nodes.filter(
-            (node) => node.type !== NodeType.INITIAL,
-          );
-          return [...remainingNodes, newNode];
-        }
+      } else {
+        setNodes((nds) => {
+          const centerX = window.innerWidth / 2;
+          const centerY = window.innerHeight / 2;
+          const flowPosition = screenToFlowPosition({
+            x: centerX + (Math.random() - 0.5) * 200,
+            y: centerY + (Math.random() - 0.5) * 200,
+          });
+          const newNode = {
+            id: newNodeId,
+            data: {},
+            position: flowPosition,
+            type: selection.type,
+          };
 
-        return [...nodes, newNode];
-      });
+          const hasInitialTrigger = nds.some(
+            (node) => node.type === NodeType.INITIAL,
+          );
+          if (hasInitialTrigger) {
+            return [...nds.filter((node) => node.type !== NodeType.INITIAL), newNode];
+          }
+          return [...nds, newNode];
+        });
+      }
 
       onOpenChange(false);
     },
-    [onOpenChange, setNodes, getNodes, screenToFlowPosition],
+    [onOpenChange, setNodes, setEdges, getNodes, getNode, screenToFlowPosition, pendingSourceNodeId],
   );
 
   return (
@@ -264,7 +295,7 @@ export function NodeSelector({
         onOpenChange(isOpen);
       }}
     >
-      <SheetTrigger asChild>{children}</SheetTrigger>
+      {children && <SheetTrigger asChild>{children}</SheetTrigger>}
       <SheetContent className="w-full sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <SheetTitle>What triggers this workflow?</SheetTitle>

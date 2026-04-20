@@ -7,6 +7,7 @@ import { memo } from "react";
 
 import { BaseHandle } from "@/components/react-flow/base-handle";
 import { BaseNode, BaseNodeContent } from "@/components/react-flow/base-node";
+import { PlusConnectHandle } from "@/components/react-flow/plus-connect-handle";
 import { WorkflowNode } from "@/components/workflow-node";
 import { workflowIdAtom } from "@/features/editor/store/atoms";
 import { useRunWorkflow } from "@/features/executions/hooks/use-run-workflow";
@@ -38,6 +39,7 @@ export const ManualTriggerNode = memo((props: NodeProps) => {
       description="Start the workflow manually"
       onDelete={handleDelete}
     >
+      <PlusConnectHandle nodeId={props.id} />
       <BaseNode>
         <BaseNodeContent className="items-center">
           <button

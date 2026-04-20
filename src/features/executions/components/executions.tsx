@@ -155,6 +155,7 @@ type ExecutionItemData = {
   completedAt?: string;
   error?: string;
   workflowId: string;
+  workflowName?: string;
 };
 
 const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
@@ -165,27 +166,38 @@ const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
   return (
     <Link href={`/executions/detail?id=${data.id}`} prefetch>
       <Card className="p-4 shadow-none hover:shadow cursor-pointer transition-all duration-150">
-        <CardContent className="flex flex-row items-center justify-between p-0">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center size-8">
+        <CardContent className="flex flex-row items-center gap-4 p-0">
+          {/* Far-left: time ago */}
+          <div className="flex flex-col items-center justify-center min-w-[72px] text-center shrink-0">
+            <span className="text-xs font-medium text-muted-foreground leading-tight">
+              {formatDistanceToNow(new Date(data.startedAt), { addSuffix: false })}
+            </span>
+            <span className="text-[10px] text-muted-foreground/60">ago</span>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-8 bg-border shrink-0" />
+
+          {/* Icon + title */}
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className="flex items-center justify-center size-8 shrink-0">
               <CircleDotIcon className="size-5 text-muted-foreground" />
             </div>
-            <div>
-              <CardTitle className="text-base font-medium">{data.workflowId}</CardTitle>
-              <CardDescription className="text-xs">
-                Started{" "}
-                {formatDistanceToNow(new Date(data.startedAt), { addSuffix: true })}
-                {data.completedAt && (
-                  <>
-                    {" "}
-                    &bull; Finished{" "}
-                    {formatDistanceToNow(new Date(data.completedAt ?? data.startedAt), { addSuffix: true })}
-                  </>
-                )}
-              </CardDescription>
+            <div className="min-w-0">
+              <CardTitle className="text-base font-medium truncate">
+                {data.workflowName ?? data.workflowId}
+              </CardTitle>
+              {data.completedAt && (
+                <CardDescription className="text-xs">
+                  Finished{" "}
+                  {formatDistanceToNow(new Date(data.completedAt), { addSuffix: true })}
+                </CardDescription>
+              )}
             </div>
           </div>
-          <Badge variant="outline" className={cn("gap-1", config.className)}>
+
+          {/* Status badge */}
+          <Badge variant="outline" className={cn("gap-1 shrink-0", config.className)}>
             <StatusIcon className={cn("size-3", config.iconClassName)} />
             {config.label}
           </Badge>

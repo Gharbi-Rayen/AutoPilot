@@ -2,6 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { WorkflowIcon } from "lucide-react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   EmptyView,
@@ -22,6 +23,7 @@ import {
   useSuspenseWorkflows,
 } from "../hooks/use-workflows";
 import { useWorkflowsParams } from "../hooks/use-workflows-params";
+import { CreateWorkflowDialog } from "./create-workflow-dialog";
 
 export const WorkflowsSearch = () => {
   const [params, setParams] = useWorkflowsParams();
@@ -52,17 +54,16 @@ export const WorkflowsList = () => {
 
 export const WorkflowsHeader = ({ disabled }: { disabled?: boolean }) => {
   const router = useRouter();
-
   const createWorkflow = useCreateWorkflow();
-  
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const handleCreateWorkflow = () => {
-    createWorkflow.mutate(undefined, {
-      onSuccess: (data) => { if (data) router.push(`/workflows/editor?id=${data.id}`); },
-      // todo : open upgrade modal
-      onError: (error) => {
-        console.error(error);
+  const handleCreate = (name: string) => {
+    createWorkflow.mutate(name, {
+      onSuccess: (data) => {
+        setDialogOpen(false);
+        if (data) router.push(`/workflows/editor?id=${data.id}`);
       },
+      onError: (error) => { console.error(error); },
     });
   };
 
@@ -73,11 +74,14 @@ export const WorkflowsHeader = ({ disabled }: { disabled?: boolean }) => {
         description="create and manage your workflows"
         newButtonLabel="New Workflow"
         disabled={disabled}
-        onNew={() => {
-          handleCreateWorkflow();
-        }}
-        //newButtonHref={}
+        onNew={() => setDialogOpen(true)}
         isCreating={createWorkflow.isPending}
+      />
+      <CreateWorkflowDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onCreate={handleCreate}
+        isPending={createWorkflow.isPending}
       />
     </>
   );
@@ -123,22 +127,30 @@ export const WorkflowsError = () => {
 
 export const WorkflowsEmpty = () => {
   const createWorkflow = useCreateWorkflow();
-  
   const router = useRouter();
-  const handleCreate = () => {
-    createWorkflow.mutate(undefined, {
-      onError: (error) => {
-        console.error(error);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const handleCreate = (name: string) => {
+    createWorkflow.mutate(name, {
+      onError: (error) => { console.error(error); },
+      onSuccess: (data) => {
+        setDialogOpen(false);
+        if (data) router.push(`/workflows/editor?id=${data.id}`);
       },
-      onSuccess: (data) => { if (data) router.push(`/workflows/editor?id=${data.id}`); },
     });
   };
 
   return (
     <>
       <EmptyView
-        onNew={handleCreate}
+        onNew={() => setDialogOpen(true)}
         message="you haven't created any workflows yet. get started by creating your first workflow."
+      />
+      <CreateWorkflowDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onCreate={handleCreate}
+        isPending={createWorkflow.isPending}
       />
     </>
   );
@@ -146,15 +158,16 @@ export const WorkflowsEmpty = () => {
 
 export const WorkflowsSearchEmpty = () => {
   const createWorkflow = useCreateWorkflow();
-  
   const router = useRouter();
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const handleCreate = () => {
-    createWorkflow.mutate(undefined, {
-      onError: (error) => {
-        console.error(error);
+  const handleCreate = (name: string) => {
+    createWorkflow.mutate(name, {
+      onError: (error) => { console.error(error); },
+      onSuccess: (data) => {
+        setDialogOpen(false);
+        if (data) router.push(`/workflows/editor?id=${data.id}`);
       },
-      onSuccess: (data) => { if (data) router.push(`/workflows/editor?id=${data.id}`); },
     });
   };
 
@@ -162,7 +175,13 @@ export const WorkflowsSearchEmpty = () => {
     <>
       <EmptyView
         message="No workflows found matching your search."
-        onNew={handleCreate}
+        onNew={() => setDialogOpen(true)}
+      />
+      <CreateWorkflowDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onCreate={handleCreate}
+        isPending={createWorkflow.isPending}
       />
     </>
   );

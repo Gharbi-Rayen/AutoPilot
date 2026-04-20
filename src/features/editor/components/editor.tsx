@@ -38,7 +38,11 @@ import { editorAtom, workflowIdAtom } from "../store/atoms";
 
 const AddNodeButton = dynamic(
   () => import("./add-node-button").then((m) => m.AddNodeButton),
-  { ssr: false }, // No need to SSR the button if it opens a heavy modal, or we can just leave default
+  { ssr: false },
+);
+const QuickConnectSelector = dynamic(
+  () => import("./quick-connect-selector").then((m) => m.QuickConnectSelector),
+  { ssr: false },
 );
 const WorkflowProgressPanel = dynamic(
   () =>
@@ -262,6 +266,7 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
           <Panel position="top-right" className="flex gap-2">
             <AddNodeButton />
           </Panel>
+          <QuickConnectSelector />
           {hasManualTrigger && (
             <Panel
               position="bottom-center"
