@@ -1709,21 +1709,25 @@ function lazy(fn) {
 var DATASET_MANIFEST_VERSION = 1;
 
 // src/workers/_opfs-helpers.ts
-async function readFromOPFS(executionId, datasetId, chunkCount) {
+async function getDatasetDir(executionId, datasetId, create = false) {
   const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot.getDirectoryHandle("autopilot", { create: false }).then((a) => a.getDirectoryHandle("executions", { create: false })).then((e) => e.getDirectoryHandle(executionId, { create: false })).then((ex) => ex.getDirectoryHandle(datasetId, { create: false }));
+  return opfsRoot.getDirectoryHandle("autopilot", { create }).then((a) => a.getDirectoryHandle("executions", { create })).then((e) => e.getDirectoryHandle(executionId, { create })).then((ex) => ex.getDirectoryHandle(datasetId, { create }));
+}
+async function readChunkFromOPFS(executionId, datasetId, chunkIndex) {
+  const dir = await getDatasetDir(executionId, datasetId, false);
+  const fileName = `chunk-${String(chunkIndex).padStart(6, "0")}.json`;
+  const fh = await dir.getFileHandle(fileName);
+  return JSON.parse(await (await fh.getFile()).text());
+}
+async function readFromOPFS(executionId, datasetId, chunkCount) {
   const rows = [];
   for (let i = 0; i < chunkCount; i++) {
-    const fh = await dir.getFileHandle(
-      `chunk-${String(i).padStart(6, "0")}.json`
-    );
-    rows.push(...JSON.parse(await (await fh.getFile()).text()));
+    rows.push(...await readChunkFromOPFS(executionId, datasetId, i));
   }
   return rows;
 }
 async function writeToOPFS(executionId, datasetId, rows, chunkSize = 1e4) {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot.getDirectoryHandle("autopilot", { create: true }).then((a) => a.getDirectoryHandle("executions", { create: true })).then((e) => e.getDirectoryHandle(executionId, { create: true })).then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
+  const dir = await getDatasetDir(executionId, datasetId, true);
   const chunks = [];
   let cum = 0;
   let totalBytes = 0;
@@ -1751,18 +1755,86 @@ async function writeToOPFS(executionId, datasetId, rows, chunkSize = 1e4) {
   }
   return { chunks, totalBytes };
 }
+var ChunkedOPFSWriter = class {
+  constructor(executionId, datasetId, chunkSize = 1e4) {
+    this.executionId = executionId;
+    this.datasetId = datasetId;
+    this.chunkSize = chunkSize;
+    this.buffer = [];
+    this.chunkIndex = 0;
+    this.totalRows = 0;
+    this.totalBytes = 0;
+    this.chunks = [];
+    this.createdAt = (/* @__PURE__ */ new Date()).toISOString();
+  }
+  async init() {
+    this.dir = await getDatasetDir(this.executionId, this.datasetId, true);
+  }
+  async write(rows) {
+    this.buffer.push(...rows);
+    while (this.buffer.length >= this.chunkSize) {
+      await this._flush(this.buffer.splice(0, this.chunkSize));
+    }
+  }
+  async finish() {
+    if (this.buffer.length > 0) await this._flush(this.buffer);
+    this.buffer = [];
+    return { chunks: this.chunks, totalBytes: this.totalBytes, totalRows: this.totalRows };
+  }
+  async _flush(rows) {
+    const fn = `chunk-${String(this.chunkIndex).padStart(6, "0")}.json`;
+    const bytes = new TextEncoder().encode(JSON.stringify(rows));
+    const w = await (await this.dir.getFileHandle(fn, { create: true })).createWritable();
+    await w.write(bytes);
+    await w.close();
+    this.chunks.push({
+      chunkIndex: this.chunkIndex,
+      fileName: fn,
+      rowStart: this.totalRows,
+      rowEnd: this.totalRows + rows.length - 1,
+      rowCount: rows.length,
+      cumulativeRowCount: this.totalRows + rows.length,
+      byteSize: bytes.byteLength,
+      createdAt: this.createdAt
+    });
+    this.totalBytes += bytes.byteLength;
+    this.totalRows += rows.length;
+    this.chunkIndex++;
+  }
+};
 
 // src/workers/csv-compare.worker.ts
-var makeRef = (datasetId, executionId, variableName, rowCount, chunkCount, byteSize) => ({
-  kind: "dataset",
-  datasetId,
-  executionId,
-  variableName,
-  rowCount,
-  chunkCount,
-  byteSize
-});
-var makeManifest = (datasetId, executionId, variableName, rowCount, byteSize, chunks) => {
+function isNumericKeys(keys) {
+  return keys.length > 0 && keys.every((k) => /^\d+$/.test(k));
+}
+function normalizeSchemas(baseKeys, compareFirstRow) {
+  const keysB = Object.keys(compareFirstRow);
+  const aligned = baseKeys.length === keysB.length && baseKeys.every((k, i) => k === keysB[i]);
+  if (aligned) return { mapping: null, headerMismatchDetected: false, schemaAligned: true };
+  const bNumeric = isNumericKeys(keysB);
+  const aNumeric = isNumericKeys(baseKeys);
+  const mapping = {};
+  const len = Math.min(baseKeys.length, keysB.length);
+  for (let i = 0; i < len; i++) mapping[keysB[i]] = baseKeys[i];
+  for (let i = len; i < keysB.length; i++) mapping[keysB[i]] = keysB[i];
+  return {
+    mapping,
+    headerMismatchDetected: bNumeric !== aNumeric,
+    schemaAligned: false
+  };
+}
+function applyMapping(row, mapping) {
+  if (!mapping) return row;
+  const out = {};
+  for (const [bKey, aKey] of Object.entries(mapping)) {
+    if (bKey in row) out[aKey] = row[bKey];
+  }
+  return out;
+}
+function makeRef(datasetId, executionId, variableName, rowCount, chunkCount, byteSize) {
+  return { kind: "dataset", datasetId, executionId, variableName, rowCount, chunkCount, byteSize };
+}
+function makeManifest(datasetId, executionId, variableName, rowCount, byteSize, chunks) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
   return {
     version: DATASET_MANIFEST_VERSION,
@@ -1775,64 +1847,6 @@ var makeManifest = (datasetId, executionId, variableName, rowCount, byteSize, ch
     chunkCount: chunks.length,
     byteSize,
     chunks
-  };
-};
-function isNumericKeys(keys) {
-  return keys.length > 0 && keys.every((k) => /^\d+$/.test(k));
-}
-function normalizeSchemas(base, compare2) {
-  const empty = {
-    normalizedCompare: compare2,
-    columnMapping: null,
-    headerMismatchDetected: false,
-    schemaAligned: true,
-    columnsOnlyInBase: [],
-    columnsOnlyInCompare: [],
-    columnsInBoth: []
-  };
-  if (base.length === 0 || compare2.length === 0) return empty;
-  const keysA = Object.keys(base[0]);
-  const keysB = Object.keys(compare2[0]);
-  const setA = new Set(keysA);
-  const setB = new Set(keysB);
-  const inBoth = keysA.filter((k) => setB.has(k));
-  const onlyA = keysA.filter((k) => !setB.has(k));
-  const onlyB = keysB.filter((k) => !setA.has(k));
-  const aligned = keysA.length === keysB.length && keysA.every((k, i) => k === keysB[i]);
-  if (aligned) {
-    return { ...empty, columnsInBoth: inBoth, columnsOnlyInBase: onlyA, columnsOnlyInCompare: onlyB };
-  }
-  const bNumeric = isNumericKeys(keysB);
-  const aNumeric = isNumericKeys(keysA);
-  const headerMismatch = bNumeric !== aNumeric;
-  const mapping = {};
-  const len = Math.min(keysA.length, keysB.length);
-  for (let i = 0; i < len; i++) {
-    mapping[keysB[i]] = keysA[i];
-  }
-  for (let i = len; i < keysB.length; i++) {
-    mapping[keysB[i]] = keysB[i];
-  }
-  const normalizedCompare = compare2.map((row) => {
-    const newRow = {};
-    for (const [bKey, aKey] of Object.entries(mapping)) {
-      if (bKey in row) newRow[aKey] = row[bKey];
-    }
-    return newRow;
-  });
-  const normalizedKeysB = keysB.map((k) => mapping[k] ?? k);
-  const setNB = new Set(normalizedKeysB);
-  const inBothNorm = keysA.filter((k) => setNB.has(k));
-  const onlyANorm = keysA.filter((k) => !setNB.has(k));
-  const onlyBNorm = normalizedKeysB.filter((k) => !setA.has(k));
-  return {
-    normalizedCompare,
-    columnMapping: mapping,
-    headerMismatchDetected: headerMismatch,
-    schemaAligned: false,
-    columnsInBoth: inBothNorm,
-    columnsOnlyInBase: onlyANorm,
-    columnsOnlyInCompare: onlyBNorm
   };
 }
 self.onmessage = async (event) => {
@@ -1850,150 +1864,145 @@ self.onmessage = async (event) => {
   try {
     const keyFields = String(keyField || "").split(",").map((s) => s.trim()).filter(Boolean);
     const cmpFields = String(compareFields || "").split(",").map((s) => s.trim()).filter(Boolean);
-    post({ kind: "progress", jobId, progress: 5, message: "Reading base dataset\u2026" });
+    post({ kind: "progress", jobId, progress: 5, message: "Loading base dataset..." });
     const base = await readFromOPFS(baseRef.executionId, baseRef.datasetId, baseRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 25, message: "Reading compare dataset\u2026" });
-    const rawCompare = await readFromOPFS(compareRef.executionId, compareRef.datasetId, compareRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 35, message: "Normalizing schemas\u2026" });
-    const {
-      normalizedCompare: compare2,
-      columnMapping,
-      headerMismatchDetected,
-      schemaAligned,
-      columnsInBoth,
-      columnsOnlyInBase,
-      columnsOnlyInCompare
-    } = normalizeSchemas(base, rawCompare);
-    post({ kind: "progress", jobId, progress: 45, message: "Comparing rows\u2026" });
     const allBaseFields = base.length > 0 ? Object.keys(base[0]) : [];
-    const allCmpFields = compare2.length > 0 ? Object.keys(compare2[0]) : [];
-    const sharedFields = allBaseFields.filter((f) => allCmpFields.includes(f));
-    const fieldsToCompare = cmpFields.length > 0 ? cmpFields.filter((f) => sharedFields.includes(f)) : sharedFields;
     const rowKey = (r) => {
-      if (keyFields.length > 0) {
-        return keyFields.map((f) => String(r[f] ?? "")).join("|");
-      }
-      const sorted = Object.fromEntries(
-        Object.keys(r).sort().map((k) => [k, r[k]])
-      );
+      if (keyFields.length > 0) return keyFields.map((f) => String(r[f] ?? "")).join("|");
+      const sorted = Object.fromEntries(Object.keys(r).sort().map((k) => [k, r[k]]));
       return JSON.stringify(sorted);
     };
     const baseMap = /* @__PURE__ */ new Map();
     for (const r of base) baseMap.set(rowKey(r), r);
-    const compareMap = /* @__PURE__ */ new Map();
-    for (const r of compare2) compareMap.set(rowKey(r), r);
-    const added = [];
-    const removed = [];
-    const changed = [];
-    const common = [];
-    for (const [key, cmpRow] of compareMap) {
-      if (!baseMap.has(key)) {
-        added.push(cmpRow);
-      } else {
-        const baseRow = baseMap.get(key);
-        const changedFields = fieldsToCompare.filter(
-          (f) => String(cmpRow[f] ?? "") !== String(baseRow[f] ?? "")
-        );
-        if (changedFields.length > 0) {
-          const diffRow = {};
-          if (keyFields.length > 0) {
-            diffRow._diff_key = keyFields.map((f) => String(baseRow[f] ?? "")).join("|");
-          }
-          diffRow._diff_changed = changedFields.join(",");
-          for (const f of fieldsToCompare) {
-            diffRow[`_before_${f}`] = baseRow[f];
-            diffRow[`_after_${f}`] = cmpRow[f];
-          }
-          changed.push(diffRow);
-        } else {
-          common.push(baseRow);
-        }
-      }
-    }
-    for (const [key, baseRow] of baseMap) {
-      if (!compareMap.has(key)) removed.push(baseRow);
-    }
-    const allColumns = /* @__PURE__ */ new Set([...allBaseFields, ...allCmpFields]);
-    const schemaDiff = Array.from(allColumns).map((col) => ({
-      column: col,
-      in_base: allBaseFields.includes(col) ? "yes" : "no",
-      in_compare: allCmpFields.includes(col) ? "yes" : "no",
-      mapped_from: columnMapping ? Object.entries(columnMapping).find(([, v]) => v === col)?.[0] ?? col : col
-    }));
-    post({ kind: "progress", jobId, progress: 60, message: "Writing diff datasets\u2026" });
+    let mapping = null;
+    let headerMismatchDetected = false;
+    let schemaAligned = true;
     const addedId = createId();
     const removedId = createId();
     const changedId = createId();
     const commonId = createId();
+    const addedWriter = new ChunkedOPFSWriter(executionId, addedId, chunkSize);
+    const changedWriter = new ChunkedOPFSWriter(executionId, changedId, chunkSize);
+    const commonWriter = new ChunkedOPFSWriter(executionId, commonId, chunkSize);
+    await Promise.all([addedWriter.init(), changedWriter.init(), commonWriter.init()]);
+    const matchedBaseKeys = /* @__PURE__ */ new Set();
+    let allCmpFields = [];
+    let mappedCmpFields = [];
+    let fieldsToCompare = [];
+    let totalCompareRows = 0;
+    post({ kind: "progress", jobId, progress: 20, message: "Comparing datasets..." });
+    for (let c = 0; c < compareRef.chunkCount; c++) {
+      const rawChunk = await readChunkFromOPFS(compareRef.executionId, compareRef.datasetId, c);
+      totalCompareRows += rawChunk.length;
+      if (c === 0 && rawChunk.length > 0) {
+        allCmpFields = Object.keys(rawChunk[0]);
+        const norm = normalizeSchemas(allBaseFields, rawChunk[0]);
+        mapping = norm.mapping;
+        headerMismatchDetected = norm.headerMismatchDetected;
+        schemaAligned = norm.schemaAligned;
+        mappedCmpFields = mapping ? allCmpFields.map((k) => mapping[k] ?? k) : allCmpFields;
+        const mappedSet = new Set(mappedCmpFields);
+        const shared = allBaseFields.filter((f) => mappedSet.has(f));
+        fieldsToCompare = cmpFields.length > 0 ? cmpFields.filter((f) => shared.includes(f)) : shared;
+      }
+      for (const rawRow of rawChunk) {
+        const cmpRow = applyMapping(rawRow, mapping);
+        const key = rowKey(cmpRow);
+        if (!baseMap.has(key)) {
+          await addedWriter.write([cmpRow]);
+        } else {
+          matchedBaseKeys.add(key);
+          const baseRow = baseMap.get(key);
+          const changedFieldsList = fieldsToCompare.filter(
+            (f) => String(cmpRow[f] ?? "") !== String(baseRow[f] ?? "")
+          );
+          if (changedFieldsList.length > 0) {
+            const diffRow = {};
+            if (keyFields.length > 0) diffRow._diff_key = keyFields.map((f) => String(baseRow[f] ?? "")).join("|");
+            diffRow._diff_changed = changedFieldsList.join(",");
+            for (const f of fieldsToCompare) {
+              diffRow[`_before_${f}`] = baseRow[f];
+              diffRow[`_after_${f}`] = cmpRow[f];
+            }
+            await changedWriter.write([diffRow]);
+          } else {
+            await commonWriter.write([baseRow]);
+          }
+        }
+      }
+      const pct = Math.round(20 + (c + 1) / compareRef.chunkCount * 55);
+      post({ kind: "progress", jobId, progress: pct, message: `Compared ${totalCompareRows.toLocaleString()} rows...` });
+    }
+    post({ kind: "progress", jobId, progress: 77, message: "Finding removed rows..." });
+    const removed = [];
+    for (const [key, baseRow] of baseMap) {
+      if (!matchedBaseKeys.has(key)) removed.push(baseRow);
+    }
+    post({ kind: "progress", jobId, progress: 82, message: "Writing results..." });
+    const [addedResult, changedResult, commonResult, removedResult] = await Promise.all([
+      addedWriter.finish(),
+      changedWriter.finish(),
+      commonWriter.finish(),
+      writeToOPFS(executionId, removedId, removed, chunkSize)
+    ]);
     const schemaDiffId = createId();
+    const allColumns = /* @__PURE__ */ new Set([...allBaseFields, ...mappedCmpFields]);
+    const schemaDiff = Array.from(allColumns).map((col) => ({
+      column: col,
+      in_base: allBaseFields.includes(col) ? "yes" : "no",
+      in_compare: mappedCmpFields.includes(col) ? "yes" : "no",
+      mapped_from: mapping ? Object.entries(mapping).find(([, v]) => v === col)?.[0] ?? col : col
+    }));
+    const schemaDiffResult = await writeToOPFS(executionId, schemaDiffId, schemaDiff, chunkSize);
     const addedVar = `${variableName}_added`;
     const removedVar = `${variableName}_removed`;
     const changedVar = `${variableName}_changed`;
     const commonVar = `${variableName}_common`;
     const schemaDiffVar = `${variableName}_schema_diff`;
-    const [addedResult, removedResult, changedResult, commonResult, schemaDiffResult] = await Promise.all([
-      writeToOPFS(executionId, addedId, added, chunkSize),
-      writeToOPFS(executionId, removedId, removed, chunkSize),
-      writeToOPFS(executionId, changedId, changed, chunkSize),
-      writeToOPFS(executionId, commonId, common, chunkSize),
-      writeToOPFS(executionId, schemaDiffId, schemaDiff, chunkSize)
-    ]);
-    post({ kind: "progress", jobId, progress: 90, message: "Building result\u2026" });
-    const isIdentical = added.length === 0 && removed.length === 0 && changed.length === 0;
+    const isIdentical = addedResult.totalRows === 0 && removed.length === 0 && changedResult.totalRows === 0;
     const compareResult = {
       _compareResult: true,
       isIdentical,
       schemaAligned,
       headerMismatchDetected,
-      columnMapping: columnMapping ?? null,
+      columnMapping: mapping ?? null,
       keyField: keyFields.length > 0 ? keyFields.join(", ") : null,
-      compareFields: fieldsToCompare,
+      compareFields: cmpFields.length > 0 ? cmpFields : allBaseFields.filter((f) => allCmpFields.includes(f)),
       totalBaseRows: base.length,
-      totalCompareRows: rawCompare.length,
-      addedCount: added.length,
+      totalCompareRows,
+      addedCount: addedResult.totalRows,
       removedCount: removed.length,
-      changedCount: changed.length,
-      commonCount: common.length,
-      unchangedCount: Math.max(0, common.length),
+      changedCount: changedResult.totalRows,
+      commonCount: commonResult.totalRows,
+      unchangedCount: commonResult.totalRows,
       columnsInBase: allBaseFields.length,
-      columnsInCompare: allCmpFields.length,
-      columnsInBoth: columnsInBoth.length,
-      columnsOnlyInBase: columnsOnlyInBase.length,
-      columnsOnlyInCompare: columnsOnlyInCompare.length,
-      addedVarName: added.length > 0 ? addedVar : null,
+      columnsInCompare: mappedCmpFields.length,
+      columnsInBoth: allBaseFields.filter((f) => mappedCmpFields.includes(f)).length,
+      columnsOnlyInBase: allBaseFields.filter((f) => !mappedCmpFields.includes(f)).length,
+      columnsOnlyInCompare: mappedCmpFields.filter((f) => !allBaseFields.includes(f)).length,
+      addedVarName: addedResult.totalRows > 0 ? addedVar : null,
       removedVarName: removed.length > 0 ? removedVar : null,
-      changedVarName: changed.length > 0 ? changedVar : null,
-      commonVarName: common.length > 0 ? commonVar : null,
+      changedVarName: changedResult.totalRows > 0 ? changedVar : null,
+      commonVarName: commonResult.totalRows > 0 ? commonVar : null,
       schemaDiffVarName: schemaDiff.length > 0 ? schemaDiffVar : null,
-      summary: isIdentical ? `${base.length} matching rows \u2014 datasets are identical` : `${added.length} added, ${removed.length} removed, ${changed.length} changed, ${common.length} common`,
-      // Legacy fields (keep for backward compat with viewer)
-      changedDiffRowCount: changed.length
+      summary: isIdentical ? `${base.length} matching rows \u2014 datasets are identical` : `${addedResult.totalRows} added, ${removed.length} removed, ${changedResult.totalRows} changed, ${commonResult.totalRows} common`,
+      changedDiffRowCount: changedResult.totalRows
     };
-    const addedRef = makeRef(addedId, executionId, addedVar, added.length, addedResult.chunks.length, addedResult.totalBytes);
-    const removedRef = makeRef(removedId, executionId, removedVar, removed.length, removedResult.chunks.length, removedResult.totalBytes);
-    const changedRef = makeRef(changedId, executionId, changedVar, changed.length, changedResult.chunks.length, changedResult.totalBytes);
-    const commonRef = makeRef(commonId, executionId, commonVar, common.length, commonResult.chunks.length, commonResult.totalBytes);
-    const schemaDiffRef = makeRef(schemaDiffId, executionId, schemaDiffVar, schemaDiff.length, schemaDiffResult.chunks.length, schemaDiffResult.totalBytes);
-    const addedManifest = makeManifest(addedId, executionId, addedVar, added.length, addedResult.totalBytes, addedResult.chunks);
-    const removedManifest = makeManifest(removedId, executionId, removedVar, removed.length, removedResult.totalBytes, removedResult.chunks);
-    const changedManifest = makeManifest(changedId, executionId, changedVar, changed.length, changedResult.totalBytes, changedResult.chunks);
-    const commonManifest = makeManifest(commonId, executionId, commonVar, common.length, commonResult.totalBytes, commonResult.chunks);
-    const schemaDiffManifest = makeManifest(schemaDiffId, executionId, schemaDiffVar, schemaDiff.length, schemaDiffResult.totalBytes, schemaDiffResult.chunks);
     post({
       kind: "result",
       jobId,
       output: {
         compareResult,
-        addedRef,
-        removedRef,
-        changedRef,
-        commonRef,
-        schemaDiffRef,
-        addedManifest,
-        removedManifest,
-        changedManifest,
-        commonManifest,
-        schemaDiffManifest
+        addedRef: makeRef(addedId, executionId, addedVar, addedResult.totalRows, addedResult.chunks.length, addedResult.totalBytes),
+        removedRef: makeRef(removedId, executionId, removedVar, removed.length, removedResult.chunks.length, removedResult.totalBytes),
+        changedRef: makeRef(changedId, executionId, changedVar, changedResult.totalRows, changedResult.chunks.length, changedResult.totalBytes),
+        commonRef: makeRef(commonId, executionId, commonVar, commonResult.totalRows, commonResult.chunks.length, commonResult.totalBytes),
+        schemaDiffRef: makeRef(schemaDiffId, executionId, schemaDiffVar, schemaDiff.length, schemaDiffResult.chunks.length, schemaDiffResult.totalBytes),
+        addedManifest: makeManifest(addedId, executionId, addedVar, addedResult.totalRows, addedResult.totalBytes, addedResult.chunks),
+        removedManifest: makeManifest(removedId, executionId, removedVar, removed.length, removedResult.totalBytes, removedResult.chunks),
+        changedManifest: makeManifest(changedId, executionId, changedVar, changedResult.totalRows, changedResult.totalBytes, changedResult.chunks),
+        commonManifest: makeManifest(commonId, executionId, commonVar, commonResult.totalRows, commonResult.totalBytes, commonResult.chunks),
+        schemaDiffManifest: makeManifest(schemaDiffId, executionId, schemaDiffVar, schemaDiff.length, schemaDiffResult.totalBytes, schemaDiffResult.chunks)
       }
     });
   } catch (err) {

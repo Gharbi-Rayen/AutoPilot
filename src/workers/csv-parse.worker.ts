@@ -77,7 +77,7 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
       .then((e) => e.getDirectoryHandle(executionId, { create: true }))
       .then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
 
-    const blob = new Blob([fileBuffer], { type: mimeType });
+    const blob = new File([fileBuffer], fileName, { type: mimeType });
     const blobSize = blob.size;
 
     let rowBuffer: DatasetRow[] = [];

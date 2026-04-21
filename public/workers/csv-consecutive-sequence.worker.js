@@ -1709,21 +1709,18 @@ function lazy(fn) {
 var DATASET_MANIFEST_VERSION = 1;
 
 // src/workers/_opfs-helpers.ts
-async function readFromOPFS(executionId, datasetId, chunkCount) {
+async function getDatasetDir(executionId, datasetId, create = false) {
   const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot.getDirectoryHandle("autopilot", { create: false }).then((a) => a.getDirectoryHandle("executions", { create: false })).then((e) => e.getDirectoryHandle(executionId, { create: false })).then((ex) => ex.getDirectoryHandle(datasetId, { create: false }));
-  const rows = [];
-  for (let i = 0; i < chunkCount; i++) {
-    const fh = await dir.getFileHandle(
-      `chunk-${String(i).padStart(6, "0")}.json`
-    );
-    rows.push(...JSON.parse(await (await fh.getFile()).text()));
-  }
-  return rows;
+  return opfsRoot.getDirectoryHandle("autopilot", { create }).then((a) => a.getDirectoryHandle("executions", { create })).then((e) => e.getDirectoryHandle(executionId, { create })).then((ex) => ex.getDirectoryHandle(datasetId, { create }));
+}
+async function readChunkFromOPFS(executionId, datasetId, chunkIndex) {
+  const dir = await getDatasetDir(executionId, datasetId, false);
+  const fileName = `chunk-${String(chunkIndex).padStart(6, "0")}.json`;
+  const fh = await dir.getFileHandle(fileName);
+  return JSON.parse(await (await fh.getFile()).text());
 }
 async function writeToOPFS(executionId, datasetId, rows, chunkSize = 1e4) {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot.getDirectoryHandle("autopilot", { create: true }).then((a) => a.getDirectoryHandle("executions", { create: true })).then((e) => e.getDirectoryHandle(executionId, { create: true })).then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
+  const dir = await getDatasetDir(executionId, datasetId, true);
   const chunks = [];
   let cum = 0;
   let totalBytes = 0;
@@ -1757,13 +1754,12 @@ self.onmessage = async (event) => {
   const { jobId, input } = event.data;
   const {
     inputRef,
-    // dialog field names (primary)
     analysisColumn,
     groupByColumns,
     comparisonMode = "integer-step",
     comparisonStep = 1,
     minimumSequenceLength = 1,
-    // legacy field names (fallback)
+    // legacy field names
     sequenceField,
     groupByField,
     executionId,
@@ -1776,69 +1772,189 @@ self.onmessage = async (event) => {
   const minSeqLen = Number(minimumSequenceLength) || 1;
   const post = (msg) => self.postMessage(msg);
   try {
+    let toVal2 = function(row) {
+      const raw = row[resolvedField];
+      if (comparisonMode === "date-step") {
+        const ts = Date.parse(String(raw ?? ""));
+        return Number.isNaN(ts) ? Number.NaN : ts;
+      }
+      return Number(raw);
+    };
+    var toVal = toVal2;
     if (!resolvedField) throw new Error("csv-consecutive-sequence: no analysis column configured.");
-    post({ kind: "progress", jobId, progress: 10, message: "Reading..." });
-    const rows = await readFromOPFS(inputRef.executionId, inputRef.datasetId, inputRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 50, message: "Analyzing sequences..." });
+    if (!inputRef?.datasetId) throw new Error("csv-consecutive-sequence: no dataset in context.");
     const groupFields = resolvedGroupBy.split(",").map((s) => s.trim()).filter(Boolean);
-    const groups = /* @__PURE__ */ new Map();
-    for (const row of rows) {
-      const key = groupFields.length > 0 ? groupFields.map((f) => String(row[f] ?? "")).join("|") : "__all__";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)?.push(row);
-    }
-    const result = [];
-    for (const [groupKey, groupRows] of groups) {
-      const toVal = (r) => {
-        const raw = r[resolvedField];
-        if (comparisonMode === "date-step") {
-          const ts = Date.parse(String(raw ?? ""));
-          return Number.isNaN(ts) ? Number.NaN : ts;
+    post({ kind: "progress", jobId, progress: 5, message: "Building index..." });
+    const capacity = inputRef.rowCount;
+    const taGroupIds = new Int32Array(capacity);
+    const taVals = new Float64Array(capacity);
+    const taChunkIdxs = new Int32Array(capacity);
+    const taRowIdxs = new Int32Array(capacity);
+    const groupKeyMap = /* @__PURE__ */ new Map();
+    const groupKeyNames = [];
+    let indexLen = 0;
+    for (let c = 0; c < inputRef.chunkCount; c++) {
+      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
+      for (let r = 0; r < chunk.length; r++) {
+        const row = chunk[r];
+        const gk = groupFields.length > 0 ? groupFields.map((f) => String(row[f] ?? "")).join("|") : "__all__";
+        let gid = groupKeyMap.get(gk);
+        if (gid === void 0) {
+          gid = groupKeyNames.length;
+          groupKeyMap.set(gk, gid);
+          groupKeyNames.push(gk);
         }
-        return Number(raw);
-      };
-      const nums = groupRows.map((r) => ({ row: r, val: toVal(r) })).filter((x) => !Number.isNaN(x.val)).sort((a, b) => a.val - b.val);
-      const withMeta = [];
-      for (let i = 0; i < nums.length; i++) {
-        const prev = i > 0 ? nums[i - 1].val : null;
-        const curr = nums[i].val;
+        const val = toVal2(row);
+        if (!Number.isNaN(val)) {
+          taGroupIds[indexLen] = gid;
+          taVals[indexLen] = val;
+          taChunkIdxs[indexLen] = c;
+          taRowIdxs[indexLen] = r;
+          indexLen++;
+        }
+      }
+      const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 45);
+      post({ kind: "progress", jobId, progress: pct, message: `Indexed ${indexLen.toLocaleString()} rows...` });
+    }
+    post({ kind: "progress", jobId, progress: 52, message: "Sorting..." });
+    const order = new Int32Array(indexLen);
+    for (let i = 0; i < indexLen; i++) order[i] = i;
+    order.sort((a, b) => {
+      const gd = taGroupIds[a] - taGroupIds[b];
+      return gd !== 0 ? gd : taVals[a] - taVals[b];
+    });
+    post({ kind: "progress", jobId, progress: 58, message: "Analyzing sequences..." });
+    const outSortedPos = [];
+    const outOrigIdx = [];
+    const outSeqVal = [];
+    const outPrevVal = [];
+    const outGapSize = [];
+    const outHasGap = [];
+    const outIsConsec = [];
+    const outGroupId = [];
+    let sortedPos = 0;
+    let gi = 0;
+    while (gi < indexLen) {
+      const currentGid = taGroupIds[order[gi]];
+      let gEnd = gi;
+      while (gEnd < indexLen && taGroupIds[order[gEnd]] === currentGid) gEnd++;
+      const groupEntries = [];
+      for (let k = gi; k < gEnd; k++) {
+        const idx = order[k];
+        const curr = taVals[idx];
+        const prev = k > gi ? taVals[order[k - 1]] : null;
         const expectedGap = prev !== null ? prev + step : null;
         const isConsecutive = expectedGap !== null && Math.abs(curr - expectedGap) < 1e-9;
         const gapSize = prev !== null ? curr - prev - step : 0;
-        withMeta.push({
-          ...nums[i].row,
-          _sequence_value: curr,
-          _previous_value: prev,
-          _gap_size: Math.max(0, gapSize),
-          _has_gap: gapSize > 1e-9,
-          _is_consecutive: isConsecutive,
-          _group: groupKey === "__all__" ? void 0 : groupKey
+        groupEntries.push({
+          origIdx: idx,
+          isConsecutive,
+          seqVal: curr,
+          prevVal: prev,
+          gapSize: Math.max(0, gapSize),
+          hasGap: gapSize > 1e-9
         });
       }
       if (minSeqLen > 1) {
         let runStart = 0;
-        for (let i = 0; i <= withMeta.length; i++) {
-          const endOfRun = i === withMeta.length || !withMeta[i]._is_consecutive;
+        for (let k = 0; k <= groupEntries.length; k++) {
+          const endOfRun = k === groupEntries.length || !groupEntries[k].isConsecutive;
           if (endOfRun) {
-            const runLen = i - runStart;
+            const runLen = k - runStart;
             if (runLen >= minSeqLen) {
-              for (let j = runStart; j < i; j++) result.push(withMeta[j]);
+              for (let m = runStart; m < k; m++) {
+                const e = groupEntries[m];
+                outSortedPos.push(sortedPos++);
+                outOrigIdx.push(e.origIdx);
+                outSeqVal.push(e.seqVal);
+                outPrevVal.push(e.prevVal);
+                outGapSize.push(e.gapSize);
+                outHasGap.push(e.hasGap);
+                outIsConsec.push(e.isConsecutive);
+                outGroupId.push(currentGid);
+              }
             }
-            runStart = i;
+            runStart = k;
           }
         }
       } else {
-        for (const row of withMeta) result.push(row);
+        for (const e of groupEntries) {
+          outSortedPos.push(sortedPos++);
+          outOrigIdx.push(e.origIdx);
+          outSeqVal.push(e.seqVal);
+          outPrevVal.push(e.prevVal);
+          outGapSize.push(e.gapSize);
+          outHasGap.push(e.hasGap);
+          outIsConsec.push(e.isConsecutive);
+          outGroupId.push(currentGid);
+        }
+      }
+      gi = gEnd;
+    }
+    order.fill(0);
+    post({ kind: "progress", jobId, progress: 65, message: "Fetching result rows..." });
+    const totalOutput = outSortedPos.length;
+    const fetchOrder = Array.from({ length: totalOutput }, (_, i) => i);
+    fetchOrder.sort((a, b) => {
+      const cDiff = taChunkIdxs[outOrigIdx[a]] - taChunkIdxs[outOrigIdx[b]];
+      return cDiff !== 0 ? cDiff : taRowIdxs[outOrigIdx[a]] - taRowIdxs[outOrigIdx[b]];
+    });
+    const resultArr = new Array(totalOutput);
+    let cachedChunkIdx = -1;
+    let cachedChunk = [];
+    for (let fi = 0; fi < totalOutput; fi++) {
+      const qi = fetchOrder[fi];
+      const origIdx = outOrigIdx[qi];
+      const ci = taChunkIdxs[origIdx];
+      const ri = taRowIdxs[origIdx];
+      const sp = outSortedPos[qi];
+      const gk = groupKeyNames[outGroupId[qi]];
+      if (ci !== cachedChunkIdx) {
+        cachedChunkIdx = ci;
+        cachedChunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, ci);
+      }
+      resultArr[sp] = {
+        ...cachedChunk[ri],
+        _sequence_value: outSeqVal[qi],
+        _previous_value: outPrevVal[qi],
+        _gap_size: outGapSize[qi],
+        _has_gap: outHasGap[qi],
+        _is_consecutive: outIsConsec[qi],
+        _group: gk === "__all__" ? void 0 : gk
+      };
+      if (fi % 5e4 === 0 && fi > 0) {
+        const pct = Math.round(65 + fi / totalOutput * 15);
+        post({ kind: "progress", jobId, progress: pct, message: `Assembled ${fi.toLocaleString()} / ${totalOutput.toLocaleString()} rows...` });
       }
     }
-    post({ kind: "progress", jobId, progress: 75, message: "Writing..." });
+    cachedChunk = [];
+    post({ kind: "progress", jobId, progress: 82, message: "Writing results..." });
     const datasetId = createId();
-    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, result, chunkSize);
-    const gapCount = result.filter((r) => r._has_gap).length;
+    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, resultArr, chunkSize);
+    const gapCount = resultArr.filter((r) => r._has_gap).length;
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const manifest = { version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName, createdAt: now, updatedAt: now, rowCount: result.length, chunkCount: chunks.length, byteSize: totalBytes, chunks };
-    const datasetRef = { kind: "dataset", datasetId, executionId, variableName, rowCount: result.length, chunkCount: chunks.length, byteSize: totalBytes };
-    post({ kind: "result", jobId, output: { manifest, datasetRef, gapCount, totalRows: result.length } });
+    const manifest = {
+      version: DATASET_MANIFEST_VERSION,
+      datasetId,
+      executionId,
+      variableName,
+      createdAt: now,
+      updatedAt: now,
+      rowCount: resultArr.length,
+      chunkCount: chunks.length,
+      byteSize: totalBytes,
+      chunks
+    };
+    const datasetRef = {
+      kind: "dataset",
+      datasetId,
+      executionId,
+      variableName,
+      rowCount: resultArr.length,
+      chunkCount: chunks.length,
+      byteSize: totalBytes
+    };
+    post({ kind: "result", jobId, output: { manifest, datasetRef, gapCount, totalRows: resultArr.length } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }

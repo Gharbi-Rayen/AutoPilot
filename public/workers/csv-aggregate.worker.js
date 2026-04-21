@@ -1709,21 +1709,18 @@ function lazy(fn) {
 var DATASET_MANIFEST_VERSION = 1;
 
 // src/workers/_opfs-helpers.ts
-async function readFromOPFS(executionId, datasetId, chunkCount) {
+async function getDatasetDir(executionId, datasetId, create = false) {
   const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot.getDirectoryHandle("autopilot", { create: false }).then((a) => a.getDirectoryHandle("executions", { create: false })).then((e) => e.getDirectoryHandle(executionId, { create: false })).then((ex) => ex.getDirectoryHandle(datasetId, { create: false }));
-  const rows = [];
-  for (let i = 0; i < chunkCount; i++) {
-    const fh = await dir.getFileHandle(
-      `chunk-${String(i).padStart(6, "0")}.json`
-    );
-    rows.push(...JSON.parse(await (await fh.getFile()).text()));
-  }
-  return rows;
+  return opfsRoot.getDirectoryHandle("autopilot", { create }).then((a) => a.getDirectoryHandle("executions", { create })).then((e) => e.getDirectoryHandle(executionId, { create })).then((ex) => ex.getDirectoryHandle(datasetId, { create }));
+}
+async function readChunkFromOPFS(executionId, datasetId, chunkIndex) {
+  const dir = await getDatasetDir(executionId, datasetId, false);
+  const fileName = `chunk-${String(chunkIndex).padStart(6, "0")}.json`;
+  const fh = await dir.getFileHandle(fileName);
+  return JSON.parse(await (await fh.getFile()).text());
 }
 async function writeToOPFS(executionId, datasetId, rows, chunkSize = 1e4) {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot.getDirectoryHandle("autopilot", { create: true }).then((a) => a.getDirectoryHandle("executions", { create: true })).then((e) => e.getDirectoryHandle(executionId, { create: true })).then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
+  const dir = await getDatasetDir(executionId, datasetId, true);
   const chunks = [];
   let cum = 0;
   let totalBytes = 0;
@@ -1758,58 +1755,129 @@ self.onmessage = async (event) => {
   const { inputRef, groupByFields, aggregations, executionId, variableName, chunkSize = 1e4 } = input;
   const post = (msg) => self.postMessage(msg);
   try {
-    post({ kind: "progress", jobId, progress: 10, message: "Reading..." });
-    const rows = await readFromOPFS(inputRef.executionId, inputRef.datasetId, inputRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 50, message: "Aggregating..." });
-    const groups = /* @__PURE__ */ new Map();
-    for (const row of rows) {
-      const key = groupByFields.map((f) => String(row[f] ?? "")).join("|");
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(row);
+    post({ kind: "progress", jobId, progress: 5, message: "Aggregating..." });
+    const accumulators = /* @__PURE__ */ new Map();
+    for (let c = 0; c < inputRef.chunkCount; c++) {
+      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
+      for (const row of chunk) {
+        const key = groupByFields.map((f) => String(row[f] ?? "")).join("|");
+        if (!accumulators.has(key)) {
+          const groupValues = {};
+          for (const f of groupByFields) groupValues[f] = row[f];
+          accumulators.set(key, {
+            groupValues,
+            sums: {},
+            counts: {},
+            numCounts: {},
+            mins: {},
+            maxs: {},
+            firsts: {},
+            lasts: {},
+            distincts: {},
+            rowCount: 0
+          });
+        }
+        const acc = accumulators.get(key);
+        if (!acc) continue;
+        acc.rowCount++;
+        for (const agg of aggregations) {
+          const alias = agg.alias ?? `${agg.func}_${agg.field}`;
+          const raw = row[agg.field];
+          const num = Number(raw);
+          const isNum = !Number.isNaN(num);
+          switch (agg.func) {
+            case "sum":
+              acc.sums[alias] = (acc.sums[alias] ?? 0) + (isNum ? num : 0);
+              break;
+            case "avg":
+              acc.sums[alias] = (acc.sums[alias] ?? 0) + (isNum ? num : 0);
+              acc.numCounts[alias] = (acc.numCounts[alias] ?? 0) + (isNum ? 1 : 0);
+              break;
+            case "count":
+              acc.counts[alias] = (acc.counts[alias] ?? 0) + 1;
+              break;
+            case "count_distinct":
+              if (!acc.distincts[alias]) acc.distincts[alias] = /* @__PURE__ */ new Set();
+              acc.distincts[alias].add(String(raw ?? ""));
+              break;
+            case "min":
+              if (isNum) acc.mins[alias] = acc.mins[alias] === void 0 ? num : Math.min(acc.mins[alias], num);
+              break;
+            case "max":
+              if (isNum) acc.maxs[alias] = acc.maxs[alias] === void 0 ? num : Math.max(acc.maxs[alias], num);
+              break;
+            case "first":
+              if (acc.firsts[alias] === void 0) acc.firsts[alias] = raw;
+              break;
+            case "last":
+              acc.lasts[alias] = raw;
+              break;
+          }
+        }
+      }
+      const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 65);
+      post({ kind: "progress", jobId, progress: pct, message: `Processed ${(c + 1) * chunkSize} rows...` });
     }
+    post({ kind: "progress", jobId, progress: 72, message: "Building result..." });
     const result = [];
-    for (const [, groupRows] of groups) {
-      const out = {};
-      for (const f of groupByFields) out[f] = groupRows[0][f];
+    for (const acc of accumulators.values()) {
+      const out = { ...acc.groupValues };
       for (const agg of aggregations) {
         const alias = agg.alias ?? `${agg.func}_${agg.field}`;
-        const vals = groupRows.map((r) => r[agg.field]);
-        const nums = vals.map(Number).filter((n) => !Number.isNaN(n));
         switch (agg.func) {
           case "sum":
-            out[alias] = nums.reduce((a, b) => a + b, 0);
+            out[alias] = acc.sums[alias] ?? 0;
             break;
           case "avg":
-            out[alias] = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
-            break;
-          case "min":
-            out[alias] = nums.length ? Math.min(...nums) : null;
-            break;
-          case "max":
-            out[alias] = nums.length ? Math.max(...nums) : null;
+            out[alias] = acc.numCounts[alias] ? acc.sums[alias] / acc.numCounts[alias] : null;
             break;
           case "count":
-            out[alias] = groupRows.length;
+            out[alias] = acc.rowCount;
             break;
           case "count_distinct":
-            out[alias] = new Set(vals.map(String)).size;
+            out[alias] = acc.distincts[alias]?.size ?? 0;
+            break;
+          case "min":
+            out[alias] = acc.mins[alias] ?? null;
+            break;
+          case "max":
+            out[alias] = acc.maxs[alias] ?? null;
             break;
           case "first":
-            out[alias] = vals[0] ?? null;
+            out[alias] = acc.firsts[alias] ?? null;
             break;
           case "last":
-            out[alias] = vals[vals.length - 1] ?? null;
+            out[alias] = acc.lasts[alias] ?? null;
             break;
         }
       }
       result.push(out);
     }
-    post({ kind: "progress", jobId, progress: 75, message: "Writing..." });
+    post({ kind: "progress", jobId, progress: 82, message: "Writing..." });
     const datasetId = createId();
     const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, result, chunkSize);
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const manifest = { version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName, createdAt: now, updatedAt: now, rowCount: result.length, chunkCount: chunks.length, byteSize: totalBytes, chunks };
-    const datasetRef = { kind: "dataset", datasetId, executionId, variableName, rowCount: result.length, chunkCount: chunks.length, byteSize: totalBytes };
+    const manifest = {
+      version: DATASET_MANIFEST_VERSION,
+      datasetId,
+      executionId,
+      variableName,
+      createdAt: now,
+      updatedAt: now,
+      rowCount: result.length,
+      chunkCount: chunks.length,
+      byteSize: totalBytes,
+      chunks
+    };
+    const datasetRef = {
+      kind: "dataset",
+      datasetId,
+      executionId,
+      variableName,
+      rowCount: result.length,
+      chunkCount: chunks.length,
+      byteSize: totalBytes
+    };
     post({ kind: "result", jobId, output: { manifest, datasetRef } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });

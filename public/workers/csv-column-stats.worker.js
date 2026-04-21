@@ -1,15 +1,13 @@
 // src/workers/_opfs-helpers.ts
-async function readFromOPFS(executionId, datasetId, chunkCount) {
+async function getDatasetDir(executionId, datasetId, create = false) {
   const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot.getDirectoryHandle("autopilot", { create: false }).then((a) => a.getDirectoryHandle("executions", { create: false })).then((e) => e.getDirectoryHandle(executionId, { create: false })).then((ex) => ex.getDirectoryHandle(datasetId, { create: false }));
-  const rows = [];
-  for (let i = 0; i < chunkCount; i++) {
-    const fh = await dir.getFileHandle(
-      `chunk-${String(i).padStart(6, "0")}.json`
-    );
-    rows.push(...JSON.parse(await (await fh.getFile()).text()));
-  }
-  return rows;
+  return opfsRoot.getDirectoryHandle("autopilot", { create }).then((a) => a.getDirectoryHandle("executions", { create })).then((e) => e.getDirectoryHandle(executionId, { create })).then((ex) => ex.getDirectoryHandle(datasetId, { create }));
+}
+async function readChunkFromOPFS(executionId, datasetId, chunkIndex) {
+  const dir = await getDatasetDir(executionId, datasetId, false);
+  const fileName = `chunk-${String(chunkIndex).padStart(6, "0")}.json`;
+  const fh = await dir.getFileHandle(fileName);
+  return JSON.parse(await (await fh.getFile()).text());
 }
 
 // src/workers/csv-column-stats.worker.ts
@@ -18,40 +16,92 @@ self.onmessage = async (event) => {
   const { inputRef } = input;
   const post = (msg) => self.postMessage(msg);
   try {
-    post({ kind: "progress", jobId, progress: 10, message: "Reading..." });
-    const rows = await readFromOPFS(inputRef.executionId, inputRef.datasetId, inputRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 50, message: "Computing stats..." });
-    if (rows.length === 0) {
-      post({ kind: "result", jobId, output: { stats: [] } });
+    post({ kind: "progress", jobId, progress: 5, message: "Computing stats..." });
+    if (inputRef.chunkCount === 0) {
+      post({ kind: "result", jobId, output: { stats: [], rowCount: 0 } });
       return;
     }
-    const fields = Object.keys(rows[0]);
-    const stats = fields.map((field) => {
-      const vals = rows.map((r) => r[field]);
-      const nonNull = vals.filter((v) => v !== null && v !== void 0 && v !== "");
-      const nums = nonNull.map(Number).filter((n) => !Number.isNaN(n));
-      const unique = new Set(vals.map(String));
-      const schemaType = inputRef.schema?.[field]?.type ?? "string";
+    const firstChunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, 0);
+    if (firstChunk.length === 0) {
+      post({ kind: "result", jobId, output: { stats: [], rowCount: 0 } });
+      return;
+    }
+    const fields = Object.keys(firstChunk[0]);
+    const accs = /* @__PURE__ */ new Map();
+    for (const f of fields) {
+      accs.set(f, {
+        count: 0,
+        nullCount: 0,
+        numSum: 0,
+        numCount: 0,
+        numMin: Number.POSITIVE_INFINITY,
+        numMax: Number.NEGATIVE_INFINITY,
+        strMin: "",
+        strMax: "",
+        hasNums: false,
+        hasStrs: false,
+        uniques: /* @__PURE__ */ new Set(),
+        samples: []
+      });
+    }
+    let totalRows = 0;
+    for (let c = 0; c < inputRef.chunkCount; c++) {
+      const chunk = c === 0 ? firstChunk : await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
+      totalRows += chunk.length;
+      for (const row of chunk) {
+        for (const f of fields) {
+          const acc = accs.get(f);
+          if (!acc) continue;
+          const raw = row[f];
+          const isNull = raw === null || raw === void 0 || raw === "";
+          acc.count++;
+          if (isNull) {
+            acc.nullCount++;
+            continue;
+          }
+          const str = String(raw);
+          acc.uniques.add(str);
+          if (acc.samples.length < 5 && !acc.samples.includes(str)) acc.samples.push(str);
+          const num = Number(raw);
+          if (!Number.isNaN(num)) {
+            acc.hasNums = true;
+            acc.numSum += num;
+            acc.numCount++;
+            if (num < acc.numMin) acc.numMin = num;
+            if (num > acc.numMax) acc.numMax = num;
+          } else {
+            acc.hasStrs = true;
+            if (!acc.strMin || str < acc.strMin) acc.strMin = str;
+            if (!acc.strMax || str > acc.strMax) acc.strMax = str;
+          }
+        }
+      }
+      const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 85);
+      post({ kind: "progress", jobId, progress: pct, message: `Processed ${totalRows.toLocaleString()} rows...` });
+    }
+    const stats = fields.map((f) => {
+      const acc = accs.get(f);
+      if (!acc) return { field: f, type: "string", count: 0, nullCount: 0, uniqueCount: 0, sampleValues: [] };
+      const schemaType = inputRef.schema?.[f]?.type ?? "string";
       const stat = {
-        field,
+        field: f,
         type: schemaType,
-        count: vals.length,
-        nullCount: vals.length - nonNull.length,
-        uniqueCount: unique.size,
-        sampleValues: [...new Set(nonNull.slice(0, 5).map(String))]
+        count: acc.count,
+        nullCount: acc.nullCount,
+        uniqueCount: acc.uniques.size,
+        sampleValues: acc.samples
       };
-      if (nums.length > 0) {
-        stat.min = Math.min(...nums);
-        stat.max = Math.max(...nums);
-        stat.mean = nums.reduce((a, b) => a + b, 0) / nums.length;
-      } else if (nonNull.length > 0) {
-        const sorted = nonNull.map(String).sort();
-        stat.min = sorted[0];
-        stat.max = sorted[sorted.length - 1];
+      if (acc.hasNums && acc.numCount > 0) {
+        stat.min = acc.numMin;
+        stat.max = acc.numMax;
+        stat.mean = acc.numSum / acc.numCount;
+      } else if (acc.hasStrs) {
+        stat.min = acc.strMin;
+        stat.max = acc.strMax;
       }
       return stat;
     });
-    post({ kind: "result", jobId, output: { stats, rowCount: rows.length } });
+    post({ kind: "result", jobId, output: { stats, rowCount: totalRows } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }

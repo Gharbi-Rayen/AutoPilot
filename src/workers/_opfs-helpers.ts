@@ -93,22 +93,24 @@ export async function writeToOPFS(
  *   for (const rows of ...) await writer.write(rows);
  *   const { chunks, totalBytes, totalRows } = await writer.finish();
  */
+export type OPFSChunkMeta = {
+  chunkIndex: number;
+  fileName: string;
+  rowStart: number;
+  rowEnd: number;
+  rowCount: number;
+  cumulativeRowCount: number;
+  byteSize: number;
+  createdAt: string;
+};
+
 export class ChunkedOPFSWriter {
   private dir!: FileSystemDirectoryHandle;
   private buffer: DatasetRow[] = [];
   private chunkIndex = 0;
   private totalRows = 0;
   private totalBytes = 0;
-  private readonly chunks: {
-    chunkIndex: number;
-    fileName: string;
-    rowStart: number;
-    rowEnd: number;
-    rowCount: number;
-    cumulativeRowCount: number;
-    byteSize: number;
-    createdAt: string;
-  }[] = [];
+  private readonly chunks: OPFSChunkMeta[] = [];
   private readonly createdAt = new Date().toISOString();
 
   constructor(
@@ -128,7 +130,7 @@ export class ChunkedOPFSWriter {
     }
   }
 
-  async finish(): Promise<{ chunks: typeof this.chunks; totalBytes: number; totalRows: number }> {
+  async finish(): Promise<{ chunks: OPFSChunkMeta[]; totalBytes: number; totalRows: number }> {
     if (this.buffer.length > 0) await this._flush(this.buffer);
     this.buffer = [];
     return { chunks: this.chunks, totalBytes: this.totalBytes, totalRows: this.totalRows };
