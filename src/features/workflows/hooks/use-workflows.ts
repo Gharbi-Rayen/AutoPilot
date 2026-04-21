@@ -219,6 +219,50 @@ export const useUpdateWorkflow = () => {
   });
 };
 
+/** Silent background save — no toast, no query invalidation, used by auto-save. */
+export const useAutoSaveWorkflow = () => {
+  return useMutation({
+    mutationFn: async ({
+      id,
+      nodes,
+      edges,
+    }: {
+      id: string;
+      nodes: Node[];
+      edges: Edge[];
+    }) => {
+      const now = new Date().toISOString();
+      await db.transaction("rw", [db.workflowNodes, db.workflowConnections, db.workflows], async () => {
+        await db.workflowNodes.where("workflowId").equals(id).delete();
+        await db.workflowNodes.bulkAdd(
+          nodes.map((n) => ({
+            id: n.id,
+            workflowId: id,
+            type: (n.type ?? NodeType.INITIAL) as NodeType,
+            position: n.position as { x: number; y: number },
+            data: (n.data as Record<string, unknown>) ?? {},
+          })),
+        );
+        await db.workflowConnections.where("workflowId").equals(id).delete();
+        await db.workflowConnections.bulkAdd(
+          edges.map((e) => ({
+            id: e.id ?? createId(),
+            workflowId: id,
+            fromNodeId: e.source,
+            toNodeId: e.target,
+            fromOutput: e.sourceHandle ?? "main",
+            toInput: e.targetHandle ?? "main",
+          })),
+        );
+        await db.workflows.update(id, { updatedAt: now });
+      });
+    },
+    onError: (error: Error) => {
+      console.warn("[AutoSave] Failed:", error.message);
+    },
+  });
+};
+
 /** Trigger a workflow execution — the actual run happens in the execution engine. */
 export const useExecuteWorkflow = () => {
   return useMutation({

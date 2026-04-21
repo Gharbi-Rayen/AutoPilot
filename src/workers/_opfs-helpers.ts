@@ -5,25 +5,38 @@
 
 import type { DatasetRow } from "@/types/dataset";
 
+async function getDatasetDir(
+  executionId: string,
+  datasetId: string,
+  create = false,
+): Promise<FileSystemDirectoryHandle> {
+  const opfsRoot = await navigator.storage.getDirectory();
+  return opfsRoot
+    .getDirectoryHandle("autopilot", { create })
+    .then((a) => a.getDirectoryHandle("executions", { create }))
+    .then((e) => e.getDirectoryHandle(executionId, { create }))
+    .then((ex) => ex.getDirectoryHandle(datasetId, { create }));
+}
+
+export async function readChunkFromOPFS(
+  executionId: string,
+  datasetId: string,
+  chunkIndex: number,
+): Promise<DatasetRow[]> {
+  const dir = await getDatasetDir(executionId, datasetId, false);
+  const fileName = `chunk-${String(chunkIndex).padStart(6, "0")}.json`;
+  const fh = await dir.getFileHandle(fileName);
+  return JSON.parse(await (await fh.getFile()).text()) as DatasetRow[];
+}
 
 export async function readFromOPFS(
   executionId: string,
   datasetId: string,
   chunkCount: number,
 ): Promise<DatasetRow[]> {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot
-    .getDirectoryHandle("autopilot", { create: false })
-    .then((a) => a.getDirectoryHandle("executions", { create: false }))
-    .then((e) => e.getDirectoryHandle(executionId, { create: false }))
-    .then((ex) => ex.getDirectoryHandle(datasetId, { create: false }));
-
   const rows: DatasetRow[] = [];
   for (let i = 0; i < chunkCount; i++) {
-    const fh = await dir.getFileHandle(
-      `chunk-${String(i).padStart(6, "0")}.json`,
-    );
-    rows.push(...(JSON.parse(await (await fh.getFile()).text()) as DatasetRow[]));
+    rows.push(...(await readChunkFromOPFS(executionId, datasetId, i)));
   }
   return rows;
 }
@@ -34,12 +47,7 @@ export async function writeToOPFS(
   rows: DatasetRow[],
   chunkSize = 10_000,
 ) {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot
-    .getDirectoryHandle("autopilot", { create: true })
-    .then((a) => a.getDirectoryHandle("executions", { create: true }))
-    .then((e) => e.getDirectoryHandle(executionId, { create: true }))
-    .then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
+  const dir = await getDatasetDir(executionId, datasetId, true);
 
   const chunks = [];
   let cum = 0;
@@ -72,4 +80,78 @@ export async function writeToOPFS(
     });
   }
   return { chunks, totalBytes };
+}
+
+/**
+ * Streaming OPFS writer — accepts rows incrementally and flushes to OPFS in
+ * chunkSize batches.  Call `finish()` to flush the final partial batch and
+ * get the manifest chunks + byte totals.
+ *
+ * Usage:
+ *   const writer = new ChunkedOPFSWriter(executionId, datasetId, chunkSize);
+ *   await writer.init();
+ *   for (const rows of ...) await writer.write(rows);
+ *   const { chunks, totalBytes, totalRows } = await writer.finish();
+ */
+export class ChunkedOPFSWriter {
+  private dir!: FileSystemDirectoryHandle;
+  private buffer: DatasetRow[] = [];
+  private chunkIndex = 0;
+  private totalRows = 0;
+  private totalBytes = 0;
+  private readonly chunks: {
+    chunkIndex: number;
+    fileName: string;
+    rowStart: number;
+    rowEnd: number;
+    rowCount: number;
+    cumulativeRowCount: number;
+    byteSize: number;
+    createdAt: string;
+  }[] = [];
+  private readonly createdAt = new Date().toISOString();
+
+  constructor(
+    private readonly executionId: string,
+    private readonly datasetId: string,
+    private readonly chunkSize = 10_000,
+  ) {}
+
+  async init(): Promise<void> {
+    this.dir = await getDatasetDir(this.executionId, this.datasetId, true);
+  }
+
+  async write(rows: DatasetRow[]): Promise<void> {
+    this.buffer.push(...rows);
+    while (this.buffer.length >= this.chunkSize) {
+      await this._flush(this.buffer.splice(0, this.chunkSize));
+    }
+  }
+
+  async finish(): Promise<{ chunks: typeof this.chunks; totalBytes: number; totalRows: number }> {
+    if (this.buffer.length > 0) await this._flush(this.buffer);
+    this.buffer = [];
+    return { chunks: this.chunks, totalBytes: this.totalBytes, totalRows: this.totalRows };
+  }
+
+  private async _flush(rows: DatasetRow[]): Promise<void> {
+    const fn = `chunk-${String(this.chunkIndex).padStart(6, "0")}.json`;
+    const bytes = new TextEncoder().encode(JSON.stringify(rows));
+    const w = await (await this.dir.getFileHandle(fn, { create: true })).createWritable();
+    await w.write(bytes);
+    await w.close();
+    this.chunks.push({
+      chunkIndex: this.chunkIndex,
+      fileName: fn,
+      rowStart: this.totalRows,
+      rowEnd: this.totalRows + rows.length - 1,
+      rowCount: rows.length,
+      cumulativeRowCount: this.totalRows + rows.length,
+      byteSize: bytes.byteLength,
+      createdAt: this.createdAt,
+    });
+    this.totalBytes += bytes.byteLength;
+    this.totalRows += rows.length;
+    this.chunkIndex++;
+  }
 }

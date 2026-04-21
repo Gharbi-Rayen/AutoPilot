@@ -22,11 +22,11 @@ export const executor: NodeExecutor = async (_nodeId, nodeData, context, executi
   const { buffer, fileName, mimeType } = fileVar as { buffer: ArrayBuffer; fileName: string; mimeType: string };
   onProgress(5, "Sending to parser...");
 
-  const fileContent = await new Blob([buffer], { type: mimeType }).text();
   const result = await dispatchWorkerJob<unknown, { manifest: unknown; datasetRef: DatasetRef }>(
     "csv-parse",
-    { fileContent, fileName, executionId, variableName, hasHeader, delimiter },
+    { fileBuffer: buffer, fileName, mimeType, executionId, variableName, hasHeader, delimiter },
     onProgress,
+    [buffer],
   );
 
   return { [variableName]: result.datasetRef, [`${variableName}_manifest`]: result.manifest };

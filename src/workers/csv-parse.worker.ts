@@ -1,6 +1,7 @@
 /**
- * CSV Parse — Browser Web Worker
- * Parses a CSV File/text, infers schema, writes chunked rows to OPFS.
+ * CSV Parse — Browser Web Worker (streaming)
+ * Accepts a transferred ArrayBuffer, parses via PapaParse step callback,
+ * flushes rows to OPFS in chunks of chunkSize — never holds all rows in memory.
  */
 
 import Papa from "papaparse";
@@ -37,61 +38,23 @@ function inferSchema(rows: DatasetRow[]): DatasetSchema {
   return schema;
 }
 
-// ─── OPFS helpers ─────────────────────────────────────────────────────────────
-
-async function writeChunksToOPFS(
-  executionId: string,
-  datasetId: string,
-  rows: DatasetRow[],
-  chunkSize = 10_000,
-) {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const autopilot = await opfsRoot.getDirectoryHandle("autopilot", { create: true });
-  const executions = await autopilot.getDirectoryHandle("executions", { create: true });
-  const execDir = await executions.getDirectoryHandle(executionId, { create: true });
-  const datasetDir = await execDir.getDirectoryHandle(datasetId, { create: true });
-
-  const chunks = [];
-  let cumulativeRows = 0;
-  let totalBytes = 0;
-  const now = new Date().toISOString();
-
-  for (let i = 0; i * chunkSize < rows.length || (i === 0 && rows.length === 0); i++) {
-    const chunkRows = rows.slice(i * chunkSize, (i + 1) * chunkSize);
-    if (chunkRows.length === 0) break;
-
-    const fileName = `chunk-${String(i).padStart(6, "0")}.json`;
-    const bytes = new TextEncoder().encode(JSON.stringify(chunkRows));
-    const fileHandle = await datasetDir.getFileHandle(fileName, { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(bytes);
-    await writable.close();
-
-    cumulativeRows += chunkRows.length;
-    totalBytes += bytes.byteLength;
-
-    chunks.push({
-      chunkIndex: i,
-      fileName,
-      rowStart: i * chunkSize,
-      rowEnd: i * chunkSize + chunkRows.length - 1,
-      rowCount: chunkRows.length,
-      cumulativeRowCount: cumulativeRows,
-      byteSize: bytes.byteLength,
-      createdAt: now,
-    });
-  }
-
-  return { chunks, totalBytes };
-}
-
 // ─── Message handler ──────────────────────────────────────────────────────────
 
 self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   const { jobId, input } = event.data;
-  const { fileContent, fileName, executionId, variableName, hasHeader = true, delimiter = "auto", chunkSize = 10_000 } = input as {
-    fileContent: string;
+  const {
+    fileBuffer,
+    fileName,
+    mimeType = "text/csv",
+    executionId,
+    variableName,
+    hasHeader = true,
+    delimiter = "auto",
+    chunkSize = 10_000,
+  } = input as {
+    fileBuffer: ArrayBuffer;
     fileName: string;
+    mimeType?: string;
     executionId: string;
     variableName: string;
     hasHeader?: boolean;
@@ -102,59 +65,153 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
 
   try {
-    post({ kind: "progress", jobId, progress: 5, message: "Parsing CSV..." });
+    post({ kind: "progress", jobId, progress: 5, message: "Preparing parser..." });
 
-    const explicitDelimiter = delimiter && delimiter !== "auto" ? delimiter : "";
-
-    let rows: DatasetRow[];
-    let parseWarnings: string[] = [];
-
-    if (hasHeader) {
-      const parsed = Papa.parse<DatasetRow>(fileContent, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-        delimiter: explicitDelimiter,
-      });
-      rows = parsed.data;
-      parseWarnings = parsed.errors.map((e) => e.message);
-    } else {
-      // No header: parse as arrays, generate col_0, col_1, ... names
-      const parsed = Papa.parse<string[]>(fileContent, {
-        header: false,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-        delimiter: explicitDelimiter,
-      });
-      const colCount = parsed.data[0]?.length ?? 0;
-      const colNames = Array.from({ length: colCount }, (_, i) => `col_${i}`);
-      rows = parsed.data.map((arr) => {
-        const row: DatasetRow = {};
-        for (let i = 0; i < colNames.length; i++) row[colNames[i]] = arr[i] ?? null;
-        return row;
-      });
-      parseWarnings = parsed.errors.map((e) => e.message);
-    }
-
-    post({ kind: "progress", jobId, progress: 40, message: `Parsed ${rows.length} rows` });
-
-    const schema = inferSchema(rows.slice(0, 1000));
     const datasetId = createId();
 
-    post({ kind: "progress", jobId, progress: 50, message: "Writing to storage..." });
-    const { chunks, totalBytes } = await writeChunksToOPFS(executionId, datasetId, rows, chunkSize);
+    // Pre-create OPFS directory tree before parsing begins
+    const opfsRoot = await navigator.storage.getDirectory();
+    const datasetDir = await opfsRoot
+      .getDirectoryHandle("autopilot", { create: true })
+      .then((a) => a.getDirectoryHandle("executions", { create: true }))
+      .then((e) => e.getDirectoryHandle(executionId, { create: true }))
+      .then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
+
+    const blob = new Blob([fileBuffer], { type: mimeType });
+    const blobSize = blob.size;
+
+    let rowBuffer: DatasetRow[] = [];
+    let chunkIndex = 0;
+    let totalRows = 0;
+    let totalBytes = 0;
+    const chunks: {
+      chunkIndex: number;
+      fileName: string;
+      rowStart: number;
+      rowEnd: number;
+      rowCount: number;
+      cumulativeRowCount: number;
+      byteSize: number;
+      createdAt: string;
+    }[] = [];
+    const schemaSample: DatasetRow[] = [];
+    const parseWarnings: string[] = [];
+    const createdAt = new Date().toISOString();
+
+    const explicitDelimiter = delimiter !== "auto" ? delimiter : "";
+
+    async function flushChunk(rows: DatasetRow[]) {
+      const fn = `chunk-${String(chunkIndex).padStart(6, "0")}.json`;
+      const bytes = new TextEncoder().encode(JSON.stringify(rows));
+      const fh = await datasetDir.getFileHandle(fn, { create: true });
+      const w = await fh.createWritable();
+      await w.write(bytes);
+      await w.close();
+      chunks.push({
+        chunkIndex,
+        fileName: fn,
+        rowStart: totalRows,
+        rowEnd: totalRows + rows.length - 1,
+        rowCount: rows.length,
+        cumulativeRowCount: totalRows + rows.length,
+        byteSize: bytes.byteLength,
+        createdAt,
+      });
+      totalBytes += bytes.byteLength;
+      totalRows += rows.length;
+      chunkIndex++;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      if (hasHeader) {
+        Papa.parse<DatasetRow>(blob, {
+          header: true,
+          skipEmptyLines: true,
+          dynamicTyping: false,
+          delimiter: explicitDelimiter,
+          step: (result, parser) => {
+            if (result.errors.length) {
+              parseWarnings.push(...result.errors.map((e) => e.message));
+            }
+            const row = result.data as DatasetRow;
+            rowBuffer.push(row);
+            if (schemaSample.length < 1000) schemaSample.push(row);
+
+            if (rowBuffer.length >= chunkSize) {
+              parser.pause();
+              const toFlush = rowBuffer;
+              rowBuffer = [];
+              const progress = Math.min(85, 10 + Math.round(((result.meta as { cursor?: number }).cursor ?? 0) / blobSize * 75));
+              post({ kind: "progress", jobId, progress, message: `Parsed ${(totalRows + toFlush.length).toLocaleString()} rows...` });
+              flushChunk(toFlush).then(() => parser.resume()).catch(reject);
+            }
+          },
+          complete: async () => {
+            try {
+              if (rowBuffer.length > 0) await flushChunk(rowBuffer);
+              rowBuffer = [];
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          },
+          error: reject,
+        });
+      } else {
+        // No header: parse as arrays, generate col_0, col_1, … column names from first row
+        let colNames: string[] | null = null;
+        Papa.parse<string[]>(blob, {
+          header: false,
+          skipEmptyLines: true,
+          dynamicTyping: false,
+          delimiter: explicitDelimiter,
+          step: (result, parser) => {
+            if (result.errors.length) {
+              parseWarnings.push(...result.errors.map((e) => e.message));
+            }
+            const arr = result.data as string[];
+            if (!colNames) {
+              colNames = Array.from({ length: arr.length }, (_, i) => `col_${i}`);
+            }
+            const row: DatasetRow = {};
+            for (let i = 0; i < colNames.length; i++) row[colNames[i]] = arr[i] ?? null;
+            rowBuffer.push(row);
+            if (schemaSample.length < 1000) schemaSample.push(row);
+
+            if (rowBuffer.length >= chunkSize) {
+              parser.pause();
+              const toFlush = rowBuffer;
+              rowBuffer = [];
+              const progress = Math.min(85, 10 + Math.round(((result.meta as { cursor?: number }).cursor ?? 0) / blobSize * 75));
+              post({ kind: "progress", jobId, progress, message: `Parsed ${(totalRows + toFlush.length).toLocaleString()} rows...` });
+              flushChunk(toFlush).then(() => parser.resume()).catch(reject);
+            }
+          },
+          complete: async () => {
+            try {
+              if (rowBuffer.length > 0) await flushChunk(rowBuffer);
+              rowBuffer = [];
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          },
+          error: reject,
+        });
+      }
+    });
 
     post({ kind: "progress", jobId, progress: 90, message: "Finalizing..." });
 
-    const now = new Date().toISOString();
+    const schema = inferSchema(schemaSample);
     const manifest = {
       version: DATASET_MANIFEST_VERSION,
       datasetId,
       executionId,
       variableName,
-      createdAt: now,
-      updatedAt: now,
-      rowCount: rows.length,
+      createdAt,
+      updatedAt: createdAt,
+      rowCount: totalRows,
       chunkCount: chunks.length,
       byteSize: totalBytes,
       schema,
@@ -171,7 +228,7 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
           datasetId,
           executionId,
           variableName,
-          rowCount: rows.length,
+          rowCount: totalRows,
           chunkCount: chunks.length,
           byteSize: totalBytes,
           schema,

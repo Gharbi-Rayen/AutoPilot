@@ -33,6 +33,7 @@ import {
   executionStartedAtAtom,
   nodeProgressMapAtom,
   nodeStatusMapAtom,
+  nodeTimingsAtom,
   type WorkflowExecutionState,
   workflowExecutionErrorAtom,
   workflowExecutionResultAtom,
@@ -109,7 +110,6 @@ const traceStatusConfig: Record<
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const FALLBACK_TIMELINE_MAX_MS = 9200;
 const FALLBACK_SYNTHETIC_STEP_DURATION_MS = 420;
 const FALLBACK_SYNTHETIC_STEP_GAP_MS = 110;
 
@@ -231,13 +231,15 @@ const getDurationLabel = ({
   startedAt,
   finishedAt,
   isRunning,
+  now,
 }: {
   startedAt: Date | null;
   finishedAt: Date | null;
   isRunning: boolean;
+  now?: number;
 }) => {
   if (!startedAt) return "-";
-  const end = finishedAt ?? (isRunning ? new Date() : null);
+  const end = finishedAt ?? (isRunning ? new Date(now ?? Date.now()) : null);
   if (!end) return "-";
   const ms = Math.max(end.getTime() - startedAt.getTime(), 0);
   if (ms < 1000) return `${ms} ms`;
@@ -274,7 +276,7 @@ const TraceStatusIcon = ({
   if (status === "loading")
     return (
       <Loader2Icon
-        className={cn("shrink-0 animate-spin mt-[1px]", colorMap.loading)}
+        className={cn("shrink-0 animate-spin", colorMap.loading)}
         size={size}
       />
     );
@@ -315,6 +317,7 @@ export const WorkflowProgressPanel = ({
   const executionStartedAt = useAtomValue(executionStartedAtAtom);
   const nodeStatusMap = useAtomValue(nodeStatusMapAtom);
   const nodeProgressMap = useAtomValue(nodeProgressMapAtom);
+  const nodeTimings = useAtomValue(nodeTimingsAtom);
   const executionError = useAtomValue(workflowExecutionErrorAtom);
   const executionResult = useAtomValue(workflowExecutionResultAtom);
 
@@ -390,33 +393,26 @@ export const WorkflowProgressPanel = ({
       });
   }, [nodeStatusMap, orderedNodes]);
 
-  const runnerMetrics = useMemo(() => {
-    return Array.isArray(outputRecord?.__executionMetrics)
-      ? outputRecord.__executionMetrics.filter(isRecord)
-      : [];
-  }, [outputRecord]);
-
   const nodeTimingMap = useMemo(() => {
     const map = new Map<string, { startMs: number; endMs: number }>();
+    const hasRealTimings = Object.keys(nodeTimings).length > 0;
 
-    if (runnerMetrics.length > 0) {
-      let cursor = 0;
-      for (const metric of runnerMetrics) {
-        if (typeof metric.nodeId === "string") {
-          const duration =
-            typeof metric.durationMs === "number" &&
-            Number.isFinite(metric.durationMs)
-              ? Math.max(metric.durationMs, 80)
-              : 180;
-          map.set(metric.nodeId, { startMs: cursor, endMs: cursor + duration });
-          cursor += duration;
+    if (hasRealTimings) {
+      // Use real wall-clock timings recorded during execution
+      for (const node of workflowNodes) {
+        const t = nodeTimings[node.id];
+        if (t) {
+          map.set(node.id, {
+            startMs: t.startMs,
+            endMs: t.endMs ?? (t.startMs + FALLBACK_SYNTHETIC_STEP_DURATION_MS),
+          });
         }
       }
     } else {
+      // Fallback synthetic positions (no execution started yet)
       workflowNodes.forEach((node, index) => {
         const startMs =
-          index *
-          (FALLBACK_SYNTHETIC_STEP_DURATION_MS + FALLBACK_SYNTHETIC_STEP_GAP_MS);
+          index * (FALLBACK_SYNTHETIC_STEP_DURATION_MS + FALLBACK_SYNTHETIC_STEP_GAP_MS);
         map.set(node.id, {
           startMs,
           endMs: startMs + FALLBACK_SYNTHETIC_STEP_DURATION_MS,
@@ -425,13 +421,17 @@ export const WorkflowProgressPanel = ({
     }
 
     return map;
-  }, [runnerMetrics, workflowNodes]);
+  }, [nodeTimings, workflowNodes]);
 
   const timelineMaxMs = useMemo(() => {
     let maxMs = 0;
     for (const t of nodeTimingMap.values()) maxMs = Math.max(maxMs, t.endMs);
-    return Math.max(FALLBACK_TIMELINE_MAX_MS, maxMs, 1);
-  }, [nodeTimingMap]);
+    // When execution is running, also account for the live elapsed time
+    if (executionState === "running" && executionStartedAt) {
+      maxMs = Math.max(maxMs, Date.now() - executionStartedAt);
+    }
+    return Math.max(maxMs, 1000); // at least 1 s scale
+  }, [nodeTimingMap, executionState, executionStartedAt]);
 
   const timelineMarkers = useMemo(() => {
     const count = 4;
@@ -574,6 +574,16 @@ export const WorkflowProgressPanel = ({
     return selectedOutputPayload as unknown as CompareResult;
   }, [selectedWorkflowNode, selectedOutputPayload]);
 
+  // ── Live clock for smooth duration counter ─────────────────────────────────
+  const [liveNow, setLiveNow] = useState(() => Date.now());
+  const isNodeCurrentlyRunning =
+    executionState === "running" && selectedWorkflowNode?.status === "loading";
+  useEffect(() => {
+    if (!isNodeCurrentlyRunning) return;
+    const id = setInterval(() => setLiveNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [isNodeCurrentlyRunning]);
+
   // Per-node times from DB record (fall back to workflow-level startedAt)
   const nodeRecord = nodeOutputQuery.data;
   const startedAt = nodeRecord?.startedAt
@@ -594,7 +604,8 @@ export const WorkflowProgressPanel = ({
     : getDurationLabel({
         startedAt,
         finishedAt,
-        isRunning: executionState === "running" && selectedWorkflowNode?.status === "loading",
+        isRunning: isNodeCurrentlyRunning,
+        now: isNodeCurrentlyRunning ? liveNow : undefined,
       });
 
   // ── Split drag ─────────────────────────────────────────────────────────────

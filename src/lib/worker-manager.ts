@@ -124,6 +124,7 @@ export function dispatchWorkerJob<TInput, TOutput>(
   type: WorkerJobType,
   input: TInput,
   onProgress?: (progress: number, message?: string) => void,
+  transfer?: Transferable[],
 ): Promise<TOutput> {
   return new Promise<TOutput>((resolve, reject) => {
     const jobId = createId();
@@ -134,7 +135,7 @@ export function dispatchWorkerJob<TInput, TOutput>(
     const perfSettings = getPerformanceSettings();
     const enrichedInput = { ...perfSettings, ...(input as object) } as TInput;
     const message: WorkerJobMessage<TInput> = { jobId, type, input: enrichedInput };
-    worker.postMessage(message);
+    worker.postMessage(message, transfer ?? []);
   });
 }
 

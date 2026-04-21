@@ -10,6 +10,7 @@ import {
   executionStartedAtAtom,
   nodeProgressMapAtom,
   nodeStatusMapAtom,
+  nodeTimingsAtom,
   resetWorkflowExecutionStateAtom,
   workflowExecutionErrorAtom,
   workflowExecutionStateAtom,
@@ -20,6 +21,7 @@ export function useRunWorkflow() {
   const resetState = useSetAtom(resetWorkflowExecutionStateAtom);
   const setNodeStatusMap = useSetAtom(nodeStatusMapAtom);
   const setNodeProgressMap = useSetAtom(nodeProgressMapAtom);
+  const setNodeTimings = useSetAtom(nodeTimingsAtom);
   const setWorkflowState = useSetAtom(workflowExecutionStateAtom);
   const setActiveExecutionId = useSetAtom(activeExecutionIdAtom);
   const setExecutionStartedAt = useSetAtom(executionStartedAtAtom);
@@ -27,6 +29,8 @@ export function useRunWorkflow() {
   const setPanelOpen = useSetAtom(workflowProgressPanelOpenAtom);
   const isRunning = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Track workflow start time in a ref so callbacks have a stable, non-stale reference
+  const workflowStartMsRef = useRef<number>(0);
 
   const cancel = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -41,8 +45,10 @@ export function useRunWorkflow() {
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      const startMs = Date.now();
+      workflowStartMsRef.current = startMs;
       resetState();
-      setExecutionStartedAt(Date.now());
+      setExecutionStartedAt(startMs);
       setPanelOpen(true);
 
       try {
@@ -60,6 +66,17 @@ export function useRunWorkflow() {
               const uiStatus: NodeStatus =
                 status === "running" ? "loading" : (status as NodeStatus);
               setNodeStatusMap((prev) => ({ ...prev, [nodeId]: uiStatus }));
+
+              // Record real wall-clock timing relative to workflow start
+              const relMs = Date.now() - workflowStartMsRef.current;
+              if (status === "running") {
+                setNodeTimings((prev) => ({ ...prev, [nodeId]: { startMs: relMs } }));
+              } else if (status === "success" || status === "error") {
+                setNodeTimings((prev) => ({
+                  ...prev,
+                  [nodeId]: { ...(prev[nodeId] ?? { startMs: relMs }), endMs: relMs },
+                }));
+              }
             },
             onWorkflowStatusChange: (status) => {
               setWorkflowState(
@@ -92,6 +109,7 @@ export function useRunWorkflow() {
       resetState,
       setNodeStatusMap,
       setNodeProgressMap,
+      setNodeTimings,
       setWorkflowState,
       setActiveExecutionId,
       setExecutionStartedAt,

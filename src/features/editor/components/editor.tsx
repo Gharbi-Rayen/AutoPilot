@@ -30,7 +30,10 @@ import { useAtom, useSetAtom } from "jotai";
 import dynamic from "next/dynamic";
 import { ErrorView, LoadingView } from "@/components/entity-components";
 import { nodeComponents } from "@/config/node-components";
-import { useSuspenseWorkflow } from "@/features/workflows/hooks/use-workflows";
+import {
+  useAutoSaveWorkflow,
+  useSuspenseWorkflow,
+} from "@/features/workflows/hooks/use-workflows";
 import { cn } from "@/lib/utils";
 import { workflowProgressPanelCollapsedAtom } from "@/store/execution-status";
 import { NodeType } from "@/types/node-type";
@@ -86,6 +89,24 @@ export const Editor = ({ workflowId }: { workflowId: string }) => {
   const [panelHeight, setPanelHeight] = useState(DEFAULT_PANEL_HEIGHT);
   const [nodes, setNodes] = useState<Node[]>(workflow.nodes);
   const [edges, setEdges] = useState<Edge[]>(workflow.edges);
+
+  const autoSave = useAutoSaveWorkflow();
+  const hasInitializedRef = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!hasInitializedRef.current) {
+      hasInitializedRef.current = true;
+      return;
+    }
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSave.mutate({ id: workflowId, nodes, edges });
+    }, 1500);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [nodes, edges, workflowId, autoSave.mutate]);
 
   // Reset nodes and edges only when switching workflows, not on background refetches
   // biome-ignore lint/correctness/useExhaustiveDependencies: Intentionally only sync when workflow ID changes to prevent overwriting local changes on refetch

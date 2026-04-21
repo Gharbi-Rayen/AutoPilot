@@ -1,12 +1,12 @@
 /**
- * CSV Filter — Browser Web Worker
- * Filters rows by field/operator/value, writes result to OPFS.
+ * CSV Filter — Browser Web Worker (streaming)
+ * Processes OPFS chunks one at a time — never loads the full dataset into memory.
  */
 
 import { createId } from "@paralleldrive/cuid2";
 import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manager";
-import type { DatasetRow, DatasetRef } from "@/types/dataset";
-import { DATASET_MANIFEST_VERSION } from "@/types/dataset";
+import { DATASET_MANIFEST_VERSION, type DatasetRef, type DatasetRow } from "@/types/dataset";
+import { ChunkedOPFSWriter, readChunkFromOPFS } from "./_opfs-helpers";
 
 type FilterOperator =
   | "equals"
@@ -32,7 +32,6 @@ function applyFilter(row: DatasetRow, condition: FilterCondition): boolean {
   const raw = row[condition.field];
   const cell = raw === null || raw === undefined ? "" : String(raw);
   const val = condition.value ?? "";
-
   switch (condition.operator) {
     case "equals": return cell === val;
     case "not_equals": return cell !== val;
@@ -50,54 +49,6 @@ function applyFilter(row: DatasetRow, condition: FilterCondition): boolean {
   }
 }
 
-async function readDatasetFromOPFS(executionId: string, datasetId: string, chunkCount: number): Promise<DatasetRow[]> {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot
-    .getDirectoryHandle("autopilot", { create: false })
-    .then((a) => a.getDirectoryHandle("executions", { create: false }))
-    .then((e) => e.getDirectoryHandle(executionId, { create: false }))
-    .then((ex) => ex.getDirectoryHandle(datasetId, { create: false }));
-
-  const rows: DatasetRow[] = [];
-  for (let i = 0; i < chunkCount; i++) {
-    const fileName = `chunk-${String(i).padStart(6, "0")}.json`;
-    const fh = await dir.getFileHandle(fileName);
-    const file = await fh.getFile();
-    const parsed = JSON.parse(await file.text()) as DatasetRow[];
-    rows.push(...parsed);
-  }
-  return rows;
-}
-
-async function writeToOPFS(executionId: string, datasetId: string, rows: DatasetRow[], chunkSize = 10_000) {
-  const opfsRoot = await navigator.storage.getDirectory();
-  const dir = await opfsRoot
-    .getDirectoryHandle("autopilot", { create: true })
-    .then((a) => a.getDirectoryHandle("executions", { create: true }))
-    .then((e) => e.getDirectoryHandle(executionId, { create: true }))
-    .then((ex) => ex.getDirectoryHandle(datasetId, { create: true }));
-
-  const chunks = [];
-  let cumulativeRows = 0;
-  let totalBytes = 0;
-  const now = new Date().toISOString();
-
-  for (let i = 0; i * chunkSize < rows.length || (i === 0 && rows.length === 0); i++) {
-    const chunkRows = rows.slice(i * chunkSize, (i + 1) * chunkSize);
-    if (chunkRows.length === 0) break;
-    const fileName = `chunk-${String(i).padStart(6, "0")}.json`;
-    const bytes = new TextEncoder().encode(JSON.stringify(chunkRows));
-    const fh = await dir.getFileHandle(fileName, { create: true });
-    const w = await fh.createWritable();
-    await w.write(bytes);
-    await w.close();
-    cumulativeRows += chunkRows.length;
-    totalBytes += bytes.byteLength;
-    chunks.push({ chunkIndex: i, fileName, rowStart: i * chunkSize, rowEnd: i * chunkSize + chunkRows.length - 1, rowCount: chunkRows.length, cumulativeRowCount: cumulativeRows, byteSize: bytes.byteLength, createdAt: now });
-  }
-  return { chunks, totalBytes };
-}
-
 self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   const { jobId, input } = event.data;
   const { inputRef, conditions, logic = "AND", executionId, variableName, chunkSize = 10_000 } = input as {
@@ -112,28 +63,43 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
 
   try {
-    post({ kind: "progress", jobId, progress: 10, message: "Reading dataset..." });
-    const rows = await readDatasetFromOPFS(inputRef.executionId, inputRef.datasetId, inputRef.chunkCount);
-
-    post({ kind: "progress", jobId, progress: 40, message: "Filtering..." });
-    const filtered = rows.filter((row) =>
-      logic === "AND"
-        ? conditions.every((c) => applyFilter(row, c))
-        : conditions.some((c) => applyFilter(row, c)),
-    );
-
-    post({ kind: "progress", jobId, progress: 70, message: "Writing result..." });
     const datasetId = createId();
-    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, filtered, chunkSize);
+    const writer = new ChunkedOPFSWriter(executionId, datasetId, chunkSize);
+    await writer.init();
+
+    let totalInputRows = 0;
+
+    for (let c = 0; c < inputRef.chunkCount; c++) {
+      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
+      totalInputRows += chunk.length;
+
+      const filtered = chunk.filter((row) =>
+        logic === "AND"
+          ? conditions.every((cond) => applyFilter(row, cond))
+          : conditions.some((cond) => applyFilter(row, cond)),
+      );
+      await writer.write(filtered);
+
+      const pct = Math.round(10 + ((c + 1) / inputRef.chunkCount) * 80);
+      post({ kind: "progress", jobId, progress: pct, message: `Filtered ${totalInputRows.toLocaleString()} rows...` });
+    }
+
+    post({ kind: "progress", jobId, progress: 93, message: "Writing..." });
+    const { chunks, totalBytes, totalRows } = await writer.finish();
 
     const now = new Date().toISOString();
-    const manifest = { version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName, createdAt: now, updatedAt: now, rowCount: filtered.length, chunkCount: chunks.length, byteSize: totalBytes, schema: inputRef.schema, chunks };
-    const datasetRef: DatasetRef = { kind: "dataset", datasetId, executionId, variableName, rowCount: filtered.length, chunkCount: chunks.length, byteSize: totalBytes, schema: inputRef.schema };
+    const manifest = {
+      version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName,
+      createdAt: now, updatedAt: now, rowCount: totalRows, chunkCount: chunks.length,
+      byteSize: totalBytes, schema: inputRef.schema, chunks,
+    };
+    const datasetRef: DatasetRef = {
+      kind: "dataset", datasetId, executionId, variableName,
+      rowCount: totalRows, chunkCount: chunks.length, byteSize: totalBytes, schema: inputRef.schema,
+    };
 
-    post({ kind: "result", jobId, output: { manifest, datasetRef, filteredCount: filtered.length, totalCount: rows.length } });
+    post({ kind: "result", jobId, output: { manifest, datasetRef, filteredCount: totalRows, totalCount: totalInputRows } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }
 };
-
-export {};

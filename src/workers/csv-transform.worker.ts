@@ -1,13 +1,13 @@
 /**
- * CSV Transform — Browser Web Worker
+ * CSV Transform — Browser Web Worker (streaming)
  * Applies column renames, additions, deletions, and value expressions.
+ * Processes OPFS chunks one at a time — never loads the full dataset into memory.
  */
 
 import { createId } from "@paralleldrive/cuid2";
 import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manager";
-import type { DatasetRow, DatasetRef } from "@/types/dataset";
-import { DATASET_MANIFEST_VERSION } from "@/types/dataset";
-import { readFromOPFS, writeToOPFS } from "./_opfs-helpers";
+import { DATASET_MANIFEST_VERSION, type DatasetRef, type DatasetRow } from "@/types/dataset";
+import { ChunkedOPFSWriter, readChunkFromOPFS } from "./_opfs-helpers";
 
 type TransformOp =
   | { op: "rename"; from: string; to: string }
@@ -23,7 +23,6 @@ function applyOp(row: DatasetRow, op: TransformOp): DatasetRow {
     case "set": next[op.field] = op.value; break;
     case "add": {
       try {
-        // Simple expression: allow access to row fields by name
         const fn = new Function(...Object.keys(row), `return ${op.expression}`);
         next[op.field] = fn(...Object.values(row));
       } catch { next[op.field] = null; }
@@ -42,19 +41,37 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
     variableName: string;
     chunkSize?: number;
   };
+
   const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
+
   try {
-    post({ kind: "progress", jobId, progress: 10, message: "Reading..." });
-    const rows = await readFromOPFS(inputRef.executionId, inputRef.datasetId, inputRef.chunkCount);
-    post({ kind: "progress", jobId, progress: 50, message: "Transforming..." });
-    const transformed = rows.map((row) => operations.reduce(applyOp, row));
-    post({ kind: "progress", jobId, progress: 75, message: "Writing..." });
     const datasetId = createId();
-    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, transformed, chunkSize);
+    const writer = new ChunkedOPFSWriter(executionId, datasetId, chunkSize);
+    await writer.init();
+
+    for (let c = 0; c < inputRef.chunkCount; c++) {
+      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
+      await writer.write(chunk.map((row) => operations.reduce(applyOp, row)));
+      const pct = Math.round(10 + ((c + 1) / inputRef.chunkCount) * 80);
+      post({ kind: "progress", jobId, progress: pct, message: `Transformed ${(c + 1) * chunkSize} rows...` });
+    }
+
+    post({ kind: "progress", jobId, progress: 93, message: "Writing..." });
+    const { chunks, totalBytes, totalRows } = await writer.finish();
+
     const now = new Date().toISOString();
-    const manifest = { version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName, createdAt: now, updatedAt: now, rowCount: transformed.length, chunkCount: chunks.length, byteSize: totalBytes, chunks };
-    const datasetRef: DatasetRef = { kind: "dataset", datasetId, executionId, variableName, rowCount: transformed.length, chunkCount: chunks.length, byteSize: totalBytes };
+    const manifest = {
+      version: DATASET_MANIFEST_VERSION, datasetId, executionId, variableName,
+      createdAt: now, updatedAt: now, rowCount: totalRows, chunkCount: chunks.length,
+      byteSize: totalBytes, chunks,
+    };
+    const datasetRef: DatasetRef = {
+      kind: "dataset", datasetId, executionId, variableName,
+      rowCount: totalRows, chunkCount: chunks.length, byteSize: totalBytes,
+    };
+
     post({ kind: "result", jobId, output: { manifest, datasetRef } });
-  } catch (err) { post({ kind: "error", jobId, error: String(err) }); }
+  } catch (err) {
+    post({ kind: "error", jobId, error: String(err) });
+  }
 };
-export {};
