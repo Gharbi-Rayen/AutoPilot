@@ -1,6 +1,11 @@
 "use client";
 
-import { FolderOpenIcon, HistoryIcon, Loader2Icon, SettingsIcon } from "lucide-react";
+import {
+  FolderOpenIcon,
+  HistoryIcon,
+  Loader2Icon,
+  SettingsIcon,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -47,10 +52,10 @@ export const AppSidebar = () => {
           >
             <Link href="/workflows" prefetch>
               <Image
-                src="/logos/logoTT.png"
+                src="/logos/logoTT.jpg"
                 alt="AutoPilot"
-                width={90}
-                height={32}
+                width={32}
+                height={22}
                 className="object-contain"
                 priority
               />
