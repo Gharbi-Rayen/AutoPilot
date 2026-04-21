@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const OPERATORS = [
@@ -211,7 +212,7 @@ export const CsvTransformDialog = ({
                     <FormItem>
                       <FormLabel>Source Variable</FormLabel>
                       <FormControl>
-                        <Input placeholder="csvRecords" {...field} />
+                        <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="csvRecords" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

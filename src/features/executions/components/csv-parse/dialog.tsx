@@ -23,6 +23,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 
 const formSchema = z.object({
   csvVariable: z
@@ -46,6 +47,7 @@ interface CsvParseDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvParseFormValues) => void;
   defaultValues?: Partial<CsvParseFormValues>;
+  nodeId: string;
 }
 
 export const CsvParseDialog = ({
@@ -53,6 +55,7 @@ export const CsvParseDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvParseDialogProps) => {
   const form = useForm<CsvParseFormValues>({
     resolver: zodResolver(formSchema),
@@ -102,7 +105,7 @@ export const CsvParseDialog = ({
                   <FormItem>
                     <FormLabel>Source CSV Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="csvFile" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="csvFile" />
                     </FormControl>
                     <FormDescription>
                       Reference to CSV file or data from previous node

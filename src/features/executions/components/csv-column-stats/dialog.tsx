@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const formSchema = z.object({
@@ -104,7 +105,7 @@ export const CsvColumnStatsDialog = ({
                   <FormItem>
                     <FormLabel>Source Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="csvRecords" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="csvRecords" />
                     </FormControl>
                     <FormDescription>Input records to analyze</FormDescription>
                     <FormMessage />

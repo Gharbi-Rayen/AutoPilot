@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const keepModes = ["first", "last"] as const;
@@ -135,7 +136,7 @@ export const CsvDeduplicateDialog = ({
                   <FormItem>
                     <FormLabel>Source Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="csvRecords" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="csvRecords" />
                     </FormControl>
                     <FormDescription>Records to deduplicate</FormDescription>
                     <FormMessage />

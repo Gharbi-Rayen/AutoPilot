@@ -1155,7 +1155,7 @@ export const WorkflowProgressPanel = ({
 
                           <span
                             className={cn(
-                              "w-[94px] shrink-0 truncate text-[11px]",
+                              "w-[72px] shrink-0 truncate text-[11px]",
                               isSelected
                                 ? "font-medium text-foreground"
                                 : "text-muted-foreground",
@@ -1163,6 +1163,12 @@ export const WorkflowProgressPanel = ({
                           >
                             {node.label}
                           </span>
+
+                          {typeof node.data?.variableName === "string" && (
+                            <span className="shrink-0 max-w-[60px] truncate rounded bg-muted px-1 py-0.5 font-mono text-[9px] text-muted-foreground">
+                              {node.data.variableName}
+                            </span>
+                          )}
 
                           <div className="relative h-[11px] flex-1">
                             {isLoading ? (

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const formSchema = z.object({
@@ -125,7 +126,7 @@ export const CsvCompareDialog = ({
                   <FormItem>
                     <FormLabel>Left Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="baselineData" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="baselineData" />
                     </FormControl>
                     <FormDescription>
                       Baseline dataset to compare from
@@ -142,7 +143,7 @@ export const CsvCompareDialog = ({
                   <FormItem>
                     <FormLabel>Right Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="incomingData" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="incomingData" />
                     </FormControl>
                     <FormDescription>
                       New dataset to compare against

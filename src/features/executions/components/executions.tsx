@@ -1,30 +1,40 @@
 "use client";
 
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   CheckCircle2Icon,
   CircleDotIcon,
   Clock3Icon,
   Loader2Icon,
+  SlidersHorizontalIcon,
   XCircleIcon,
+  XIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import {
   EmptyView,
   EntityContainer,
-  EntityHeader,
   EntityPagination,
   EntitySearch,
   ErrorView,
   LoadingView,
 } from "@/components/entity-components";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useEntitySearch } from "@/hooks/use-entity-search";
 import { cn } from "@/lib/utils";
 import { useSuspenseExecutions } from "../hooks/use-executions";
@@ -78,6 +88,130 @@ export const ExecutionsSearch = () => {
   );
 };
 
+export const ExecutionsFilters = () => {
+  const [params, setParams] = useExecutionsParams();
+  const [open, setOpen] = useState(false);
+
+  const activeCount = [
+    Boolean(params.dateFrom),
+    Boolean(params.dateTo),
+    params.durationMin != null,
+    params.durationMax != null,
+  ].filter(Boolean).length;
+
+  const clearFilters = () => {
+    setParams({ ...params, dateFrom: "", dateTo: "", durationMin: null, durationMax: null, page: 1 });
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="relative gap-2">
+          <SlidersHorizontalIcon className="size-3.5" />
+          Filter
+          {activeCount > 0 && (
+            <Badge className="absolute -top-1.5 -right-1.5 size-4 flex items-center justify-center p-0 text-[10px]">
+              {activeCount}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-72 space-y-4 p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Filters</span>
+          {activeCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilters}
+              className="h-7 gap-1 text-xs text-muted-foreground"
+            >
+              <XIcon className="size-3" />
+              Clear all
+            </Button>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Date range
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="exec-date-from" className="text-xs">From</Label>
+              <Input
+                id="exec-date-from"
+                type="date"
+                value={params.dateFrom}
+                onChange={(e) =>
+                  setParams({ ...params, dateFrom: e.target.value, page: 1 })
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="exec-date-to" className="text-xs">To</Label>
+              <Input
+                id="exec-date-to"
+                type="date"
+                value={params.dateTo}
+                onChange={(e) =>
+                  setParams({ ...params, dateTo: e.target.value, page: 1 })
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            Duration (seconds)
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="exec-dur-min" className="text-xs">Min</Label>
+              <Input
+                id="exec-dur-min"
+                type="number"
+                min={0}
+                placeholder="0"
+                value={params.durationMin ?? ""}
+                onChange={(e) =>
+                  setParams({
+                    ...params,
+                    durationMin: e.target.value ? Number(e.target.value) : null,
+                    page: 1,
+                  })
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="exec-dur-max" className="text-xs">Max</Label>
+              <Input
+                id="exec-dur-max"
+                type="number"
+                min={0}
+                placeholder="∞"
+                value={params.durationMax ?? ""}
+                onChange={(e) =>
+                  setParams({
+                    ...params,
+                    durationMax: e.target.value ? Number(e.target.value) : null,
+                    page: 1,
+                  })
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 export const ExecutionsList = () => {
   const executions = useSuspenseExecutions();
 
@@ -86,7 +220,7 @@ export const ExecutionsList = () => {
   }
 
   return (
-    <div className="flex flex-col gap-y-4">
+    <div className="flex flex-col gap-y-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-200">
       {executions.data.items.map((execution) => (
         <ExecutionItem key={execution.id} data={execution} />
       ))}
@@ -96,11 +230,14 @@ export const ExecutionsList = () => {
 
 export const ExecutionsHeader = () => {
   return (
-    <EntityHeader
-      title="Execution History"
-      description="View the history of your workflow executions"
-      newButtonLabel=""
-    />
+    <div className="flex flex-row items-center justify-between gap-x-4">
+      <div className="flex flex-col">
+        <h1 className="text-lg md:text-xl font-semibold">Execution History</h1>
+        <p className="text-xs md:text-sm text-muted-foreground">
+          View the history of your workflow executions
+        </p>
+      </div>
+    </div>
   );
 };
 
@@ -126,7 +263,12 @@ export const ExecutionsContainer = ({
   return (
     <EntityContainer
       header={<ExecutionsHeader />}
-      search={<ExecutionsSearch />}
+      search={
+        <div className="flex items-center gap-2">
+          <ExecutionsSearch />
+          <ExecutionsFilters />
+        </div>
+      }
       pagination={<ExecutionsPagination />}
     >
       {children}
@@ -159,45 +301,38 @@ type ExecutionItemData = {
 };
 
 const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
-  const statusKey = data.status;
-  const config = statusConfig[statusKey] ?? statusConfig.FAILED;
+  const config = statusConfig[data.status] ?? statusConfig.FAILED;
   const StatusIcon = config.icon;
 
   return (
     <Link href={`/executions/detail?id=${data.id}`} prefetch>
-      <Card className="p-4 shadow-none hover:shadow cursor-pointer transition-all duration-150">
+      <Card className="p-4 shadow-none hover:shadow-sm cursor-pointer transition-all duration-200 hover:-translate-y-px">
         <CardContent className="flex flex-row items-center gap-4 p-0">
-          {/* Far-left: time ago */}
-          <div className="flex flex-col items-center justify-center min-w-[72px] text-center shrink-0">
-            <span className="text-xs font-medium text-muted-foreground leading-tight">
-              {formatDistanceToNow(new Date(data.startedAt), { addSuffix: false })}
-            </span>
-            <span className="text-[10px] text-muted-foreground/60">ago</span>
+          <div className="flex items-center justify-center size-8 shrink-0">
+            <CircleDotIcon className="size-5 text-muted-foreground" />
           </div>
 
-          {/* Divider */}
-          <div className="w-px h-8 bg-border shrink-0" />
-
-          {/* Icon + title */}
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className="flex items-center justify-center size-8 shrink-0">
-              <CircleDotIcon className="size-5 text-muted-foreground" />
-            </div>
-            <div className="min-w-0">
-              <CardTitle className="text-base font-medium truncate">
-                {data.workflowName ?? data.workflowId}
-              </CardTitle>
-              {data.completedAt && (
-                <CardDescription className="text-xs">
-                  Finished{" "}
-                  {formatDistanceToNow(new Date(data.completedAt), { addSuffix: true })}
-                </CardDescription>
-              )}
-            </div>
+          <div className="min-w-0 flex-1">
+            <CardTitle className="text-base font-medium truncate">
+              {data.workflowName ?? data.workflowId}
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                {format(new Date(data.startedAt), "yyyy/MM/dd")}
+              </span>
+            </CardTitle>
+            {data.completedAt && (
+              <CardDescription className="text-xs">
+                Finished{" "}
+                {formatDistanceToNow(new Date(data.completedAt), {
+                  addSuffix: true,
+                })}
+              </CardDescription>
+            )}
           </div>
 
-          {/* Status badge */}
-          <Badge variant="outline" className={cn("gap-1 shrink-0", config.className)}>
+          <Badge
+            variant="outline"
+            className={cn("gap-1 shrink-0", config.className)}
+          >
             <StatusIcon className={cn("size-3", config.iconClassName)} />
             {config.label}
           </Badge>

@@ -9,4 +9,8 @@ export const executionsParams = {
     .withDefault(PAGINATION.DEFAULT_PAGE_SIZE)
     .withOptions({ clearOnDefault: true }),
   search: parseAsString.withDefault("").withOptions({ clearOnDefault: true }),
+  dateFrom: parseAsString.withDefault("").withOptions({ clearOnDefault: true }),
+  dateTo: parseAsString.withDefault("").withOptions({ clearOnDefault: true }),
+  durationMin: parseAsInteger,
+  durationMax: parseAsInteger,
 };

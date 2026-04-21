@@ -3,6 +3,7 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { db } from "@/lib/db";
 import { readDataset, readDatasetPage } from "@/lib/opfs";
+import { useExecutionsParams } from "./use-executions-params";
 
 // ─── Query keys ───────────────────────────────────────────────────────────────
 
@@ -26,22 +27,62 @@ async function fetchExecutions(params: {
   page?: number;
   pageSize?: number;
   workflowId?: string;
+  search?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  durationMin?: number | null;
+  durationMax?: number | null;
 }) {
-  const { page = 1, pageSize = 10, workflowId } = params;
-  let all = await db.executions.orderBy("startedAt").reverse().toArray();
-  if (workflowId) all = all.filter((e) => e.workflowId === workflowId);
-  const totalCount = all.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const pageItems = all.slice((page - 1) * pageSize, page * pageSize);
+  const {
+    page = 1,
+    pageSize = 10,
+    workflowId,
+    search = "",
+    dateFrom = "",
+    dateTo = "",
+    durationMin,
+    durationMax,
+  } = params;
 
-  // Join workflow names
-  const workflowIds = [...new Set(pageItems.map((e) => e.workflowId))];
-  const workflows = await db.workflows.bulkGet(workflowIds);
-  const nameMap = new Map(workflows.map((w) => [w?.id, w?.name]));
-  const items = pageItems.map((e) => ({
+  let all = await db.executions.orderBy("startedAt").reverse().toArray();
+
+  if (workflowId) all = all.filter((e) => e.workflowId === workflowId);
+  if (dateFrom) all = all.filter((e) => e.startedAt >= dateFrom);
+  if (dateTo) {
+    const toEnd = `${dateTo}T23:59:59.999Z`;
+    all = all.filter((e) => e.startedAt <= toEnd);
+  }
+  if (durationMin != null || durationMax != null) {
+    all = all.filter((e) => {
+      if (!e.completedAt) return false;
+      const durSec =
+        (new Date(e.completedAt).getTime() - new Date(e.startedAt).getTime()) / 1000;
+      if (durationMin != null && durSec < durationMin) return false;
+      if (durationMax != null && durSec > durationMax) return false;
+      return true;
+    });
+  }
+
+  // Join workflow names for all filtered items (needed for search)
+  const allWorkflowIds = [...new Set(all.map((e) => e.workflowId))];
+  const allWorkflows = await db.workflows.bulkGet(allWorkflowIds);
+  const nameMap = new Map(allWorkflows.map((w) => [w?.id, w?.name]));
+
+  let withNames = all.map((e) => ({
     ...e,
     workflowName: nameMap.get(e.workflowId) ?? e.workflowId,
   }));
+
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    withNames = withNames.filter((e) =>
+      (e.workflowName ?? "").toLowerCase().includes(q),
+    );
+  }
+
+  const totalCount = withNames.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const items = withNames.slice((page - 1) * pageSize, page * pageSize);
 
   return { items, page, pageSize, totalCount, totalPages };
 }
@@ -83,9 +124,19 @@ async function fetchDatasetPage(
 // ─── Hooks ────────────────────────────────────────────────────────────────────
 
 export const useSuspenseExecutions = () => {
+  const [params] = useExecutionsParams();
   return useSuspenseQuery({
-    queryKey: executionKeys.list({}),
-    queryFn: () => fetchExecutions({}),
+    queryKey: executionKeys.list(params),
+    queryFn: () =>
+      fetchExecutions({
+        page: params.page,
+        pageSize: params.pageSize,
+        search: params.search,
+        dateFrom: params.dateFrom,
+        dateTo: params.dateTo,
+        durationMin: params.durationMin,
+        durationMax: params.durationMax,
+      }),
   });
 };
 
@@ -124,7 +175,6 @@ export const useExecutionDatasetMeta = (
         .filter((d) => d.variableName === variable)
         .first();
       if (!dataset) return null;
-      // Flatten manifest fields for easy access by components
       return {
         ...dataset,
         rowCount: dataset.manifest.rowCount,

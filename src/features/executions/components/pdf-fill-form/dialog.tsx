@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 
 const formSchema = z.object({
   pdfVariable: z
@@ -52,6 +53,7 @@ interface PdfFillFormDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: PdfFillFormFormValues) => void;
   defaultValues?: Partial<PdfFillFormFormValues>;
+  nodeId: string;
 }
 
 export const PdfFillFormDialog = ({
@@ -59,6 +61,7 @@ export const PdfFillFormDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: PdfFillFormDialogProps) => {
   const form = useForm<PdfFillFormFormValues>({
     resolver: zodResolver(formSchema),
@@ -112,7 +115,7 @@ export const PdfFillFormDialog = ({
                   <FormItem>
                     <FormLabel>Source PDF Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="pdfTemplate" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="pdfTemplate" />
                     </FormControl>
                     <FormDescription>
                       PDF variable containing an AcroForm template
@@ -129,7 +132,7 @@ export const PdfFillFormDialog = ({
                   <FormItem>
                     <FormLabel>Form Data Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="invoiceFormData" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="invoiceFormData" />
                     </FormControl>
                     <FormDescription>
                       Variable containing key/value fields to inject into the

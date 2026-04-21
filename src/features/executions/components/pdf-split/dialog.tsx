@@ -23,6 +23,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 
 const formSchema = z.object({
   pdfVariable: z
@@ -46,6 +47,7 @@ interface PdfSplitDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: PdfSplitFormValues) => void;
   defaultValues?: Partial<PdfSplitFormValues>;
+  nodeId: string;
 }
 
 export const PdfSplitDialog = ({
@@ -53,6 +55,7 @@ export const PdfSplitDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: PdfSplitDialogProps) => {
   const form = useForm<PdfSplitFormValues>({
     resolver: zodResolver(formSchema),
@@ -102,7 +105,7 @@ export const PdfSplitDialog = ({
                   <FormItem>
                     <FormLabel>Source PDF Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="pdfFile" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="pdfFile" />
                     </FormControl>
                     <FormDescription>
                       PDF variable to split into multiple files

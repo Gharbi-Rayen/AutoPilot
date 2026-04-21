@@ -23,6 +23,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 
 const formSchema = z.object({
   pdfVariables: z
@@ -45,6 +46,7 @@ interface PdfMergeDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: PdfMergeFormValues) => void;
   defaultValues?: Partial<PdfMergeFormValues>;
+  nodeId: string;
 }
 
 export const PdfMergeDialog = ({
@@ -52,6 +54,7 @@ export const PdfMergeDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: PdfMergeDialogProps) => {
   const form = useForm<PdfMergeFormValues>({
     resolver: zodResolver(formSchema),
@@ -99,10 +102,7 @@ export const PdfMergeDialog = ({
                   <FormItem>
                     <FormLabel>PDF Variables</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder="coverPdf,reportPdf,appendixPdf"
-                        {...field}
-                      />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="coverPdf,reportPdf,appendixPdf" mode="multi" />
                     </FormControl>
                     <FormDescription>
                       Comma-separated list of PDF file variables to merge in

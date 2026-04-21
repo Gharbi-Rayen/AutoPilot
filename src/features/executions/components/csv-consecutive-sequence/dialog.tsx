@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const comparisonModes = [
@@ -170,7 +171,7 @@ export const CsvConsecutiveSequenceDialog = ({
                   <FormItem>
                     <FormLabel>Source Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="parsedNumbers" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="parsedNumbers" />
                     </FormControl>
                     <FormDescription>
                       Parsed CSV output table from an upstream CSV node

@@ -23,6 +23,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 
 const formSchema = z.object({
   pdfVariable: z
@@ -51,6 +52,7 @@ interface PdfSignDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: PdfSignFormValues) => void;
   defaultValues?: Partial<PdfSignFormValues>;
+  nodeId: string;
 }
 
 export const PdfSignDialog = ({
@@ -58,6 +60,7 @@ export const PdfSignDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: PdfSignDialogProps) => {
   const form = useForm<PdfSignFormValues>({
     resolver: zodResolver(formSchema),
@@ -115,7 +118,7 @@ export const PdfSignDialog = ({
                   <FormItem>
                     <FormLabel>Source PDF Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="generatedContractPdf" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="generatedContractPdf" />
                     </FormControl>
                     <FormDescription>PDF variable to sign</FormDescription>
                     <FormMessage />
@@ -130,7 +133,7 @@ export const PdfSignDialog = ({
                   <FormItem>
                     <FormLabel>Certificate Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="signingCertificate" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="signingCertificate" />
                     </FormControl>
                     <FormDescription>
                       Variable containing your signing certificate file

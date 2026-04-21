@@ -23,6 +23,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 
 const formSchema = z.object({
   pdfVariable: z
@@ -45,6 +46,7 @@ interface PdfExtractTextDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: PdfExtractTextFormValues) => void;
   defaultValues?: Partial<PdfExtractTextFormValues>;
+  nodeId: string;
 }
 
 export const PdfExtractTextDialog = ({
@@ -52,6 +54,7 @@ export const PdfExtractTextDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: PdfExtractTextDialogProps) => {
   const form = useForm<PdfExtractTextFormValues>({
     resolver: zodResolver(formSchema),
@@ -99,7 +102,7 @@ export const PdfExtractTextDialog = ({
                   <FormItem>
                     <FormLabel>Source PDF Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="pdfFile" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="pdfFile" />
                     </FormControl>
                     <FormDescription>
                       Reference to PDF file object from previous node(e.g.,

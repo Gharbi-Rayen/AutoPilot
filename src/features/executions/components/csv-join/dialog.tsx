@@ -37,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
+import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
 
 const formSchemaBase = z.object({
@@ -270,7 +271,7 @@ export const CsvJoinDialog = ({
                   <FormItem>
                     <FormLabel>Left Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="customersData" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="customersData" />
                     </FormControl>
                     <FormDescription>Primary dataset records</FormDescription>
                     <FormMessage />
@@ -285,7 +286,7 @@ export const CsvJoinDialog = ({
                   <FormItem>
                     <FormLabel>Right Variable</FormLabel>
                     <FormControl>
-                      <Input placeholder="ordersData" {...field} />
+                      <SourceVariableInput nodeId={nodeId} value={field.value} onValueChange={field.onChange} placeholder="ordersData" />
                     </FormControl>
                     <FormDescription>
                       Dataset to merge with left
