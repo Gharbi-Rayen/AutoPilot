@@ -267,7 +267,7 @@ const TraceStatusIcon = ({
   if (status === "error")
     return <XCircleIcon className={cn("block shrink-0", colorMap.error)} size={size} />;
   if (status === "loading")
-    return <Loader2Icon className={cn("block shrink-0 animate-spin", colorMap.loading)} size={size} />;
+    return <Loader2Icon className={cn("block shrink-0 translate-y-px animate-spin", colorMap.loading)} size={size} />;
   return <Clock3Icon className={cn("block shrink-0", colorMap.initial)} size={size} />;
 };
 
@@ -1155,18 +1155,19 @@ export const WorkflowProgressPanel = ({
                               : "border-l-2 border-l-transparent hover:bg-accent/50",
                           )}
                         >
-                          <TraceStatusIcon status={visualStatus} size={14} />
-
-                          <span
-                            className={cn(
-                              "w-[72px] shrink-0 translate-y-px truncate text-[11px] leading-none",
-                              isSelected
-                                ? "font-medium text-foreground"
-                                : "text-muted-foreground",
-                            )}
-                          >
-                            {node.label}
-                          </span>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <TraceStatusIcon status={visualStatus} size={14} />
+                            <span
+                              className={cn(
+                                "w-[72px] truncate text-[11px]",
+                                isSelected
+                                  ? "font-medium text-foreground"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {node.label}
+                            </span>
+                          </div>
 
                           {typeof node.data?.variableName === "string" && (
                             <span className="shrink-0 max-w-[60px] truncate rounded bg-muted px-1 py-0.5 font-mono text-[9px] text-muted-foreground">
@@ -1231,7 +1232,7 @@ export const WorkflowProgressPanel = ({
                 <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
                   <div className="flex min-w-0 items-center gap-2">
                     <TraceStatusIcon status={inspectorStatus} size={16} />
-                    <span className="translate-y-px truncate text-[13px] font-medium leading-none text-foreground">
+                    <span className="truncate text-[13px] font-medium text-foreground">
                       {inspectorName}
                     </span>
                   </div>

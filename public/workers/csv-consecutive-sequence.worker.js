@@ -1759,7 +1759,6 @@ self.onmessage = async (event) => {
     comparisonMode = "integer-step",
     comparisonStep = 1,
     minimumSequenceLength = 1,
-    // legacy field names
     sequenceField,
     groupByField,
     executionId,
@@ -1784,153 +1783,46 @@ self.onmessage = async (event) => {
     if (!resolvedField) throw new Error("csv-consecutive-sequence: no analysis column configured.");
     if (!inputRef?.datasetId) throw new Error("csv-consecutive-sequence: no dataset in context.");
     const groupFields = resolvedGroupBy.split(",").map((s) => s.trim()).filter(Boolean);
-    post({ kind: "progress", jobId, progress: 5, message: "Building index..." });
-    const capacity = inputRef.rowCount;
-    const taGroupIds = new Int32Array(capacity);
-    const taVals = new Float64Array(capacity);
-    const taChunkIdxs = new Int32Array(capacity);
-    const taRowIdxs = new Int32Array(capacity);
-    const groupKeyMap = /* @__PURE__ */ new Map();
-    const groupKeyNames = [];
-    let indexLen = 0;
+    post({ kind: "progress", jobId, progress: 5, message: "Analyzing sequences..." });
+    const runMap = /* @__PURE__ */ new Map();
+    const summaryRows = [];
+    const flushRun = (gk) => {
+      const run = runMap.get(gk);
+      if (!run) return;
+      runMap.delete(gk);
+      if (run.length < minSeqLen) return;
+      const row = {
+        sequence_start: run.start,
+        sequence_end: run.end,
+        sequence_length: run.length
+      };
+      if (groupFields.length > 0 && gk !== "__all__") row.group = gk;
+      summaryRows.push(row);
+    };
     for (let c = 0; c < inputRef.chunkCount; c++) {
       const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
       for (let r = 0; r < chunk.length; r++) {
         const row = chunk[r];
         const gk = groupFields.length > 0 ? groupFields.map((f) => String(row[f] ?? "")).join("|") : "__all__";
-        let gid = groupKeyMap.get(gk);
-        if (gid === void 0) {
-          gid = groupKeyNames.length;
-          groupKeyMap.set(gk, gid);
-          groupKeyNames.push(gk);
-        }
         const val = toVal2(row);
-        if (!Number.isNaN(val)) {
-          taGroupIds[indexLen] = gid;
-          taVals[indexLen] = val;
-          taChunkIdxs[indexLen] = c;
-          taRowIdxs[indexLen] = r;
-          indexLen++;
+        if (Number.isNaN(val)) continue;
+        const run = runMap.get(gk);
+        if (run && Math.abs(val - (run.prevVal + step)) < 1e-9) {
+          run.end = val;
+          run.length++;
+          run.prevVal = val;
+        } else {
+          if (run) flushRun(gk);
+          runMap.set(gk, { start: val, end: val, length: 1, prevVal: val });
         }
       }
-      const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 45);
-      post({ kind: "progress", jobId, progress: pct, message: `Indexed ${indexLen.toLocaleString()} rows...` });
+      const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 85);
+      post({ kind: "progress", jobId, progress: pct, message: `Analyzed ${c + 1} / ${inputRef.chunkCount} chunks...` });
     }
-    post({ kind: "progress", jobId, progress: 52, message: "Sorting..." });
-    const order = new Int32Array(indexLen);
-    for (let i = 0; i < indexLen; i++) order[i] = i;
-    order.sort((a, b) => {
-      const gd = taGroupIds[a] - taGroupIds[b];
-      return gd !== 0 ? gd : taVals[a] - taVals[b];
-    });
-    post({ kind: "progress", jobId, progress: 58, message: "Analyzing sequences..." });
-    const outSortedPos = [];
-    const outOrigIdx = [];
-    const outSeqVal = [];
-    const outPrevVal = [];
-    const outGapSize = [];
-    const outHasGap = [];
-    const outIsConsec = [];
-    const outGroupId = [];
-    let sortedPos = 0;
-    let gi = 0;
-    while (gi < indexLen) {
-      const currentGid = taGroupIds[order[gi]];
-      let gEnd = gi;
-      while (gEnd < indexLen && taGroupIds[order[gEnd]] === currentGid) gEnd++;
-      const groupEntries = [];
-      for (let k = gi; k < gEnd; k++) {
-        const idx = order[k];
-        const curr = taVals[idx];
-        const prev = k > gi ? taVals[order[k - 1]] : null;
-        const expectedGap = prev !== null ? prev + step : null;
-        const isConsecutive = expectedGap !== null && Math.abs(curr - expectedGap) < 1e-9;
-        const gapSize = prev !== null ? curr - prev - step : 0;
-        groupEntries.push({
-          origIdx: idx,
-          isConsecutive,
-          seqVal: curr,
-          prevVal: prev,
-          gapSize: Math.max(0, gapSize),
-          hasGap: gapSize > 1e-9
-        });
-      }
-      if (minSeqLen > 1) {
-        let runStart2 = 0;
-        for (let k = 0; k <= groupEntries.length; k++) {
-          const endOfRun = k === groupEntries.length || !groupEntries[k].isConsecutive;
-          if (endOfRun) {
-            const runLen = k - runStart2;
-            if (runLen >= minSeqLen) {
-              for (let m = runStart2; m < k; m++) {
-                const e = groupEntries[m];
-                outSortedPos.push(sortedPos++);
-                outOrigIdx.push(e.origIdx);
-                outSeqVal.push(e.seqVal);
-                outPrevVal.push(e.prevVal);
-                outGapSize.push(e.gapSize);
-                outHasGap.push(e.hasGap);
-                outIsConsec.push(e.isConsecutive);
-                outGroupId.push(currentGid);
-              }
-            }
-            runStart2 = k;
-          }
-        }
-      } else {
-        for (const e of groupEntries) {
-          outSortedPos.push(sortedPos++);
-          outOrigIdx.push(e.origIdx);
-          outSeqVal.push(e.seqVal);
-          outPrevVal.push(e.prevVal);
-          outGapSize.push(e.gapSize);
-          outHasGap.push(e.hasGap);
-          outIsConsec.push(e.isConsecutive);
-          outGroupId.push(currentGid);
-        }
-      }
-      gi = gEnd;
+    for (const gk of [...runMap.keys()]) {
+      flushRun(gk);
     }
-    order.fill(0);
-    post({ kind: "progress", jobId, progress: 65, message: "Building sequence summaries..." });
-    const summaryRows = [];
-    let runStart = null;
-    let runEnd = null;
-    let runLength = 0;
-    let runGroupId = -1;
-    const flushRun = () => {
-      if (runStart === null) return;
-      const row = {
-        sequence_start: runStart,
-        sequence_end: runEnd,
-        sequence_length: runLength
-      };
-      if (groupFields.length > 0) {
-        const gk = groupKeyNames[runGroupId];
-        if (gk && gk !== "__all__") row.group = gk;
-      }
-      summaryRows.push(row);
-      runStart = null;
-      runEnd = null;
-      runLength = 0;
-    };
-    for (let i = 0; i < outSeqVal.length; i++) {
-      const val = outSeqVal[i];
-      const isConsec = outIsConsec[i];
-      const gid = outGroupId[i];
-      if (!isConsec) {
-        flushRun();
-        runStart = val;
-        runEnd = val;
-        runLength = 1;
-        runGroupId = gid;
-      } else {
-        runEnd = val;
-        runLength++;
-      }
-    }
-    flushRun();
-    post({ kind: "progress", jobId, progress: 82, message: "Writing results..." });
+    post({ kind: "progress", jobId, progress: 92, message: "Writing results..." });
     const datasetId = createId();
     const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, summaryRows, chunkSize);
     const createdAt = (/* @__PURE__ */ new Date()).toISOString();
