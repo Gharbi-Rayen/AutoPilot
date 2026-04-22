@@ -263,26 +263,12 @@ const TraceStatusIcon = ({
     initial: "text-zinc-400",
   };
   if (status === "success")
-    return (
-      <CheckCircle2Icon
-        className={cn("shrink-0", colorMap.success)}
-        size={size}
-      />
-    );
+    return <CheckCircle2Icon className={cn("block shrink-0", colorMap.success)} size={size} />;
   if (status === "error")
-    return (
-      <XCircleIcon className={cn("shrink-0", colorMap.error)} size={size} />
-    );
+    return <XCircleIcon className={cn("block shrink-0", colorMap.error)} size={size} />;
   if (status === "loading")
-    return (
-      <Loader2Icon
-        className={cn("shrink-0 animate-spin", colorMap.loading)}
-        size={size}
-      />
-    );
-  return (
-    <Clock3Icon className={cn("shrink-0", colorMap.initial)} size={size} />
-  );
+    return <Loader2Icon className={cn("block shrink-0 animate-spin", colorMap.loading)} size={size} />;
+  return <Clock3Icon className={cn("block shrink-0", colorMap.initial)} size={size} />;
 };
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -1173,7 +1159,7 @@ export const WorkflowProgressPanel = ({
 
                           <span
                             className={cn(
-                              "w-[72px] shrink-0 truncate text-[11px] leading-none",
+                              "w-[72px] shrink-0 translate-y-px truncate text-[11px] leading-none",
                               isSelected
                                 ? "font-medium text-foreground"
                                 : "text-muted-foreground",
@@ -1245,7 +1231,7 @@ export const WorkflowProgressPanel = ({
                 <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
                   <div className="flex min-w-0 items-center gap-2">
                     <TraceStatusIcon status={inspectorStatus} size={16} />
-                    <span className="truncate text-[13px] font-medium leading-none text-foreground">
+                    <span className="translate-y-px truncate text-[13px] font-medium leading-none text-foreground">
                       {inspectorName}
                     </span>
                   </div>
