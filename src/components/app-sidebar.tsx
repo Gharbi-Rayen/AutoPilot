@@ -52,7 +52,7 @@ export const AppSidebar = () => {
           >
             <Link href="/workflows" prefetch>
               <Image
-                src="/logos/logoTT.jpg"
+                src="/logos/logoTT.png"
                 alt="AutoPilot"
                 width={32}
                 height={22}
