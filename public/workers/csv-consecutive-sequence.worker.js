@@ -1856,13 +1856,13 @@ self.onmessage = async (event) => {
         });
       }
       if (minSeqLen > 1) {
-        let runStart = 0;
+        let runStart2 = 0;
         for (let k = 0; k <= groupEntries.length; k++) {
           const endOfRun = k === groupEntries.length || !groupEntries[k].isConsecutive;
           if (endOfRun) {
-            const runLen = k - runStart;
+            const runLen = k - runStart2;
             if (runLen >= minSeqLen) {
-              for (let m = runStart; m < k; m++) {
+              for (let m = runStart2; m < k; m++) {
                 const e = groupEntries[m];
                 outSortedPos.push(sortedPos++);
                 outOrigIdx.push(e.origIdx);
@@ -1874,7 +1874,7 @@ self.onmessage = async (event) => {
                 outGroupId.push(currentGid);
               }
             }
-            runStart = k;
+            runStart2 = k;
           }
         }
       } else {
@@ -1892,55 +1892,56 @@ self.onmessage = async (event) => {
       gi = gEnd;
     }
     order.fill(0);
-    post({ kind: "progress", jobId, progress: 65, message: "Fetching result rows..." });
-    const totalOutput = outSortedPos.length;
-    const fetchOrder = Array.from({ length: totalOutput }, (_, i) => i);
-    fetchOrder.sort((a, b) => {
-      const cDiff = taChunkIdxs[outOrigIdx[a]] - taChunkIdxs[outOrigIdx[b]];
-      return cDiff !== 0 ? cDiff : taRowIdxs[outOrigIdx[a]] - taRowIdxs[outOrigIdx[b]];
-    });
-    const resultArr = new Array(totalOutput);
-    let cachedChunkIdx = -1;
-    let cachedChunk = [];
-    for (let fi = 0; fi < totalOutput; fi++) {
-      const qi = fetchOrder[fi];
-      const origIdx = outOrigIdx[qi];
-      const ci = taChunkIdxs[origIdx];
-      const ri = taRowIdxs[origIdx];
-      const sp = outSortedPos[qi];
-      const gk = groupKeyNames[outGroupId[qi]];
-      if (ci !== cachedChunkIdx) {
-        cachedChunkIdx = ci;
-        cachedChunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, ci);
-      }
-      resultArr[sp] = {
-        ...cachedChunk[ri],
-        _sequence_value: outSeqVal[qi],
-        _previous_value: outPrevVal[qi],
-        _gap_size: outGapSize[qi],
-        _has_gap: outHasGap[qi],
-        _is_consecutive: outIsConsec[qi],
-        _group: gk === "__all__" ? void 0 : gk
+    post({ kind: "progress", jobId, progress: 65, message: "Building sequence summaries..." });
+    const summaryRows = [];
+    let runStart = null;
+    let runEnd = null;
+    let runLength = 0;
+    let runGroupId = -1;
+    const flushRun = () => {
+      if (runStart === null) return;
+      const row = {
+        sequence_start: runStart,
+        sequence_end: runEnd,
+        sequence_length: runLength
       };
-      if (fi % 5e4 === 0 && fi > 0) {
-        const pct = Math.round(65 + fi / totalOutput * 15);
-        post({ kind: "progress", jobId, progress: pct, message: `Assembled ${fi.toLocaleString()} / ${totalOutput.toLocaleString()} rows...` });
+      if (groupFields.length > 0) {
+        const gk = groupKeyNames[runGroupId];
+        if (gk && gk !== "__all__") row.group = gk;
+      }
+      summaryRows.push(row);
+      runStart = null;
+      runEnd = null;
+      runLength = 0;
+    };
+    for (let i = 0; i < outSeqVal.length; i++) {
+      const val = outSeqVal[i];
+      const isConsec = outIsConsec[i];
+      const gid = outGroupId[i];
+      if (!isConsec) {
+        flushRun();
+        runStart = val;
+        runEnd = val;
+        runLength = 1;
+        runGroupId = gid;
+      } else {
+        runEnd = val;
+        runLength++;
       }
     }
-    cachedChunk = [];
+    flushRun();
     post({ kind: "progress", jobId, progress: 82, message: "Writing results..." });
     const datasetId = createId();
-    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, resultArr, chunkSize);
-    const gapCount = resultArr.filter((r) => r._has_gap).length;
-    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, summaryRows, chunkSize);
+    const createdAt = (/* @__PURE__ */ new Date()).toISOString();
     const manifest = {
       version: DATASET_MANIFEST_VERSION,
       datasetId,
       executionId,
       variableName,
-      createdAt: now,
-      updatedAt: now,
-      rowCount: resultArr.length,
+      createdAt,
+      updatedAt: createdAt,
+      rowCount: summaryRows.length,
       chunkCount: chunks.length,
       byteSize: totalBytes,
       chunks
@@ -1950,11 +1951,11 @@ self.onmessage = async (event) => {
       datasetId,
       executionId,
       variableName,
-      rowCount: resultArr.length,
+      rowCount: summaryRows.length,
       chunkCount: chunks.length,
       byteSize: totalBytes
     };
-    post({ kind: "result", jobId, output: { manifest, datasetRef, gapCount, totalRows: resultArr.length } });
+    post({ kind: "result", jobId, output: { manifest, datasetRef, totalRows: summaryRows.length } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }

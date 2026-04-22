@@ -7,6 +7,7 @@ import {
   Clock3Icon,
   Loader2Icon,
   SlidersHorizontalIcon,
+  Trash2Icon,
   XCircleIcon,
   XIcon,
 } from "lucide-react";
@@ -37,7 +38,7 @@ import {
 } from "@/components/ui/popover";
 import { useEntitySearch } from "@/hooks/use-entity-search";
 import { cn } from "@/lib/utils";
-import { useSuspenseExecutions } from "../hooks/use-executions";
+import { useRemoveExecution, useSuspenseExecutions } from "../hooks/use-executions";
 import { useExecutionsParams } from "../hooks/use-executions-params";
 
 const statusConfig = {
@@ -303,6 +304,7 @@ type ExecutionItemData = {
 const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
   const config = statusConfig[data.status] ?? statusConfig.FAILED;
   const StatusIcon = config.icon;
+  const remove = useRemoveExecution();
 
   return (
     <Link href={`/executions/detail?id=${data.id}`} prefetch>
@@ -336,6 +338,22 @@ const ExecutionItem = ({ data }: { data: ExecutionItemData }) => {
             <StatusIcon className={cn("size-3", config.iconClassName)} />
             {config.label}
           </Badge>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+            disabled={remove.isPending}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (confirm("Delete this execution and its data?")) {
+                remove.mutate(data.id);
+              }
+            }}
+          >
+            <Trash2Icon className="size-3.5" />
+          </Button>
         </CardContent>
       </Card>
     </Link>

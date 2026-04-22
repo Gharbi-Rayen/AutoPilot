@@ -221,69 +221,59 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
     // (allow GC before allocating result storage)
     order.fill(0);
 
-    // ── Pass 2: fetch rows from OPFS in chunk order, write output ─────────────
-    post({ kind: "progress", jobId, progress: 65, message: "Fetching result rows..." });
+    // ── Pass 2: build run-summary rows from sorted index (no OPFS reads needed)
+    post({ kind: "progress", jobId, progress: 65, message: "Building sequence summaries..." });
 
-    const totalOutput = outSortedPos.length;
+    const summaryRows: DatasetRow[] = [];
+    let runStart: number | null = null;
+    let runEnd: number | null = null;
+    let runLength = 0;
+    let runGroupId = -1;
 
-    // Sort qualifying rows by chunkIdx for sequential OPFS reads
-    const fetchOrder = Array.from({ length: totalOutput }, (_, i) => i);
-    fetchOrder.sort((a, b) => {
-      const cDiff = taChunkIdxs[outOrigIdx[a]] - taChunkIdxs[outOrigIdx[b]];
-      return cDiff !== 0 ? cDiff : taRowIdxs[outOrigIdx[a]] - taRowIdxs[outOrigIdx[b]];
-    });
-
-    // Result buffer keyed by sorted position
-    const resultArr: DatasetRow[] = new Array(totalOutput);
-    let cachedChunkIdx = -1;
-    let cachedChunk: DatasetRow[] = [];
-
-    for (let fi = 0; fi < totalOutput; fi++) {
-      const qi = fetchOrder[fi];
-      const origIdx = outOrigIdx[qi];
-      const ci = taChunkIdxs[origIdx];
-      const ri = taRowIdxs[origIdx];
-      const sp = outSortedPos[qi];
-      const gk = groupKeyNames[outGroupId[qi]];
-
-      if (ci !== cachedChunkIdx) {
-        cachedChunkIdx = ci;
-        cachedChunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, ci);
-      }
-
-      resultArr[sp] = {
-        ...cachedChunk[ri],
-        _sequence_value: outSeqVal[qi],
-        _previous_value: outPrevVal[qi],
-        _gap_size: outGapSize[qi],
-        _has_gap: outHasGap[qi],
-        _is_consecutive: outIsConsec[qi],
-        _group: gk === "__all__" ? undefined : gk,
+    const flushRun = () => {
+      if (runStart === null) return;
+      const row: DatasetRow = {
+        sequence_start: runStart,
+        sequence_end: runEnd as number,
+        sequence_length: runLength,
       };
+      if (groupFields.length > 0) {
+        const gk = groupKeyNames[runGroupId];
+        if (gk && gk !== "__all__") row.group = gk;
+      }
+      summaryRows.push(row);
+      runStart = null; runEnd = null; runLength = 0;
+    };
 
-      if (fi % 50_000 === 0 && fi > 0) {
-        const pct = Math.round(65 + (fi / totalOutput) * 15);
-        post({ kind: "progress", jobId, progress: pct, message: `Assembled ${fi.toLocaleString()} / ${totalOutput.toLocaleString()} rows...` });
+    for (let i = 0; i < outSeqVal.length; i++) {
+      const val = outSeqVal[i];
+      const isConsec = outIsConsec[i];
+      const gid = outGroupId[i];
+      if (!isConsec) {
+        flushRun();
+        runStart = val; runEnd = val; runLength = 1; runGroupId = gid;
+      } else {
+        runEnd = val;
+        runLength++;
       }
     }
-    cachedChunk = [];
+    flushRun();
 
     // ── Write output ──────────────────────────────────────────────────────────
     post({ kind: "progress", jobId, progress: 82, message: "Writing results..." });
 
     const datasetId = createId();
-    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, resultArr, chunkSize);
-    const gapCount = resultArr.filter((r) => r._has_gap).length;
+    const { chunks, totalBytes } = await writeToOPFS(executionId, datasetId, summaryRows, chunkSize);
 
-    const now = new Date().toISOString();
+    const createdAt = new Date().toISOString();
     const manifest = {
       version: DATASET_MANIFEST_VERSION,
       datasetId,
       executionId,
       variableName,
-      createdAt: now,
-      updatedAt: now,
-      rowCount: resultArr.length,
+      createdAt,
+      updatedAt: createdAt,
+      rowCount: summaryRows.length,
       chunkCount: chunks.length,
       byteSize: totalBytes,
       chunks,
@@ -293,12 +283,12 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
       datasetId,
       executionId,
       variableName,
-      rowCount: resultArr.length,
+      rowCount: summaryRows.length,
       chunkCount: chunks.length,
       byteSize: totalBytes,
     };
 
-    post({ kind: "result", jobId, output: { manifest, datasetRef, gapCount, totalRows: resultArr.length } });
+    post({ kind: "result", jobId, output: { manifest, datasetRef, totalRows: summaryRows.length } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }

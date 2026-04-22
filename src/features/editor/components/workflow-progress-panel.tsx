@@ -321,6 +321,14 @@ export const WorkflowProgressPanel = ({
   const executionError = useAtomValue(workflowExecutionErrorAtom);
   const executionResult = useAtomValue(workflowExecutionResultAtom);
 
+  // ── Live clock for timeline (ticks every 500 ms while running) ────────────
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (executionState !== "running") return;
+    const id = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(id);
+  }, [executionState]);
+
   // ── Per-node output (Dexie) ────────────────────────────────────────────────
 
   const nodeOutputQuery = useQuery({
@@ -426,12 +434,11 @@ export const WorkflowProgressPanel = ({
   const timelineMaxMs = useMemo(() => {
     let maxMs = 0;
     for (const t of nodeTimingMap.values()) maxMs = Math.max(maxMs, t.endMs);
-    // When execution is running, also account for the live elapsed time
     if (executionState === "running" && executionStartedAt) {
-      maxMs = Math.max(maxMs, Date.now() - executionStartedAt);
+      maxMs = Math.max(maxMs, now - executionStartedAt);
     }
-    return Math.max(maxMs, 1000); // at least 1 s scale
-  }, [nodeTimingMap, executionState, executionStartedAt]);
+    return Math.max(maxMs, 1000);
+  }, [nodeTimingMap, executionState, executionStartedAt, now]);
 
   const timelineMarkers = useMemo(() => {
     const count = 4;
@@ -1166,7 +1173,7 @@ export const WorkflowProgressPanel = ({
 
                           <span
                             className={cn(
-                              "w-[72px] shrink-0 truncate text-[11px]",
+                              "w-[72px] shrink-0 truncate text-[11px] leading-none",
                               isSelected
                                 ? "font-medium text-foreground"
                                 : "text-muted-foreground",
@@ -1238,7 +1245,7 @@ export const WorkflowProgressPanel = ({
                 <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2.5">
                   <div className="flex min-w-0 items-center gap-2">
                     <TraceStatusIcon status={inspectorStatus} size={16} />
-                    <span className="truncate text-[13px] font-medium text-foreground">
+                    <span className="truncate text-[13px] font-medium leading-none text-foreground">
                       {inspectorName}
                     </span>
                   </div>

@@ -390,6 +390,7 @@ const ExportDatasetDialog = ({
                 checked={segmented}
                 onCheckedChange={setSegmented}
                 disabled={exporting}
+                className="data-[state=unchecked]:bg-zinc-300 dark:data-[state=unchecked]:bg-zinc-600"
               />
             </div>
           </div>

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckIcon, CpuIcon, MemoryStickIcon, ZapIcon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { CheckIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, Trash2Icon, ZapIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { useRemoveAllExecutions } from "@/features/executions/hooks/use-executions";
+import { db } from "@/lib/db";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_PERFORMANCE_SETTINGS,
@@ -259,6 +261,80 @@ export function PerformanceSettingsForm() {
           <span className="text-xs text-muted-foreground">Unsaved changes</span>
         )}
       </div>
+
+      <StorageManagementSection />
     </div>
+  );
+}
+
+function StorageManagementSection() {
+  const [quota, setQuota] = useState<{ usage: number; quota: number } | null>(null);
+  const [execCount, setExecCount] = useState<number | null>(null);
+  const removeAll = useRemoveAllExecutions();
+
+  const loadStats = useCallback(() => {
+    navigator.storage.estimate().then((est) => {
+      setQuota({ usage: est.usage ?? 0, quota: est.quota ?? 0 });
+    });
+    db.executions.count().then(setExecCount);
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  const fmt = (bytes: number) => {
+    if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
+    if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <HardDriveIcon className="size-4 text-muted-foreground" />
+          Storage Management
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Execution data (CSV chunks) is stored in your browser's private file system (OPFS).
+          It is never uploaded anywhere but accumulates over time.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-y-4">
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div className="rounded-lg border bg-muted/40 p-3 flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Browser storage used</span>
+            <span className="font-semibold">
+              {quota ? fmt(quota.usage) : "—"}
+              {quota && quota.quota > 0 && (
+                <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  of {fmt(quota.quota)}
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="rounded-lg border bg-muted/40 p-3 flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Saved executions</span>
+            <span className="font-semibold">{execCount ?? "—"}</span>
+          </div>
+        </div>
+
+        <Button
+          variant="destructive"
+          size="sm"
+          className="w-fit gap-2"
+          disabled={removeAll.isPending || execCount === 0}
+          onClick={() => {
+            if (confirm("Delete all execution data? This cannot be undone.")) {
+              removeAll.mutate(undefined, { onSuccess: loadStats });
+            }
+          }}
+        >
+          <Trash2Icon className="size-3.5" />
+          {removeAll.isPending ? "Clearing..." : "Clear All Execution Data"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

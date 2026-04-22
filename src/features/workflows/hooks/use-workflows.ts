@@ -10,6 +10,7 @@ import { createId } from "@paralleldrive/cuid2";
 import { toast } from "sonner";
 import type { Edge, Node } from "@xyflow/react";
 import { db } from "@/lib/db";
+import { deleteExecutionDatasets } from "@/lib/opfs";
 import { NodeType } from "@/types/node-type";
 import { useWorkflowsParams } from "./use-workflows-params";
 
@@ -130,7 +131,12 @@ export const useRemoveWorkflow = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       const wf = await db.workflows.get(id);
-      await db.transaction("rw", [db.workflows, db.workflowNodes, db.workflowConnections], async () => {
+      const execIds = (await db.executions.where("workflowId").equals(id).primaryKeys()) as string[];
+      await Promise.all(execIds.map(deleteExecutionDatasets));
+      await db.transaction("rw", [db.workflows, db.workflowNodes, db.workflowConnections, db.executions, db.executionNodeOutputs, db.datasets], async () => {
+        await db.executionNodeOutputs.where("executionId").anyOf(execIds).delete();
+        await db.datasets.where("executionId").anyOf(execIds).delete();
+        await db.executions.where("workflowId").equals(id).delete();
         await db.workflowNodes.where("workflowId").equals(id).delete();
         await db.workflowConnections.where("workflowId").equals(id).delete();
         await db.workflows.delete(id);

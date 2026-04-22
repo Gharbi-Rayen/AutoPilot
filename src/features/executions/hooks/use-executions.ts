@@ -1,8 +1,9 @@
 "use client";
 
-import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { db } from "@/lib/db";
-import { readDataset, readDatasetPage } from "@/lib/opfs";
+import { deleteExecutionDatasets, readDataset, readDatasetPage } from "@/lib/opfs";
 import { useExecutionsParams } from "./use-executions-params";
 
 // ─── Query keys ───────────────────────────────────────────────────────────────
@@ -229,3 +230,42 @@ export const useExecutionDatasetPage = (
       pageSize > 0,
     retry: false,
   });
+
+// ─── Mutations ────────────────────────────────────────────────────────────────
+
+export const useRemoveExecution = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await deleteExecutionDatasets(id);
+      await db.transaction("rw", [db.executions, db.executionNodeOutputs, db.datasets], async () => {
+        await db.executionNodeOutputs.where("executionId").equals(id).delete();
+        await db.datasets.where("executionId").equals(id).delete();
+        await db.executions.delete(id);
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: executionKeys.all });
+      toast.success("Execution deleted.");
+    },
+  });
+};
+
+export const useRemoveAllExecutions = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const ids = (await db.executions.toCollection().primaryKeys()) as string[];
+      await Promise.all(ids.map(deleteExecutionDatasets));
+      await db.transaction("rw", [db.executions, db.executionNodeOutputs, db.datasets], async () => {
+        await db.executionNodeOutputs.clear();
+        await db.datasets.clear();
+        await db.executions.clear();
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: executionKeys.all });
+      toast.success("All execution data cleared.");
+    },
+  });
+};
