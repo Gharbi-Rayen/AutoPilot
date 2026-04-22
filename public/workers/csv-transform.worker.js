@@ -1768,46 +1768,110 @@ var ChunkedOPFSWriter = class {
 };
 
 // src/workers/csv-transform.worker.ts
-function applyOp(row, op) {
-  const next = { ...row };
-  switch (op.op) {
-    case "rename": {
-      const v = next[op.from];
-      delete next[op.from];
-      next[op.to] = v;
-      break;
-    }
-    case "remove":
-      delete next[op.field];
-      break;
-    case "set":
-      next[op.field] = op.value;
-      break;
-    case "add": {
+function testRule(row, rule, caseSensitive) {
+  const raw = row[rule.column];
+  let cell = raw == null ? "" : String(raw);
+  let search = rule.searchValue ?? "";
+  if (!caseSensitive && rule.operator !== "regex") {
+    cell = cell.toLowerCase();
+    search = search.toLowerCase();
+  }
+  switch (rule.operator) {
+    case "eq":
+      return cell === search;
+    case "ne":
+      return cell !== search;
+    case "contains":
+      return cell.includes(search);
+    case "not_contains":
+      return !cell.includes(search);
+    case "starts_with":
+      return cell.startsWith(search);
+    case "ends_with":
+      return cell.endsWith(search);
+    case "is_empty":
+      return cell === "";
+    case "is_not_empty":
+      return cell !== "";
+    case "regex":
       try {
-        const fn = new Function(...Object.keys(row), `return ${op.expression}`);
-        next[op.field] = fn(...Object.values(row));
+        return new RegExp(rule.searchValue ?? "").test(String(raw ?? ""));
       } catch {
-        next[op.field] = null;
+        return false;
       }
+    case "gt":
+      return Number(raw) > Number(rule.searchValue);
+    case "gte":
+      return Number(raw) >= Number(rule.searchValue);
+    case "lt":
+      return Number(raw) < Number(rule.searchValue);
+    case "lte":
+      return Number(raw) <= Number(rule.searchValue);
+    default:
+      return false;
+  }
+}
+function applyAction(row, rule) {
+  const next = { ...row };
+  switch (rule.action) {
+    case "replace_value":
+      next[rule.column] = rule.replacement ?? "";
       break;
-    }
+    case "clear_cell":
+      next[rule.column] = "";
+      break;
+    case "set_value":
+      next[rule.targetColumn ?? rule.column] = rule.replacement ?? "";
+      break;
   }
   return next;
 }
+function processRow(row, rules, matchMode, caseSensitive) {
+  if (matchMode === "all") {
+    if (!rules.every((r) => testRule(row, r, caseSensitive))) return row;
+    let result2 = row;
+    for (const r of rules) {
+      if (r.action === "delete_row") return null;
+      result2 = applyAction(result2, r);
+    }
+    return result2;
+  }
+  let result = row;
+  for (const r of rules) {
+    if (!testRule(row, r, caseSensitive)) continue;
+    if (r.action === "delete_row") return null;
+    result = applyAction(result, r);
+  }
+  return result;
+}
 self.onmessage = async (event) => {
   const { jobId, input } = event.data;
-  const { inputRef, operations, executionId, variableName, chunkSize = 1e4 } = input;
+  const {
+    inputRef,
+    rules = [],
+    matchMode = "all",
+    caseSensitive = false,
+    executionId,
+    variableName,
+    chunkSize = 1e4
+  } = input;
   const post = (msg) => self.postMessage(msg);
   try {
     const datasetId = createId();
     const writer = new ChunkedOPFSWriter(executionId, datasetId, chunkSize);
     await writer.init();
+    let totalInputRows = 0;
     for (let c = 0; c < inputRef.chunkCount; c++) {
       const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
-      await writer.write(chunk.map((row) => operations.reduce(applyOp, row)));
+      totalInputRows += chunk.length;
+      const transformed = [];
+      for (const row of chunk) {
+        const out = processRow(row, rules, matchMode, caseSensitive);
+        if (out !== null) transformed.push(out);
+      }
+      await writer.write(transformed);
       const pct = Math.round(10 + (c + 1) / inputRef.chunkCount * 80);
-      post({ kind: "progress", jobId, progress: pct, message: `Transformed ${(c + 1) * chunkSize} rows...` });
+      post({ kind: "progress", jobId, progress: pct, message: `Transformed ${totalInputRows.toLocaleString()} rows...` });
     }
     post({ kind: "progress", jobId, progress: 93, message: "Writing..." });
     const { chunks, totalBytes, totalRows } = await writer.finish();
@@ -1822,6 +1886,7 @@ self.onmessage = async (event) => {
       rowCount: totalRows,
       chunkCount: chunks.length,
       byteSize: totalBytes,
+      schema: inputRef.schema,
       chunks
     };
     const datasetRef = {
@@ -1831,9 +1896,10 @@ self.onmessage = async (event) => {
       variableName,
       rowCount: totalRows,
       chunkCount: chunks.length,
-      byteSize: totalBytes
+      byteSize: totalBytes,
+      schema: inputRef.schema
     };
-    post({ kind: "result", jobId, output: { manifest, datasetRef } });
+    post({ kind: "result", jobId, output: { manifest, datasetRef, transformedCount: totalRows, totalCount: totalInputRows } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }
