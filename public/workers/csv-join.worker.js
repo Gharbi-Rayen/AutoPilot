@@ -1722,7 +1722,8 @@ async function readChunkFromOPFS(executionId, datasetId, chunkIndex) {
 async function readFromOPFS(executionId, datasetId, chunkCount) {
   const rows = [];
   for (let i = 0; i < chunkCount; i++) {
-    rows.push(...await readChunkFromOPFS(executionId, datasetId, i));
+    const chunk = await readChunkFromOPFS(executionId, datasetId, i);
+    for (const row of chunk) rows.push(row);
   }
   return rows;
 }
@@ -1742,7 +1743,7 @@ var ChunkedOPFSWriter = class {
     this.dir = await getDatasetDir(this.executionId, this.datasetId, true);
   }
   async write(rows) {
-    this.buffer.push(...rows);
+    for (const row of rows) this.buffer.push(row);
     while (this.buffer.length >= this.chunkSize) {
       await this._flush(this.buffer.splice(0, this.chunkSize));
     }

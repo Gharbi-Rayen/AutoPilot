@@ -1735,7 +1735,7 @@ var ChunkedOPFSWriter = class {
     this.dir = await getDatasetDir(this.executionId, this.datasetId, true);
   }
   async write(rows) {
-    this.buffer.push(...rows);
+    for (const row of rows) this.buffer.push(row);
     while (this.buffer.length >= this.chunkSize) {
       await this._flush(this.buffer.splice(0, this.chunkSize));
     }
@@ -1769,6 +1769,7 @@ var ChunkedOPFSWriter = class {
 
 // src/workers/csv-sort.worker.ts
 var MERGE_FACTOR = 64;
+var MAX_ROWS_PER_SORT_RUN = 64e4;
 function makeComparator(sortColumns, compareAs, nullsPos) {
   return (a, b) => {
     for (const col of sortColumns) {
@@ -1848,6 +1849,11 @@ self.onmessage = async (event) => {
   const post = (msg) => self.postMessage(msg);
   const cmp = makeComparator(sortColumns, compareAs, nulls);
   const N = inputRef.chunkCount;
+  const estimatedInputChunkRows = Math.max(1, Math.ceil(inputRef.rowCount / Math.max(1, N)));
+  const mergeFactor = Math.max(
+    1,
+    Math.min(MERGE_FACTOR, Math.floor(MAX_ROWS_PER_SORT_RUN / estimatedInputChunkRows))
+  );
   try {
     if (N === 0) {
       const datasetId2 = createId();
@@ -1865,8 +1871,13 @@ self.onmessage = async (event) => {
       });
       return;
     }
-    post({ kind: "progress", jobId, progress: 5, message: "Sorting data..." });
-    const numRuns = Math.ceil(N / MERGE_FACTOR);
+    post({
+      kind: "progress",
+      jobId,
+      progress: 5,
+      message: `Sorting data... (inputChunkRows~${estimatedInputChunkRows.toLocaleString()}, outputChunkSize=${chunkSize.toLocaleString()}, mergeFactor=${mergeFactor})`
+    });
+    const numRuns = Math.ceil(N / mergeFactor);
     const runDatasetId = createId();
     const runWriter = new ChunkedOPFSWriter(executionId, runDatasetId, chunkSize);
     await runWriter.init();
@@ -1875,12 +1886,12 @@ self.onmessage = async (event) => {
     let totalRunChunks = 0;
     let totalRunRows = 0;
     for (let run = 0; run < numRuns; run++) {
-      const srcFrom = run * MERGE_FACTOR;
-      const srcTo = Math.min(srcFrom + MERGE_FACTOR, N);
+      const srcFrom = run * mergeFactor;
+      const srcTo = Math.min(srcFrom + mergeFactor, N);
       const buf = [];
       for (let c = srcFrom; c < srcTo; c++) {
         const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
-        buf.push(...chunk);
+        for (const row of chunk) buf.push(row);
         const pct = Math.round(5 + (c + 1) / N * 45);
         post({ kind: "progress", jobId, progress: pct, message: `Sorting... ${(c + 1).toLocaleString()} / ${N.toLocaleString()} chunks` });
       }

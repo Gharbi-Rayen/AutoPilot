@@ -131,7 +131,10 @@ export function dispatchWorkerJob<TInput, TOutput>(
     // Inject current performance settings so workers can use user-tuned limits
     // without needing to read localStorage (which is unavailable inside workers).
     const perfSettings = getPerformanceSettings();
-    const enrichedInput = { ...perfSettings, ...(input as object) } as TInput;
+    const safeInput = Object.fromEntries(
+      Object.entries((input as object) ?? {}).filter(([, v]) => v !== undefined),
+    );
+    const enrichedInput = { ...perfSettings, ...safeInput } as TInput;
     const message: WorkerJobMessage<TInput> = { jobId, type, input: enrichedInput };
     worker.postMessage(message, transfer ?? []);
   });

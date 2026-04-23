@@ -9,7 +9,7 @@
  * No server API calls are made by the offline PWA, so no API bypass needed.
  */
 
-const CACHE_VERSION = "autopilot-v3";
+const CACHE_VERSION = "autopilot-v4";
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
 

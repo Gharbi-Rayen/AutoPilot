@@ -1735,7 +1735,7 @@ var ChunkedOPFSWriter = class {
     this.dir = await getDatasetDir(this.executionId, this.datasetId, true);
   }
   async write(rows) {
-    this.buffer.push(...rows);
+    for (const row of rows) this.buffer.push(row);
     while (this.buffer.length >= this.chunkSize) {
       await this._flush(this.buffer.splice(0, this.chunkSize));
     }

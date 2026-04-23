@@ -23,6 +23,7 @@ import { DATASET_MANIFEST_VERSION, type DatasetRef, type DatasetRow } from "@/ty
 import { ChunkedOPFSWriter, readChunkFromOPFS } from "./_opfs-helpers";
 
 const MERGE_FACTOR = 64; // input chunks merged per sorted run in Phase 1
+const MAX_ROWS_PER_SORT_RUN = 640_000; // keep Phase 1 memory roughly stable across chunk sizes
 
 // ── Comparator ────────────────────────────────────────────────────────────────
 
@@ -128,6 +129,11 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
   const cmp = makeComparator(sortColumns, compareAs, nulls);
   const N = inputRef.chunkCount;
+  const estimatedInputChunkRows = Math.max(1, Math.ceil(inputRef.rowCount / Math.max(1, N)));
+  const mergeFactor = Math.max(
+    1,
+    Math.min(MERGE_FACTOR, Math.floor(MAX_ROWS_PER_SORT_RUN / estimatedInputChunkRows)),
+  );
 
   try {
     if (N === 0) {
@@ -147,9 +153,14 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
     }
 
     // ── Phase 1: sorted runs ─────────────────────────────────────────────────
-    post({ kind: "progress", jobId, progress: 5, message: "Sorting data..." });
+    post({
+      kind: "progress",
+      jobId,
+      progress: 5,
+      message: `Sorting data... (inputChunkRows~${estimatedInputChunkRows.toLocaleString()}, outputChunkSize=${chunkSize.toLocaleString()}, mergeFactor=${mergeFactor})`,
+    });
 
-    const numRuns = Math.ceil(N / MERGE_FACTOR);
+    const numRuns = Math.ceil(N / mergeFactor);
     const runDatasetId = createId();
     const runWriter = new ChunkedOPFSWriter(executionId, runDatasetId, chunkSize);
     await runWriter.init();
@@ -161,14 +172,14 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
     let totalRunRows = 0;
 
     for (let run = 0; run < numRuns; run++) {
-      const srcFrom = run * MERGE_FACTOR;
-      const srcTo = Math.min(srcFrom + MERGE_FACTOR, N);
+      const srcFrom = run * mergeFactor;
+      const srcTo = Math.min(srcFrom + mergeFactor, N);
 
       // Load this group of input chunks into memory
       const buf: DatasetRow[] = [];
       for (let c = srcFrom; c < srcTo; c++) {
         const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
-        buf.push(...chunk);
+        for (const row of chunk) buf.push(row);
         const pct = Math.round(5 + ((c + 1) / N) * 45);
         post({ kind: "progress", jobId, progress: pct, message: `Sorting... ${(c + 1).toLocaleString()} / ${N.toLocaleString()} chunks` });
       }

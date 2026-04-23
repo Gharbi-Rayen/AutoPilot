@@ -36,7 +36,8 @@ export async function readFromOPFS(
 ): Promise<DatasetRow[]> {
   const rows: DatasetRow[] = [];
   for (let i = 0; i < chunkCount; i++) {
-    rows.push(...(await readChunkFromOPFS(executionId, datasetId, i)));
+    const chunk = await readChunkFromOPFS(executionId, datasetId, i);
+    for (const row of chunk) rows.push(row);
   }
   return rows;
 }
@@ -124,7 +125,8 @@ export class ChunkedOPFSWriter {
   }
 
   async write(rows: DatasetRow[]): Promise<void> {
-    this.buffer.push(...rows);
+    // Avoid large spread calls; they can overflow the JS call stack on big datasets.
+    for (const row of rows) this.buffer.push(row);
     while (this.buffer.length >= this.chunkSize) {
       await this._flush(this.buffer.splice(0, this.chunkSize));
     }
