@@ -16,7 +16,6 @@ export type WorkerJobType =
   | "csv-join"
   | "csv-aggregate"
   | "csv-deduplicate"
-  | "csv-column-stats"
   | "csv-compare"
   | "csv-transform"
   | "csv-consecutive-sequence"
@@ -73,7 +72,6 @@ function getWorkerUrl(type: WorkerJobType): string {
     "csv-join": "/workers/csv-join.worker.js",
     "csv-aggregate": "/workers/csv-aggregate.worker.js",
     "csv-deduplicate": "/workers/csv-deduplicate.worker.js",
-    "csv-column-stats": "/workers/csv-column-stats.worker.js",
     "csv-compare": "/workers/csv-compare.worker.js",
     "csv-transform": "/workers/csv-transform.worker.js",
     "csv-consecutive-sequence": "/workers/csv-consecutive-sequence.worker.js",

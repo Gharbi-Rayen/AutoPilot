@@ -6,7 +6,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleCheckIcon,
-  CircleDotIcon,
   DownloadIcon,
   FileTextIcon,
   Loader2Icon,
@@ -374,6 +373,39 @@ const ExportLink = ({ label, varName, executionId, nodeId, icon }: ExportLinkPro
     </>
   );
 };
+
+// ── ExportCard ────────────────────────────────────────────────────────────────
+
+interface ExportCardProps {
+  title: string;
+  category: "Intersection" | "Difference";
+  logic: string;
+  description: string;
+  fileName: string;
+  varName: string | null | undefined;
+  executionId: string;
+  nodeId: string;
+  icon: React.ReactNode;
+}
+
+const ExportCard = ({ title, category, logic, description, fileName, varName, executionId, nodeId, icon }: ExportCardProps) => (
+  <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-background p-3">
+    <div className="flex items-center gap-2">
+      {icon}
+      <span className="text-xs font-semibold text-foreground">{title}</span>
+      <span className="ml-auto rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+        {category}
+      </span>
+    </div>
+    <p className="text-[10px] font-mono text-muted-foreground">{logic}</p>
+    <p className="text-[11px] text-muted-foreground">{description}</p>
+    {varName ? (
+      <ExportLink label={fileName} varName={varName} executionId={executionId} nodeId={nodeId} icon={icon} />
+    ) : (
+      <p className="text-[11px] italic text-muted-foreground/60">No rows found in this category.</p>
+    )}
+  </div>
+);
 
 // ── InlineExportPanel ─────────────────────────────────────────────────────────
 
@@ -746,42 +778,39 @@ export const ExecutionCompareViewer = ({
           <DownloadIcon className="size-4 text-muted-foreground" />
           <p className="text-sm font-semibold text-foreground">Download results</p>
         </div>
-        <p className="text-[11px] text-muted-foreground">Click any file to configure and export it.</p>
-        <div className="flex flex-wrap gap-2">
-          <ExportLink
-            label="common_rows.csv"
+        <div className="flex flex-col gap-2">
+          <ExportCard
+            title="Data present in both files"
+            category="Intersection"
+            logic="IN F1 AND IN F2"
+            description="Values that exist in both files."
+            fileName="common_rows.csv"
             varName={result.commonVarName}
             executionId={executionId}
             nodeId={nodeId}
             icon={<CircleCheckIcon className="size-3.5 text-blue-500" />}
           />
-          <ExportLink
-            label="added_rows.csv"
-            varName={result.addedVarName}
-            executionId={executionId}
-            nodeId={nodeId}
-            icon={<PlusCircleIcon className="size-3.5 text-emerald-600" />}
-          />
-          <ExportLink
-            label="removed_rows.csv"
+          <ExportCard
+            title="Data present in first file only"
+            category="Difference"
+            logic="IN F1 AND NOT IN F2"
+            description="Values that exist in file 1 but not file 2."
+            fileName="f1_only.csv"
             varName={result.removedVarName}
             executionId={executionId}
             nodeId={nodeId}
             icon={<MinusCircleIcon className="size-3.5 text-red-500" />}
           />
-          <ExportLink
-            label="changed_rows.csv"
-            varName={result.changedVarName}
+          <ExportCard
+            title="Data present in second file only"
+            category="Difference"
+            logic="NOT IN F1 AND IN F2"
+            description="Values that exist in file 2 but not file 1."
+            fileName="f2_only.csv"
+            varName={result.addedVarName}
             executionId={executionId}
             nodeId={nodeId}
-            icon={<RefreshCwIcon className="size-3.5 text-amber-600" />}
-          />
-          <ExportLink
-            label="schema_diff.csv"
-            varName={result.schemaDiffVarName}
-            executionId={executionId}
-            nodeId={nodeId}
-            icon={<CircleDotIcon className="size-3.5 text-muted-foreground" />}
+            icon={<PlusCircleIcon className="size-3.5 text-emerald-600" />}
           />
         </div>
       </div>

@@ -5,16 +5,13 @@ import { Copy } from "lucide-react";
 import { memo, useState } from "react";
 
 import { BaseExecutionNode } from "@/features/executions/components/base-execution-node";
-
 import { useNodeStatus } from "../../hooks/use-node-status";
 import { CsvDeduplicateDialog, type CsvDeduplicateFormValues } from "./dialog";
 
 interface CsvDeduplicateNodeData extends Record<string, unknown> {
   sourceVariable?: string;
   variableName?: string;
-  fields?: string;
-  keep?: "first" | "last";
-  includeDuplicates?: boolean;
+  column?: string;
 }
 
 export const CsvDeduplicateNode = memo((props: NodeProps) => {
@@ -23,28 +20,18 @@ export const CsvDeduplicateNode = memo((props: NodeProps) => {
 
   const handleSubmit = (values: CsvDeduplicateFormValues) => {
     setNodes((nodes) =>
-      nodes.map((node) => {
-        if (node.id !== props.id) {
-          return node;
-        }
-
-        return {
-          ...node,
-          data: {
-            ...node.data,
-            ...values,
-          },
-        };
-      }),
+      nodes.map((node) =>
+        node.id !== props.id ? node : { ...node, data: { ...node.data, ...values } },
+      ),
     );
   };
 
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as CsvDeduplicateNodeData;
-  const description = data.fields
-    ? `Deduplicate by ${data.fields}`
-    : "Remove duplicate rows";
+  const description = data.column
+    ? `Detect duplicates in "${data.column}"`
+    : "Detect duplicate rows";
 
   const nodeStatus = useNodeStatus(props.id);
 
@@ -60,7 +47,7 @@ export const CsvDeduplicateNode = memo((props: NodeProps) => {
       <BaseExecutionNode
         {...props}
         id={props.id}
-        name="CSV Deduplicate"
+        name="Detect Duplicates"
         description={description}
         icon={Copy}
         status={nodeStatus}

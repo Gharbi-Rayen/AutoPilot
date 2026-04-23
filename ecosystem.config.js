@@ -85,12 +85,6 @@ module.exports = {
     },
     {
       ...workerBase,
-      name: "worker-column-stats",
-      script: "./src/workers/csv-column-stats.worker.ts",
-      node_args: "--max-old-space-size=1024",
-    },
-    {
-      ...workerBase,
       name: "worker-deduplicate",
       script: "./src/workers/csv-deduplicate.worker.ts",
       node_args: "--max-old-space-size=1024",

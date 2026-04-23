@@ -1768,77 +1768,178 @@ var ChunkedOPFSWriter = class {
 };
 
 // src/workers/csv-sort.worker.ts
+var MERGE_FACTOR = 64;
+function makeComparator(sortColumns, compareAs, nullsPos) {
+  return (a, b) => {
+    for (const col of sortColumns) {
+      const ra = a[col.field];
+      const rb = b[col.field];
+      const aNull = ra === null || ra === void 0 || ra === "";
+      const bNull = rb === null || rb === void 0 || rb === "";
+      if (aNull && bNull) continue;
+      if (aNull) return nullsPos === "first" ? -1 : 1;
+      if (bNull) return nullsPos === "first" ? 1 : -1;
+      let cmp;
+      if (compareAs === "number") {
+        cmp = Number(ra) - Number(rb);
+        if (Number.isNaN(cmp)) cmp = String(ra) < String(rb) ? -1 : 1;
+      } else if (compareAs === "date") {
+        cmp = Date.parse(String(ra)) - Date.parse(String(rb));
+        if (Number.isNaN(cmp)) cmp = String(ra) < String(rb) ? -1 : 1;
+      } else {
+        const sa = String(ra);
+        const sb = String(rb);
+        cmp = sa < sb ? -1 : sa > sb ? 1 : 0;
+      }
+      if (cmp !== 0) return col.direction === "asc" ? cmp : -cmp;
+    }
+    return 0;
+  };
+}
+var MinHeap = class {
+  constructor(cmp) {
+    this.cmp = cmp;
+    this.h = [];
+  }
+  push(e) {
+    this.h.push(e);
+    let i = this.h.length - 1;
+    while (i > 0) {
+      const p = i - 1 >> 1;
+      if (this.cmp(this.h[i].row, this.h[p].row) >= 0) break;
+      [this.h[i], this.h[p]] = [this.h[p], this.h[i]];
+      i = p;
+    }
+  }
+  pop() {
+    if (!this.h.length) return void 0;
+    const top = this.h[0];
+    const last = this.h.pop();
+    if (this.h.length) {
+      this.h[0] = last;
+      let i = 0;
+      for (; ; ) {
+        const l = 2 * i + 1, r = 2 * i + 2;
+        let min = i;
+        if (l < this.h.length && this.cmp(this.h[l].row, this.h[min].row) < 0) min = l;
+        if (r < this.h.length && this.cmp(this.h[r].row, this.h[min].row) < 0) min = r;
+        if (min === i) break;
+        [this.h[i], this.h[min]] = [this.h[min], this.h[i]];
+        i = min;
+      }
+    }
+    return top;
+  }
+  get size() {
+    return this.h.length;
+  }
+};
 self.onmessage = async (event) => {
   const { jobId, input } = event.data;
-  const { inputRef, sortColumns, executionId, variableName, chunkSize = 1e4 } = input;
+  const {
+    inputRef,
+    sortColumns,
+    compareAs = "string",
+    nulls = "last",
+    executionId,
+    variableName,
+    chunkSize = 1e4
+  } = input;
   const post = (msg) => self.postMessage(msg);
+  const cmp = makeComparator(sortColumns, compareAs, nulls);
+  const N = inputRef.chunkCount;
   try {
-    post({ kind: "progress", jobId, progress: 5, message: "Building sort index..." });
-    const capacity = inputRef.rowCount;
-    const taChunkIdxs = new Int32Array(capacity);
-    const taRowIdxs = new Int32Array(capacity);
-    const colCount = sortColumns.length;
-    const stringPools = Array.from({ length: colCount }, () => []);
-    const stringMaps = Array.from({ length: colCount }, () => /* @__PURE__ */ new Map());
-    const taKeyIds = Array.from({ length: colCount }, () => new Int32Array(capacity));
-    let indexLen = 0;
-    for (let c = 0; c < inputRef.chunkCount; c++) {
-      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
-      for (let r = 0; r < chunk.length; r++) {
-        taChunkIdxs[indexLen] = c;
-        taRowIdxs[indexLen] = r;
-        for (let k = 0; k < colCount; k++) {
-          const str = String(chunk[r][sortColumns[k].field] ?? "");
-          let id = stringMaps[k].get(str);
-          if (id === void 0) {
-            id = stringPools[k].length;
-            stringMaps[k].set(str, id);
-            stringPools[k].push(str);
-          }
-          taKeyIds[k][indexLen] = id;
+    if (N === 0) {
+      const datasetId2 = createId();
+      const writer2 = new ChunkedOPFSWriter(executionId, datasetId2, chunkSize);
+      await writer2.init();
+      const { chunks: chunks2 } = await writer2.finish();
+      const now2 = (/* @__PURE__ */ new Date()).toISOString();
+      post({
+        kind: "result",
+        jobId,
+        output: {
+          manifest: { version: DATASET_MANIFEST_VERSION, datasetId: datasetId2, executionId, variableName, createdAt: now2, updatedAt: now2, rowCount: 0, chunkCount: 0, byteSize: 0, schema: inputRef.schema, chunks: chunks2 },
+          datasetRef: { kind: "dataset", datasetId: datasetId2, executionId, variableName, rowCount: 0, chunkCount: 0, byteSize: 0, schema: inputRef.schema }
         }
-        indexLen++;
-      }
-      const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 45);
-      post({ kind: "progress", jobId, progress: pct, message: `Indexed ${indexLen.toLocaleString()} rows...` });
+      });
+      return;
     }
-    post({ kind: "progress", jobId, progress: 52, message: "Sorting..." });
-    const order = new Int32Array(indexLen);
-    for (let i = 0; i < indexLen; i++) order[i] = i;
-    order.sort((a, b) => {
-      for (let k = 0; k < colCount; k++) {
-        const pool = stringPools[k];
-        const sa = pool[taKeyIds[k][a]];
-        const sb = pool[taKeyIds[k][b]];
-        if (sa === sb) continue;
-        const cmp = sa < sb ? -1 : 1;
-        return sortColumns[k].direction === "asc" ? cmp : -cmp;
+    post({ kind: "progress", jobId, progress: 5, message: "Sorting data..." });
+    const numRuns = Math.ceil(N / MERGE_FACTOR);
+    const runDatasetId = createId();
+    const runWriter = new ChunkedOPFSWriter(executionId, runDatasetId, chunkSize);
+    await runWriter.init();
+    const runChunkStart = new Array(numRuns);
+    const runChunkCount = new Array(numRuns);
+    let totalRunChunks = 0;
+    let totalRunRows = 0;
+    for (let run = 0; run < numRuns; run++) {
+      const srcFrom = run * MERGE_FACTOR;
+      const srcTo = Math.min(srcFrom + MERGE_FACTOR, N);
+      const buf = [];
+      for (let c = srcFrom; c < srcTo; c++) {
+        const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
+        buf.push(...chunk);
+        const pct = Math.round(5 + (c + 1) / N * 45);
+        post({ kind: "progress", jobId, progress: pct, message: `Sorting... ${(c + 1).toLocaleString()} / ${N.toLocaleString()} chunks` });
       }
-      return 0;
-    });
-    post({ kind: "progress", jobId, progress: 58, message: "Writing sorted rows..." });
+      buf.sort(cmp);
+      runChunkStart[run] = totalRunChunks;
+      const runChunks = Math.ceil(buf.length / chunkSize) || 1;
+      runChunkCount[run] = runChunks;
+      totalRunChunks += runChunks;
+      totalRunRows += buf.length;
+      await runWriter.write(buf);
+    }
+    await runWriter.finish();
+    post({ kind: "progress", jobId, progress: 52, message: `Merging ${numRuns} sorted run${numRuns > 1 ? "s" : ""}...` });
+    const cursorMap = /* @__PURE__ */ new Map();
+    const heap = new MinHeap(cmp);
+    for (let r = 0; r < numRuns; r++) {
+      if (runChunkCount[r] === 0) continue;
+      const data = await readChunkFromOPFS(executionId, runDatasetId, runChunkStart[r]);
+      if (!data.length) continue;
+      const cur = { run: r, chunkInRun: 0, data, pos: 0 };
+      cursorMap.set(r, cur);
+      heap.push({ row: data[0], runIdx: r });
+    }
     const datasetId = createId();
     const writer = new ChunkedOPFSWriter(executionId, datasetId, chunkSize);
     await writer.init();
-    let cachedChunkIdx = -1;
-    let cachedChunk = [];
-    const outputBatch = [];
-    for (let i = 0; i < indexLen; i++) {
-      const idx = order[i];
-      const ci = taChunkIdxs[idx];
-      const ri = taRowIdxs[idx];
-      if (ci !== cachedChunkIdx) {
-        cachedChunkIdx = ci;
-        cachedChunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, ci);
+    const outBatch = [];
+    let written = 0;
+    while (heap.size > 0) {
+      const entry = heap.pop();
+      if (!entry) break;
+      const { row, runIdx } = entry;
+      outBatch.push(row);
+      const cur = cursorMap.get(runIdx);
+      if (!cur) continue;
+      cur.pos++;
+      if (cur.pos < cur.data.length) {
+        heap.push({ row: cur.data[cur.pos], runIdx });
+      } else {
+        cur.chunkInRun++;
+        if (cur.chunkInRun < runChunkCount[cur.run]) {
+          cur.data = await readChunkFromOPFS(executionId, runDatasetId, runChunkStart[cur.run] + cur.chunkInRun);
+          cur.pos = 0;
+          if (cur.data.length) heap.push({ row: cur.data[0], runIdx });
+        }
       }
-      outputBatch.push(cachedChunk[ri]);
-      if (outputBatch.length >= chunkSize) {
-        await writer.write(outputBatch.splice(0));
-        const pct = Math.round(58 + i / indexLen * 32);
-        post({ kind: "progress", jobId, progress: pct, message: `Written ${i.toLocaleString()} / ${indexLen.toLocaleString()} rows...` });
+      if (outBatch.length >= chunkSize) {
+        await writer.write(outBatch.splice(0));
+        written += chunkSize;
+        const pct = Math.round(52 + written / totalRunRows * 40);
+        post({
+          kind: "progress",
+          jobId,
+          progress: Math.min(pct, 92),
+          message: `Merging... ${written.toLocaleString()} / ${totalRunRows.toLocaleString()} rows`
+        });
       }
     }
-    if (outputBatch.length > 0) await writer.write(outputBatch);
+    if (outBatch.length) await writer.write(outBatch);
     const { chunks, totalBytes, totalRows } = await writer.finish();
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const manifest = {

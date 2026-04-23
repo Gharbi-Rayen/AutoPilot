@@ -5,7 +5,6 @@ import { addEdge, useReactFlow } from "@xyflow/react";
 import {
   ArrowLeftRight,
   ArrowUpDown,
-  BarChart3,
   Copy,
   File,
   GitBranch,
@@ -136,15 +135,9 @@ const executionNodes: NodeTypeOption[] = [
   },
   {
     type: NodeType.CSV_DEDUPLICATE,
-    label: "CSV Deduplicate",
-    description: "Remove duplicate CSV rows",
+    label: "Detect Duplicates",
+    description: "Find duplicate rows or values, output dedup + report",
     icon: Copy,
-  },
-  {
-    type: NodeType.CSV_COLUMN_STATS,
-    label: "CSV Column Stats",
-    description: "Generate per-column statistics",
-    icon: BarChart3,
   },
   {
     type: NodeType.CSV_CONSECUTIVE_SEQUENCE_ANALYZER,

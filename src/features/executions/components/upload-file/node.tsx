@@ -149,13 +149,6 @@ export const UploadFileNode = memo((props: NodeProps) => {
       };
     }
 
-    if (normalizedType === "CSV_COLUMN_STATS") {
-      return {
-        ...data,
-        fields: "",
-      };
-    }
-
     if (normalizedType === "CSV_COMPARE") {
       return {
         ...data,

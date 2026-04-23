@@ -1726,35 +1726,6 @@ async function readFromOPFS(executionId, datasetId, chunkCount) {
   }
   return rows;
 }
-async function writeToOPFS(executionId, datasetId, rows, chunkSize = 1e4) {
-  const dir = await getDatasetDir(executionId, datasetId, true);
-  const chunks = [];
-  let cum = 0;
-  let totalBytes = 0;
-  const now = (/* @__PURE__ */ new Date()).toISOString();
-  for (let i = 0; i * chunkSize < rows.length || i === 0 && rows.length === 0; i++) {
-    const c = rows.slice(i * chunkSize, (i + 1) * chunkSize);
-    if (!c.length) break;
-    const fn = `chunk-${String(i).padStart(6, "0")}.json`;
-    const bytes = new TextEncoder().encode(JSON.stringify(c));
-    const w = await (await dir.getFileHandle(fn, { create: true })).createWritable();
-    await w.write(bytes);
-    await w.close();
-    cum += c.length;
-    totalBytes += bytes.byteLength;
-    chunks.push({
-      chunkIndex: i,
-      fileName: fn,
-      rowStart: i * chunkSize,
-      rowEnd: i * chunkSize + c.length - 1,
-      rowCount: c.length,
-      cumulativeRowCount: cum,
-      byteSize: bytes.byteLength,
-      createdAt: now
-    });
-  }
-  return { chunks, totalBytes };
-}
 var ChunkedOPFSWriter = class {
   constructor(executionId, datasetId, chunkSize = 1e4) {
     this.executionId = executionId;
@@ -1804,6 +1775,7 @@ var ChunkedOPFSWriter = class {
 };
 
 // src/workers/csv-compare.worker.ts
+var PARTITION_THRESHOLD = 5e5;
 function isNumericKeys(keys) {
   return keys.length > 0 && keys.every((k) => /^\d+$/.test(k));
 }
@@ -1830,6 +1802,14 @@ function applyMapping(row, mapping) {
     if (bKey in row) out[aKey] = row[bKey];
   }
   return out;
+}
+function djb2(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h << 5) + h + s.charCodeAt(i) | 0;
+  return h;
+}
+function partIdx(key, K) {
+  return Math.abs(djb2(key)) % K;
 }
 function makeRef(datasetId, executionId, variableName, rowCount, chunkCount, byteSize) {
   return { kind: "dataset", datasetId, executionId, variableName, rowCount, chunkCount, byteSize };
@@ -1864,86 +1844,157 @@ self.onmessage = async (event) => {
   try {
     const keyFields = String(keyField || "").split(",").map((s) => s.trim()).filter(Boolean);
     const cmpFields = String(compareFields || "").split(",").map((s) => s.trim()).filter(Boolean);
-    post({ kind: "progress", jobId, progress: 5, message: "Loading base dataset..." });
-    const base = await readFromOPFS(baseRef.executionId, baseRef.datasetId, baseRef.chunkCount);
-    const allBaseFields = base.length > 0 ? Object.keys(base[0]) : [];
     const rowKey = (r) => {
       if (keyFields.length > 0) return keyFields.map((f) => String(r[f] ?? "")).join("|");
       const sorted = Object.fromEntries(Object.keys(r).sort().map((k) => [k, r[k]]));
       return JSON.stringify(sorted);
     };
-    const baseMap = /* @__PURE__ */ new Map();
-    for (const r of base) baseMap.set(rowKey(r), r);
+    post({ kind: "progress", jobId, progress: 3, message: "Detecting schema..." });
+    const baseChunk0 = baseRef.chunkCount > 0 ? await readChunkFromOPFS(baseRef.executionId, baseRef.datasetId, 0) : [];
+    const allBaseFields = baseChunk0.length > 0 ? Object.keys(baseChunk0[0]) : [];
+    const cmpChunk0 = compareRef.chunkCount > 0 ? await readChunkFromOPFS(compareRef.executionId, compareRef.datasetId, 0) : [];
     let mapping = null;
     let headerMismatchDetected = false;
     let schemaAligned = true;
+    let allCmpFields = [];
+    let mappedCmpFields = [];
+    let fieldsToCompare = [];
+    if (cmpChunk0.length > 0) {
+      allCmpFields = Object.keys(cmpChunk0[0]);
+      const norm = normalizeSchemas(allBaseFields, cmpChunk0[0]);
+      mapping = norm.mapping;
+      headerMismatchDetected = norm.headerMismatchDetected;
+      schemaAligned = norm.schemaAligned;
+      mappedCmpFields = mapping ? allCmpFields.map((k) => mapping[k] ?? k) : allCmpFields;
+      const mappedSet = new Set(mappedCmpFields);
+      const shared = allBaseFields.filter((f) => mappedSet.has(f));
+      fieldsToCompare = cmpFields.length > 0 ? cmpFields.filter((f) => shared.includes(f)) : shared;
+    }
+    const totalBaseRows = baseRef.rowCount;
+    let totalCompareRows = 0;
     const addedId = createId();
     const removedId = createId();
     const changedId = createId();
     const commonId = createId();
     const addedWriter = new ChunkedOPFSWriter(executionId, addedId, chunkSize);
+    const removedWriter = new ChunkedOPFSWriter(executionId, removedId, chunkSize);
     const changedWriter = new ChunkedOPFSWriter(executionId, changedId, chunkSize);
     const commonWriter = new ChunkedOPFSWriter(executionId, commonId, chunkSize);
-    await Promise.all([addedWriter.init(), changedWriter.init(), commonWriter.init()]);
-    const matchedBaseKeys = /* @__PURE__ */ new Set();
-    let allCmpFields = [];
-    let mappedCmpFields = [];
-    let fieldsToCompare = [];
-    let totalCompareRows = 0;
-    post({ kind: "progress", jobId, progress: 20, message: "Comparing datasets..." });
-    for (let c = 0; c < compareRef.chunkCount; c++) {
-      const rawChunk = await readChunkFromOPFS(compareRef.executionId, compareRef.datasetId, c);
-      totalCompareRows += rawChunk.length;
-      if (c === 0 && rawChunk.length > 0) {
-        allCmpFields = Object.keys(rawChunk[0]);
-        const norm = normalizeSchemas(allBaseFields, rawChunk[0]);
-        mapping = norm.mapping;
-        headerMismatchDetected = norm.headerMismatchDetected;
-        schemaAligned = norm.schemaAligned;
-        mappedCmpFields = mapping ? allCmpFields.map((k) => mapping[k] ?? k) : allCmpFields;
-        const mappedSet = new Set(mappedCmpFields);
-        const shared = allBaseFields.filter((f) => mappedSet.has(f));
-        fieldsToCompare = cmpFields.length > 0 ? cmpFields.filter((f) => shared.includes(f)) : shared;
+    await Promise.all([addedWriter.init(), removedWriter.init(), changedWriter.init(), commonWriter.init()]);
+    async function processPair(baseRow, cmpRow) {
+      const changedFieldsList = fieldsToCompare.filter(
+        (f) => String(cmpRow[f] ?? "") !== String(baseRow[f] ?? "")
+      );
+      if (changedFieldsList.length > 0) {
+        const diffRow = {};
+        if (keyFields.length > 0) diffRow._diff_key = keyFields.map((f) => String(baseRow[f] ?? "")).join("|");
+        diffRow._diff_changed = changedFieldsList.join(",");
+        for (const f of fieldsToCompare) {
+          diffRow[`_before_${f}`] = baseRow[f];
+          diffRow[`_after_${f}`] = cmpRow[f];
+        }
+        await changedWriter.write([diffRow]);
+      } else {
+        await commonWriter.write([baseRow]);
       }
-      for (const rawRow of rawChunk) {
-        const cmpRow = applyMapping(rawRow, mapping);
-        const key = rowKey(cmpRow);
-        if (!baseMap.has(key)) {
-          await addedWriter.write([cmpRow]);
-        } else {
-          matchedBaseKeys.add(key);
-          const baseRow = baseMap.get(key);
-          const changedFieldsList = fieldsToCompare.filter(
-            (f) => String(cmpRow[f] ?? "") !== String(baseRow[f] ?? "")
-          );
-          if (changedFieldsList.length > 0) {
-            const diffRow = {};
-            if (keyFields.length > 0) diffRow._diff_key = keyFields.map((f) => String(baseRow[f] ?? "")).join("|");
-            diffRow._diff_changed = changedFieldsList.join(",");
-            for (const f of fieldsToCompare) {
-              diffRow[`_before_${f}`] = baseRow[f];
-              diffRow[`_after_${f}`] = cmpRow[f];
-            }
-            await changedWriter.write([diffRow]);
+    }
+    const K = Math.max(1, Math.ceil(Math.max(baseRef.rowCount, compareRef.rowCount) / PARTITION_THRESHOLD));
+    if (K === 1) {
+      post({ kind: "progress", jobId, progress: 5, message: "Loading base dataset..." });
+      const base = await readFromOPFS(baseRef.executionId, baseRef.datasetId, baseRef.chunkCount);
+      const baseMap = /* @__PURE__ */ new Map();
+      for (const r of base) baseMap.set(rowKey(r), r);
+      const matchedBaseKeys = /* @__PURE__ */ new Set();
+      post({ kind: "progress", jobId, progress: 20, message: "Comparing datasets..." });
+      for (let c = 0; c < compareRef.chunkCount; c++) {
+        const rawChunk = await readChunkFromOPFS(compareRef.executionId, compareRef.datasetId, c);
+        totalCompareRows += rawChunk.length;
+        for (const rawRow of rawChunk) {
+          const cmpRow = applyMapping(rawRow, mapping);
+          const key = rowKey(cmpRow);
+          if (!baseMap.has(key)) {
+            await addedWriter.write([cmpRow]);
           } else {
-            await commonWriter.write([baseRow]);
+            matchedBaseKeys.add(key);
+            await processPair(baseMap.get(key), cmpRow);
           }
         }
+        const pct = Math.round(20 + (c + 1) / compareRef.chunkCount * 55);
+        post({ kind: "progress", jobId, progress: pct, message: `Compared ${totalCompareRows.toLocaleString()} rows...` });
       }
-      const pct = Math.round(20 + (c + 1) / compareRef.chunkCount * 55);
-      post({ kind: "progress", jobId, progress: pct, message: `Compared ${totalCompareRows.toLocaleString()} rows...` });
+      post({ kind: "progress", jobId, progress: 77, message: "Finding removed rows..." });
+      for (const [key, baseRow] of baseMap) {
+        if (!matchedBaseKeys.has(key)) await removedWriter.write([baseRow]);
+      }
+    } else {
+      post({ kind: "progress", jobId, progress: 5, message: `Partitioning into ${K} buckets...` });
+      const basePartIds = Array.from({ length: K }, () => createId());
+      const basePartWriters = basePartIds.map((id) => new ChunkedOPFSWriter(executionId, id, chunkSize));
+      await Promise.all(basePartWriters.map((w) => w.init()));
+      for (let c = 0; c < baseRef.chunkCount; c++) {
+        const chunk = await readChunkFromOPFS(baseRef.executionId, baseRef.datasetId, c);
+        const buckets = Array.from({ length: K }, () => []);
+        for (const row of chunk) buckets[partIdx(rowKey(row), K)].push(row);
+        for (let i = 0; i < K; i++) {
+          if (buckets[i].length) await basePartWriters[i].write(buckets[i]);
+        }
+        const pct = Math.round(5 + (c + 1) / baseRef.chunkCount * 15);
+        post({ kind: "progress", jobId, progress: pct, message: `Partitioning base... ${(c + 1).toLocaleString()} / ${baseRef.chunkCount} chunks` });
+      }
+      const basePartMeta = await Promise.all(basePartWriters.map((w) => w.finish()));
+      const cmpPartIds = Array.from({ length: K }, () => createId());
+      const cmpPartWriters = cmpPartIds.map((id) => new ChunkedOPFSWriter(executionId, id, chunkSize));
+      await Promise.all(cmpPartWriters.map((w) => w.init()));
+      for (let c = 0; c < compareRef.chunkCount; c++) {
+        const rawChunk = await readChunkFromOPFS(compareRef.executionId, compareRef.datasetId, c);
+        totalCompareRows += rawChunk.length;
+        const buckets = Array.from({ length: K }, () => []);
+        for (const rawRow of rawChunk) {
+          const cmpRow = applyMapping(rawRow, mapping);
+          buckets[partIdx(rowKey(cmpRow), K)].push(rawRow);
+        }
+        for (let i = 0; i < K; i++) {
+          if (buckets[i].length) await cmpPartWriters[i].write(buckets[i]);
+        }
+        const pct = Math.round(20 + (c + 1) / compareRef.chunkCount * 20);
+        post({ kind: "progress", jobId, progress: pct, message: `Partitioning compare... ${(c + 1).toLocaleString()} / ${compareRef.chunkCount} chunks` });
+      }
+      const cmpPartMeta = await Promise.all(cmpPartWriters.map((w) => w.finish()));
+      for (let i = 0; i < K; i++) {
+        const basePartChunks = basePartMeta[i].chunks.length;
+        const basePartMap = /* @__PURE__ */ new Map();
+        for (let ci = 0; ci < basePartChunks; ci++) {
+          const chunk = await readChunkFromOPFS(executionId, basePartIds[i], ci);
+          for (const row of chunk) basePartMap.set(rowKey(row), row);
+        }
+        const matchedBaseKeys = /* @__PURE__ */ new Set();
+        const cmpPartChunks = cmpPartMeta[i].chunks.length;
+        for (let ci = 0; ci < cmpPartChunks; ci++) {
+          const rawChunk = await readChunkFromOPFS(executionId, cmpPartIds[i], ci);
+          for (const rawRow of rawChunk) {
+            const cmpRow = applyMapping(rawRow, mapping);
+            const key = rowKey(cmpRow);
+            if (!basePartMap.has(key)) {
+              await addedWriter.write([cmpRow]);
+            } else {
+              matchedBaseKeys.add(key);
+              await processPair(basePartMap.get(key), cmpRow);
+            }
+          }
+        }
+        for (const [key, baseRow] of basePartMap) {
+          if (!matchedBaseKeys.has(key)) await removedWriter.write([baseRow]);
+        }
+        const pct = Math.round(40 + (i + 1) / K * 45);
+        post({ kind: "progress", jobId, progress: pct, message: `Comparing partition ${i + 1} / ${K}...` });
+      }
     }
-    post({ kind: "progress", jobId, progress: 77, message: "Finding removed rows..." });
-    const removed = [];
-    for (const [key, baseRow] of baseMap) {
-      if (!matchedBaseKeys.has(key)) removed.push(baseRow);
-    }
-    post({ kind: "progress", jobId, progress: 82, message: "Writing results..." });
-    const [addedResult, changedResult, commonResult, removedResult] = await Promise.all([
+    post({ kind: "progress", jobId, progress: 87, message: "Writing results..." });
+    const [addedResult, removedResult, changedResult, commonResult] = await Promise.all([
       addedWriter.finish(),
+      removedWriter.finish(),
       changedWriter.finish(),
-      commonWriter.finish(),
-      writeToOPFS(executionId, removedId, removed, chunkSize)
+      commonWriter.finish()
     ]);
     const schemaDiffId = createId();
     const allColumns = /* @__PURE__ */ new Set([...allBaseFields, ...mappedCmpFields]);
@@ -1953,13 +2004,16 @@ self.onmessage = async (event) => {
       in_compare: mappedCmpFields.includes(col) ? "yes" : "no",
       mapped_from: mapping ? Object.entries(mapping).find(([, v]) => v === col)?.[0] ?? col : col
     }));
-    const schemaDiffResult = await writeToOPFS(executionId, schemaDiffId, schemaDiff, chunkSize);
+    const schemaDiffWriter = new ChunkedOPFSWriter(executionId, schemaDiffId, chunkSize);
+    await schemaDiffWriter.init();
+    await schemaDiffWriter.write(schemaDiff);
+    const schemaDiffResult = await schemaDiffWriter.finish();
     const addedVar = `${variableName}_added`;
     const removedVar = `${variableName}_removed`;
     const changedVar = `${variableName}_changed`;
     const commonVar = `${variableName}_common`;
     const schemaDiffVar = `${variableName}_schema_diff`;
-    const isIdentical = addedResult.totalRows === 0 && removed.length === 0 && changedResult.totalRows === 0;
+    const isIdentical = addedResult.totalRows === 0 && removedResult.totalRows === 0 && changedResult.totalRows === 0;
     const compareResult = {
       _compareResult: true,
       isIdentical,
@@ -1968,10 +2022,10 @@ self.onmessage = async (event) => {
       columnMapping: mapping ?? null,
       keyField: keyFields.length > 0 ? keyFields.join(", ") : null,
       compareFields: cmpFields.length > 0 ? cmpFields : allBaseFields.filter((f) => allCmpFields.includes(f)),
-      totalBaseRows: base.length,
+      totalBaseRows,
       totalCompareRows,
       addedCount: addedResult.totalRows,
-      removedCount: removed.length,
+      removedCount: removedResult.totalRows,
       changedCount: changedResult.totalRows,
       commonCount: commonResult.totalRows,
       unchangedCount: commonResult.totalRows,
@@ -1981,11 +2035,11 @@ self.onmessage = async (event) => {
       columnsOnlyInBase: allBaseFields.filter((f) => !mappedCmpFields.includes(f)).length,
       columnsOnlyInCompare: mappedCmpFields.filter((f) => !allBaseFields.includes(f)).length,
       addedVarName: addedResult.totalRows > 0 ? addedVar : null,
-      removedVarName: removed.length > 0 ? removedVar : null,
+      removedVarName: removedResult.totalRows > 0 ? removedVar : null,
       changedVarName: changedResult.totalRows > 0 ? changedVar : null,
       commonVarName: commonResult.totalRows > 0 ? commonVar : null,
       schemaDiffVarName: schemaDiff.length > 0 ? schemaDiffVar : null,
-      summary: isIdentical ? `${base.length} matching rows \u2014 datasets are identical` : `${addedResult.totalRows} added, ${removed.length} removed, ${changedResult.totalRows} changed, ${commonResult.totalRows} common`,
+      summary: isIdentical ? `${totalBaseRows} matching rows \u2014 datasets are identical` : `${addedResult.totalRows} added, ${removedResult.totalRows} removed, ${changedResult.totalRows} changed, ${commonResult.totalRows} common`,
       changedDiffRowCount: changedResult.totalRows
     };
     post({
@@ -1994,12 +2048,12 @@ self.onmessage = async (event) => {
       output: {
         compareResult,
         addedRef: makeRef(addedId, executionId, addedVar, addedResult.totalRows, addedResult.chunks.length, addedResult.totalBytes),
-        removedRef: makeRef(removedId, executionId, removedVar, removed.length, removedResult.chunks.length, removedResult.totalBytes),
+        removedRef: makeRef(removedId, executionId, removedVar, removedResult.totalRows, removedResult.chunks.length, removedResult.totalBytes),
         changedRef: makeRef(changedId, executionId, changedVar, changedResult.totalRows, changedResult.chunks.length, changedResult.totalBytes),
         commonRef: makeRef(commonId, executionId, commonVar, commonResult.totalRows, commonResult.chunks.length, commonResult.totalBytes),
         schemaDiffRef: makeRef(schemaDiffId, executionId, schemaDiffVar, schemaDiff.length, schemaDiffResult.chunks.length, schemaDiffResult.totalBytes),
         addedManifest: makeManifest(addedId, executionId, addedVar, addedResult.totalRows, addedResult.totalBytes, addedResult.chunks),
-        removedManifest: makeManifest(removedId, executionId, removedVar, removed.length, removedResult.totalBytes, removedResult.chunks),
+        removedManifest: makeManifest(removedId, executionId, removedVar, removedResult.totalRows, removedResult.totalBytes, removedResult.chunks),
         changedManifest: makeManifest(changedId, executionId, changedVar, changedResult.totalRows, changedResult.totalBytes, changedResult.chunks),
         commonManifest: makeManifest(commonId, executionId, commonVar, commonResult.totalRows, commonResult.totalBytes, commonResult.chunks),
         schemaDiffManifest: makeManifest(schemaDiffId, executionId, schemaDiffVar, schemaDiff.length, schemaDiffResult.totalBytes, schemaDiffResult.chunks)

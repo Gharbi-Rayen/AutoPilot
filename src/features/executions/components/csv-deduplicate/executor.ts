@@ -6,18 +6,32 @@ import type { DatasetRef } from "@/types/dataset";
 export const executor: NodeExecutor = async (_nodeId, nodeData, context, executionId, onProgress) => {
   const {
     inputVariable, sourceVariable, variableName = "dedupedData",
-    fields, keep, includeDuplicates, duplicatesVariableName,
-    ...rest
+    column,
   } = nodeData as Record<string, unknown>;
+
   const resolvedVar = inputVariable ?? sourceVariable;
-  const inputRef = typeof resolvedVar === "string" ? context[resolvedVar] : Object.values(context).find((v) => isDatasetRef(v));
+  const inputRef = typeof resolvedVar === "string"
+    ? context[resolvedVar]
+    : Object.values(context).find((v) => isDatasetRef(v));
   if (!isDatasetRef(inputRef)) throw new Error("csv-deduplicate: no dataset in context.");
-  const keyFields = fields
-    ? String(fields).split(",").map((s) => s.trim()).filter(Boolean)
-    : [];
-  const result = await dispatchWorkerJob<unknown, { datasetRef: DatasetRef; manifest: unknown }>("csv-deduplicate", { inputRef, ...rest, keyFields, keep, includeDuplicates, duplicatesVariableName, executionId, variableName }, onProgress);
+
+  const result = await dispatchWorkerJob<unknown, {
+    datasetRef: DatasetRef;
+    manifest: unknown;
+    reportRef: DatasetRef;
+    reportManifest: unknown;
+    duplicateCount: number;
+    removedCount: number;
+  }>("csv-deduplicate", { inputRef, column: column ?? "", executionId, variableName }, onProgress);
+
+  const reportVarName = `${variableName as string}_report`;
+
   return {
     [variableName as string]: result.datasetRef,
     [`${variableName as string}_manifest`]: result.manifest,
+    [reportVarName]: result.reportRef,
+    [`${reportVarName}_manifest`]: result.reportManifest,
+    duplicateCount: result.duplicateCount,
+    removedCount: result.removedCount,
   };
 };

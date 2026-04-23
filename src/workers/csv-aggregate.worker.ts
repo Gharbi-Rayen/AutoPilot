@@ -18,6 +18,8 @@ interface Aggregation {
   alias?: string;
 }
 
+const COUNT_DISTINCT_CAP = 100_000;
+
 type Accumulator = {
   groupValues: Record<string, unknown>;
   sums: Record<string, number>;
@@ -89,7 +91,7 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
               break;
             case "count_distinct":
               if (!acc.distincts[alias]) acc.distincts[alias] = new Set<string>();
-              acc.distincts[alias].add(String(raw ?? ""));
+              if (acc.distincts[alias].size < COUNT_DISTINCT_CAP) acc.distincts[alias].add(String(raw ?? ""));
               break;
             case "min":
               if (isNum) acc.mins[alias] = acc.mins[alias] === undefined ? num : Math.min(acc.mins[alias], num);
@@ -122,7 +124,11 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
           case "sum": out[alias] = acc.sums[alias] ?? 0; break;
           case "avg": out[alias] = acc.numCounts[alias] ? acc.sums[alias] / acc.numCounts[alias] : null; break;
           case "count": out[alias] = acc.rowCount; break;
-          case "count_distinct": out[alias] = acc.distincts[alias]?.size ?? 0; break;
+          case "count_distinct": {
+            const s = acc.distincts[alias];
+            out[alias] = s ? (s.size >= COUNT_DISTINCT_CAP ? `≥${COUNT_DISTINCT_CAP}` : s.size) : 0;
+            break;
+          }
           case "min": out[alias] = acc.mins[alias] ?? null; break;
           case "max": out[alias] = acc.maxs[alias] ?? null; break;
           case "first": out[alias] = acc.firsts[alias] ?? null; break;

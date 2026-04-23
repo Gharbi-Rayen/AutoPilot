@@ -1775,17 +1775,28 @@ var ChunkedOPFSWriter = class {
 };
 
 // src/workers/csv-join.worker.ts
+var PARTITION_THRESHOLD = 5e5;
+function djb2(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = (h << 5) + h + s.charCodeAt(i) | 0;
+  return h;
+}
+function partIdx(key, K) {
+  return Math.abs(djb2(key)) % K;
+}
 self.onmessage = async (event) => {
   const { jobId, input } = event.data;
   const { leftRef, rightRef, joinType = "inner", leftKey, rightKey, executionId, variableName, chunkSize = 1e4 } = input;
   const post = (msg) => self.postMessage(msg);
+  const rowKeyLeft = (r) => leftKey ? String(r[leftKey] ?? "") : JSON.stringify(r);
+  const rowKeyRight = (r) => rightKey ? String(r[rightKey] ?? "") : JSON.stringify(r);
   try {
-    post({ kind: "progress", jobId, progress: 5, message: "Loading lookup side..." });
-    const right = await readFromOPFS(rightRef.executionId, rightRef.datasetId, rightRef.chunkCount);
     const datasetId = createId();
     const writer = new ChunkedOPFSWriter(executionId, datasetId, chunkSize);
     await writer.init();
     if (joinType === "cross") {
+      post({ kind: "progress", jobId, progress: 5, message: "Loading lookup side..." });
+      const right = await readFromOPFS(rightRef.executionId, rightRef.datasetId, rightRef.chunkCount);
       for (let c = 0; c < leftRef.chunkCount; c++) {
         const leftChunk = await readChunkFromOPFS(leftRef.executionId, leftRef.datasetId, c);
         const batch = [];
@@ -1794,39 +1805,109 @@ self.onmessage = async (event) => {
         post({ kind: "progress", jobId, progress: Math.round(10 + (c + 1) / leftRef.chunkCount * 80), message: "Joining..." });
       }
     } else {
-      const rightMap = /* @__PURE__ */ new Map();
-      for (const r of right) {
-        const key = rightKey ? String(r[rightKey] ?? "") : JSON.stringify(r);
-        const bucket = rightMap.get(key);
-        if (bucket) bucket.push(r);
-        else rightMap.set(key, [r]);
-      }
-      const matchedRightKeys = /* @__PURE__ */ new Set();
-      for (let c = 0; c < leftRef.chunkCount; c++) {
-        const leftChunk = await readChunkFromOPFS(leftRef.executionId, leftRef.datasetId, c);
-        const batch = [];
-        for (const l of leftChunk) {
-          const key = leftKey ? String(l[leftKey] ?? "") : JSON.stringify(l);
-          const matches = rightMap.get(key) ?? [];
-          if (matches.length > 0) {
-            for (const r of matches) {
-              batch.push({ ...l, ...r });
-              matchedRightKeys.add(key);
-            }
-          } else if (joinType === "left" || joinType === "full") {
-            batch.push({ ...l });
-          }
-        }
-        await writer.write(batch);
-        post({ kind: "progress", jobId, progress: Math.round(10 + (c + 1) / leftRef.chunkCount * 75), message: "Joining..." });
-      }
-      if (joinType === "right" || joinType === "full") {
-        const unmatched = [];
+      const K = Math.max(1, Math.ceil(rightRef.rowCount / PARTITION_THRESHOLD));
+      if (K === 1) {
+        post({ kind: "progress", jobId, progress: 5, message: "Loading lookup side..." });
+        const right = await readFromOPFS(rightRef.executionId, rightRef.datasetId, rightRef.chunkCount);
+        const rightMap = /* @__PURE__ */ new Map();
         for (const r of right) {
-          const key = rightKey ? String(r[rightKey] ?? "") : JSON.stringify(r);
-          if (!matchedRightKeys.has(key)) unmatched.push({ ...r });
+          const key = rowKeyRight(r);
+          const bucket = rightMap.get(key);
+          if (bucket) bucket.push(r);
+          else rightMap.set(key, [r]);
         }
-        await writer.write(unmatched);
+        const matchedRightKeys = /* @__PURE__ */ new Set();
+        for (let c = 0; c < leftRef.chunkCount; c++) {
+          const leftChunk = await readChunkFromOPFS(leftRef.executionId, leftRef.datasetId, c);
+          const batch = [];
+          for (const l of leftChunk) {
+            const key = rowKeyLeft(l);
+            const matches = rightMap.get(key) ?? [];
+            if (matches.length > 0) {
+              for (const r of matches) {
+                batch.push({ ...l, ...r });
+                matchedRightKeys.add(key);
+              }
+            } else if (joinType === "left" || joinType === "full") {
+              batch.push({ ...l });
+            }
+          }
+          await writer.write(batch);
+          post({ kind: "progress", jobId, progress: Math.round(10 + (c + 1) / leftRef.chunkCount * 75), message: "Joining..." });
+        }
+        if (joinType === "right" || joinType === "full") {
+          const unmatched = [];
+          for (const r of right) {
+            if (!matchedRightKeys.has(rowKeyRight(r))) unmatched.push({ ...r });
+          }
+          await writer.write(unmatched);
+        }
+      } else {
+        post({ kind: "progress", jobId, progress: 3, message: `Partitioning into ${K} buckets...` });
+        const rightPartIds = Array.from({ length: K }, () => createId());
+        const rightPartWriters = rightPartIds.map((id) => new ChunkedOPFSWriter(executionId, id, chunkSize));
+        await Promise.all(rightPartWriters.map((w) => w.init()));
+        for (let c = 0; c < rightRef.chunkCount; c++) {
+          const chunk = await readChunkFromOPFS(rightRef.executionId, rightRef.datasetId, c);
+          const buckets = Array.from({ length: K }, () => []);
+          for (const row of chunk) buckets[partIdx(rowKeyRight(row), K)].push(row);
+          for (let i = 0; i < K; i++) {
+            if (buckets[i].length) await rightPartWriters[i].write(buckets[i]);
+          }
+          post({ kind: "progress", jobId, progress: Math.round(3 + (c + 1) / rightRef.chunkCount * 12), message: `Partitioning right... ${c + 1} / ${rightRef.chunkCount}` });
+        }
+        const rightPartMeta = await Promise.all(rightPartWriters.map((w) => w.finish()));
+        const leftPartIds = Array.from({ length: K }, () => createId());
+        const leftPartWriters = leftPartIds.map((id) => new ChunkedOPFSWriter(executionId, id, chunkSize));
+        await Promise.all(leftPartWriters.map((w) => w.init()));
+        for (let c = 0; c < leftRef.chunkCount; c++) {
+          const chunk = await readChunkFromOPFS(leftRef.executionId, leftRef.datasetId, c);
+          const buckets = Array.from({ length: K }, () => []);
+          for (const row of chunk) buckets[partIdx(rowKeyLeft(row), K)].push(row);
+          for (let i = 0; i < K; i++) {
+            if (buckets[i].length) await leftPartWriters[i].write(buckets[i]);
+          }
+          post({ kind: "progress", jobId, progress: Math.round(15 + (c + 1) / leftRef.chunkCount * 15), message: `Partitioning left... ${c + 1} / ${leftRef.chunkCount}` });
+        }
+        const leftPartMeta = await Promise.all(leftPartWriters.map((w) => w.finish()));
+        for (let i = 0; i < K; i++) {
+          const rightMap = /* @__PURE__ */ new Map();
+          for (let ci = 0; ci < rightPartMeta[i].chunks.length; ci++) {
+            const chunk = await readChunkFromOPFS(executionId, rightPartIds[i], ci);
+            for (const r of chunk) {
+              const key = rowKeyRight(r);
+              const bucket = rightMap.get(key);
+              if (bucket) bucket.push(r);
+              else rightMap.set(key, [r]);
+            }
+          }
+          const matchedRightKeys = /* @__PURE__ */ new Set();
+          for (let ci = 0; ci < leftPartMeta[i].chunks.length; ci++) {
+            const leftChunk = await readChunkFromOPFS(executionId, leftPartIds[i], ci);
+            const batch = [];
+            for (const l of leftChunk) {
+              const key = rowKeyLeft(l);
+              const matches = rightMap.get(key) ?? [];
+              if (matches.length > 0) {
+                for (const r of matches) {
+                  batch.push({ ...l, ...r });
+                  matchedRightKeys.add(key);
+                }
+              } else if (joinType === "left" || joinType === "full") {
+                batch.push({ ...l });
+              }
+            }
+            await writer.write(batch);
+          }
+          if (joinType === "right" || joinType === "full") {
+            for (const [key, rows] of rightMap) {
+              if (!matchedRightKeys.has(key)) {
+                for (const r of rows) await writer.write([{ ...r }]);
+              }
+            }
+          }
+          post({ kind: "progress", jobId, progress: Math.round(30 + (i + 1) / K * 60), message: `Joining partition ${i + 1} / ${K}...` });
+        }
       }
     }
     post({ kind: "progress", jobId, progress: 93, message: "Finalizing..." });

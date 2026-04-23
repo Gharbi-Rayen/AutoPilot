@@ -62,8 +62,6 @@ const executorRegistry: Partial<Record<NodeType, () => Promise<NodeExecutor>>> =
     import("@/features/executions/components/csv-aggregate/executor").then((m) => m.executor),
   [NodeType.CSV_DEDUPLICATE]: () =>
     import("@/features/executions/components/csv-deduplicate/executor").then((m) => m.executor),
-  [NodeType.CSV_COLUMN_STATS]: () =>
-    import("@/features/executions/components/csv-column-stats/executor").then((m) => m.executor),
   [NodeType.CSV_COMPARE]: () =>
     import("@/features/executions/components/csv-compare/executor").then((m) => m.executor),
   [NodeType.CSV_TRANSFORM]: () =>

@@ -1750,6 +1750,7 @@ async function writeToOPFS(executionId, datasetId, rows, chunkSize = 1e4) {
 }
 
 // src/workers/csv-aggregate.worker.ts
+var COUNT_DISTINCT_CAP = 1e5;
 self.onmessage = async (event) => {
   const { jobId, input } = event.data;
   const { inputRef, groupByFields, aggregations, executionId, variableName, chunkSize = 1e4 } = input;
@@ -1798,7 +1799,7 @@ self.onmessage = async (event) => {
               break;
             case "count_distinct":
               if (!acc.distincts[alias]) acc.distincts[alias] = /* @__PURE__ */ new Set();
-              acc.distincts[alias].add(String(raw ?? ""));
+              if (acc.distincts[alias].size < COUNT_DISTINCT_CAP) acc.distincts[alias].add(String(raw ?? ""));
               break;
             case "min":
               if (isNum) acc.mins[alias] = acc.mins[alias] === void 0 ? num : Math.min(acc.mins[alias], num);
@@ -1834,9 +1835,11 @@ self.onmessage = async (event) => {
           case "count":
             out[alias] = acc.rowCount;
             break;
-          case "count_distinct":
-            out[alias] = acc.distincts[alias]?.size ?? 0;
+          case "count_distinct": {
+            const s = acc.distincts[alias];
+            out[alias] = s ? s.size >= COUNT_DISTINCT_CAP ? `\u2265${COUNT_DISTINCT_CAP}` : s.size : 0;
             break;
+          }
           case "min":
             out[alias] = acc.mins[alias] ?? null;
             break;

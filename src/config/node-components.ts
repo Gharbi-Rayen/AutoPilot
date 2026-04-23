@@ -3,7 +3,6 @@ import type { NodeTypes } from "@xyflow/react";
 import { InitialNode } from "@/components/initial-node";
 import { ManualTriggerNode } from "@/components/manual-trigger-node";
 import { CsvAggregateNode } from "@/features/executions/components/csv-aggregate/node";
-import { CsvColumnStatsNode } from "@/features/executions/components/csv-column-stats/node";
 import { CsvCompareNode } from "@/features/executions/components/csv-compare/node";
 import { CsvConsecutiveSequenceNode } from "@/features/executions/components/csv-consecutive-sequence/node";
 import { CsvDeduplicateNode } from "@/features/executions/components/csv-deduplicate/node";
@@ -33,7 +32,6 @@ export const nodeComponents: NodeTypes = {
   [NodeType.CSV_JOIN]: CsvJoinNode,
   [NodeType.CSV_AGGREGATE]: CsvAggregateNode,
   [NodeType.CSV_DEDUPLICATE]: CsvDeduplicateNode,
-  [NodeType.CSV_COLUMN_STATS]: CsvColumnStatsNode,
   [NodeType.CSV_COMPARE]: CsvCompareNode,
   [NodeType.CSV_CONSECUTIVE_SEQUENCE_ANALYZER]: CsvConsecutiveSequenceNode,
   [NodeType.CSV_TRANSFORM]: CsvTransformNode,
