@@ -5,7 +5,7 @@ import type { DatasetRef } from "@/types/dataset";
 
 export const executor: NodeExecutor = async (_nodeId, nodeData, context, executionId, onProgress) => {
   const {
-    inputVariable, sourceVariable, variableName = "dedupedData",
+    inputVariable, sourceVariable, variableName = "duplicateRows",
     column,
   } = nodeData as Record<string, unknown>;
 
@@ -16,21 +16,21 @@ export const executor: NodeExecutor = async (_nodeId, nodeData, context, executi
   if (!isDatasetRef(inputRef)) throw new Error("csv-deduplicate: no dataset in context.");
 
   const result = await dispatchWorkerJob<unknown, {
-    datasetRef: DatasetRef;
-    manifest: unknown;
-    reportRef: DatasetRef;
-    reportManifest: unknown;
+    duplicatesRef: DatasetRef;
+    duplicatesManifest: unknown;
+    uniqueRef: DatasetRef;
+    uniqueManifest: unknown;
     duplicateCount: number;
     removedCount: number;
   }>("csv-deduplicate", { inputRef, column: column ?? "", executionId, variableName }, onProgress);
 
-  const reportVarName = `${variableName as string}_report`;
+  const uniqueVarName = `${variableName as string}_unique`;
 
   return {
-    [variableName as string]: result.datasetRef,
-    [`${variableName as string}_manifest`]: result.manifest,
-    [reportVarName]: result.reportRef,
-    [`${reportVarName}_manifest`]: result.reportManifest,
+    [variableName as string]: result.duplicatesRef,
+    [`${variableName as string}_manifest`]: result.duplicatesManifest,
+    [uniqueVarName]: result.uniqueRef,
+    [`${uniqueVarName}_manifest`]: result.uniqueManifest,
     duplicateCount: result.duplicateCount,
     removedCount: result.removedCount,
   };

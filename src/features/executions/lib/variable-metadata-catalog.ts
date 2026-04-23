@@ -357,11 +357,7 @@ export const buildVariableMetadataCatalog = ({
       continue;
     }
 
-    if (
-      nodeType === "CSV_FILTER" ||
-      nodeType === "CSV_SORT" ||
-      nodeType === "CSV_DEDUPLICATE"
-    ) {
+    if (nodeType === "CSV_FILTER" || nodeType === "CSV_SORT") {
       const sourceVariable = readString(data, "sourceVariable");
       const variableName = readString(data, "variableName");
       if (!sourceVariable || !variableName) {
@@ -376,6 +372,41 @@ export const buildVariableMetadataCatalog = ({
       setVariableMetadata(metadataByVariable, {
         ...source,
         variableName,
+        sourceNodeId: node.id,
+        sourceNodeType: node.type,
+      });
+      continue;
+    }
+
+    if (nodeType === "CSV_DEDUPLICATE") {
+      const sourceVariable = readString(data, "sourceVariable");
+      const variableName = readString(data, "variableName");
+      if (!sourceVariable || !variableName) {
+        continue;
+      }
+
+      const source = metadataByVariable.get(sourceVariable);
+      if (!source) {
+        continue;
+      }
+
+      const selectedColumn = readString(data, "column");
+      const duplicateColumns = selectedColumn
+        ? readColumns([selectedColumn, "count"])
+        : readColumns([...source.columns, "count"]);
+
+      setVariableMetadata(metadataByVariable, {
+        ...source,
+        variableName,
+        columns: duplicateColumns,
+        columnCount: duplicateColumns.length,
+        sourceNodeId: node.id,
+        sourceNodeType: node.type,
+      });
+
+      setVariableMetadata(metadataByVariable, {
+        ...source,
+        variableName: `${variableName}_unique`,
         sourceNodeId: node.id,
         sourceNodeType: node.type,
       });

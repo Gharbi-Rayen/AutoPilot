@@ -1794,12 +1794,12 @@ self.onmessage = async (event) => {
       const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 40);
       post({ kind: "progress", jobId, progress: pct, message: `Scanned ${totalRows.toLocaleString()} rows...` });
     }
-    post({ kind: "progress", jobId, progress: 47, message: "Writing deduplicated rows..." });
-    const dedupId = createId();
-    const reportId = createId();
-    const dedupWriter = new ChunkedOPFSWriter(executionId, dedupId, chunkSize);
-    const reportWriter = new ChunkedOPFSWriter(executionId, reportId, chunkSize);
-    await Promise.all([dedupWriter.init(), reportWriter.init()]);
+    post({ kind: "progress", jobId, progress: 47, message: "Writing duplicate rows..." });
+    const uniqueId = createId();
+    const duplicatesId = createId();
+    const uniqueWriter = new ChunkedOPFSWriter(executionId, uniqueId, chunkSize);
+    const duplicatesWriter = new ChunkedOPFSWriter(executionId, duplicatesId, chunkSize);
+    await Promise.all([uniqueWriter.init(), duplicatesWriter.init()]);
     const seen = /* @__PURE__ */ new Set();
     for (let c = 0; c < inputRef.chunkCount; c++) {
       const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
@@ -1807,74 +1807,89 @@ self.onmessage = async (event) => {
         const key = computeKey(row);
         if (seen.has(key)) continue;
         seen.add(key);
-        await dedupWriter.write([row]);
+        await uniqueWriter.write([row]);
         const count = counts.get(key) ?? 1;
         if (count >= 2) {
-          const reportRow = column ? { [column]: key, count } : { ...row, count };
-          await reportWriter.write([reportRow]);
+          const duplicateRow = column ? { [column]: row[column] ?? "", count } : { ...row, count };
+          await duplicatesWriter.write([duplicateRow]);
         }
       }
       const pct = Math.round(47 + (c + 1) / inputRef.chunkCount * 43);
       post({ kind: "progress", jobId, progress: pct, message: `Processed ${((c + 1) * chunkSize).toLocaleString()} rows...` });
     }
     post({ kind: "progress", jobId, progress: 93, message: "Writing..." });
-    const [dedupResult, reportResult] = await Promise.all([dedupWriter.finish(), reportWriter.finish()]);
+    const [uniqueResult, duplicatesResult] = await Promise.all([
+      uniqueWriter.finish(),
+      duplicatesWriter.finish()
+    ]);
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const reportVarName = `${variableName}_report`;
-    const dedupManifest = {
+    const uniqueVarName = `${variableName}_unique`;
+    const duplicateSchema = column ? {
+      [column]: inputRef.schema?.[column] ?? {
+        type: "string",
+        nullable: true
+      },
+      count: { type: "number", nullable: false }
+    } : {
+      ...inputRef.schema ?? {},
+      count: { type: "number", nullable: false }
+    };
+    const uniqueManifest = {
       version: DATASET_MANIFEST_VERSION,
-      datasetId: dedupId,
+      datasetId: uniqueId,
       executionId,
-      variableName,
+      variableName: uniqueVarName,
       createdAt: now,
       updatedAt: now,
-      rowCount: dedupResult.totalRows,
-      chunkCount: dedupResult.chunks.length,
-      byteSize: dedupResult.totalBytes,
+      rowCount: uniqueResult.totalRows,
+      chunkCount: uniqueResult.chunks.length,
+      byteSize: uniqueResult.totalBytes,
       schema: inputRef.schema,
-      chunks: dedupResult.chunks
+      chunks: uniqueResult.chunks
     };
-    const dedupRef = {
+    const uniqueRef = {
       kind: "dataset",
-      datasetId: dedupId,
+      datasetId: uniqueId,
       executionId,
-      variableName,
-      rowCount: dedupResult.totalRows,
-      chunkCount: dedupResult.chunks.length,
-      byteSize: dedupResult.totalBytes,
+      variableName: uniqueVarName,
+      rowCount: uniqueResult.totalRows,
+      chunkCount: uniqueResult.chunks.length,
+      byteSize: uniqueResult.totalBytes,
       schema: inputRef.schema
     };
-    const reportManifest = {
+    const duplicatesManifest = {
       version: DATASET_MANIFEST_VERSION,
-      datasetId: reportId,
+      datasetId: duplicatesId,
       executionId,
-      variableName: reportVarName,
+      variableName,
       createdAt: now,
       updatedAt: now,
-      rowCount: reportResult.totalRows,
-      chunkCount: reportResult.chunks.length,
-      byteSize: reportResult.totalBytes,
-      chunks: reportResult.chunks
+      rowCount: duplicatesResult.totalRows,
+      chunkCount: duplicatesResult.chunks.length,
+      byteSize: duplicatesResult.totalBytes,
+      schema: duplicateSchema,
+      chunks: duplicatesResult.chunks
     };
-    const reportRef = {
+    const duplicatesRef = {
       kind: "dataset",
-      datasetId: reportId,
+      datasetId: duplicatesId,
       executionId,
-      variableName: reportVarName,
-      rowCount: reportResult.totalRows,
-      chunkCount: reportResult.chunks.length,
-      byteSize: reportResult.totalBytes
+      variableName,
+      rowCount: duplicatesResult.totalRows,
+      chunkCount: duplicatesResult.chunks.length,
+      byteSize: duplicatesResult.totalBytes,
+      schema: duplicateSchema
     };
     post({
       kind: "result",
       jobId,
       output: {
-        datasetRef: dedupRef,
-        manifest: dedupManifest,
-        reportRef,
-        reportManifest,
-        duplicateCount: reportResult.totalRows,
-        removedCount: totalRows - dedupResult.totalRows
+        duplicatesRef,
+        duplicatesManifest,
+        uniqueRef,
+        uniqueManifest,
+        duplicateCount: duplicatesResult.totalRows,
+        removedCount: totalRows - uniqueResult.totalRows
       }
     });
   } catch (err) {

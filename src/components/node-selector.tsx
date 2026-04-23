@@ -136,7 +136,7 @@ const executionNodes: NodeTypeOption[] = [
   {
     type: NodeType.CSV_DEDUPLICATE,
     label: "Detect Duplicates",
-    description: "Find duplicate rows or values, output dedup + report",
+    description: "Find duplicates with count, plus unique rows",
     icon: Copy,
   },
   {
@@ -173,7 +173,8 @@ export function NodeSelector({
   pendingSourceNodeId,
   children,
 }: NodeSelectorProps) {
-  const { setNodes, setEdges, getNodes, getNode, screenToFlowPosition } = useReactFlow();
+  const { setNodes, setEdges, getNodes, getNode, screenToFlowPosition } =
+    useReactFlow();
   const [search, setSearch] = useState("");
 
   const filteredTriggerNodes = useMemo(() => {
@@ -215,7 +216,9 @@ export function NodeSelector({
           (node) => node.type === NodeType.MANUAL_TRIGGER,
         );
         if (!hasTrigger) {
-          toast.error("Add a trigger node first before adding execution nodes.");
+          toast.error(
+            "Add a trigger node first before adding execution nodes.",
+          );
           return;
         }
       }
@@ -227,12 +230,16 @@ export function NodeSelector({
         const sourceNode = getNode(pendingSourceNodeId);
         const sourceX = sourceNode?.position.x ?? 0;
         const sourceY = sourceNode?.position.y ?? 0;
-        const sourceWidth = (sourceNode?.measured?.width as number | undefined) ?? 120;
-        const sourceVariableName = (sourceNode?.data as Record<string, unknown>)?.variableName as string | undefined;
+        const sourceWidth =
+          (sourceNode?.measured?.width as number | undefined) ?? 120;
+        const sourceVariableName = (sourceNode?.data as Record<string, unknown>)
+          ?.variableName as string | undefined;
 
         const newNode = {
           id: newNodeId,
-          data: sourceVariableName ? { sourceVariable: sourceVariableName } : {},
+          data: sourceVariableName
+            ? { sourceVariable: sourceVariableName }
+            : {},
           position: { x: sourceX + sourceWidth + 100, y: sourceY },
           type: selection.type,
         };
@@ -269,7 +276,10 @@ export function NodeSelector({
             (node) => node.type === NodeType.INITIAL,
           );
           if (hasInitialTrigger) {
-            return [...nds.filter((node) => node.type !== NodeType.INITIAL), newNode];
+            return [
+              ...nds.filter((node) => node.type !== NodeType.INITIAL),
+              newNode,
+            ];
           }
           return [...nds, newNode];
         });
@@ -277,7 +287,15 @@ export function NodeSelector({
 
       onOpenChange(false);
     },
-    [onOpenChange, setNodes, setEdges, getNodes, getNode, screenToFlowPosition, pendingSourceNodeId],
+    [
+      onOpenChange,
+      setNodes,
+      setEdges,
+      getNodes,
+      getNode,
+      screenToFlowPosition,
+      pendingSourceNodeId,
+    ],
   );
 
   return (

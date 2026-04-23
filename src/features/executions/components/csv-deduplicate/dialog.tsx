@@ -64,7 +64,7 @@ export const CsvDeduplicateDialog = ({
     },
   });
 
-  const watchVariableName = form.watch("variableName") || "dedupedData";
+  const watchVariableName = form.watch("variableName") || "duplicateRows";
   const watchSourceVariable = form.watch("sourceVariable");
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
@@ -132,7 +132,8 @@ export const CsvDeduplicateDialog = ({
                     />
                   </FormControl>
                   <FormDescription>
-                    Pick a column to find duplicate values in. Leave empty to detect fully identical rows.
+                    Pick a column to find duplicate values in. Leave empty to
+                    detect fully identical rows.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -146,14 +147,14 @@ export const CsvDeduplicateDialog = ({
                 <FormItem>
                   <FormLabel>Output Variable Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="dedupedData" {...field} />
+                    <Input placeholder="duplicateRows" {...field} />
                   </FormControl>
                   <FormDescription>
-                    Unique rows →{" "}
+                    Duplicate rows + count →{" "}
                     <span className="font-mono text-xs">{`{{${watchVariableName}}}`}</span>
                     {" · "}
-                    Duplicate report →{" "}
-                    <span className="font-mono text-xs">{`{{${watchVariableName}_report}}`}</span>
+                    Unique rows (first occurrence) →{" "}
+                    <span className="font-mono text-xs">{`{{${watchVariableName}_unique}}`}</span>
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
