@@ -1719,6 +1719,14 @@ async function readChunkFromOPFS(executionId, datasetId, chunkIndex) {
   const fh = await dir.getFileHandle(fileName);
   return JSON.parse(await (await fh.getFile()).text());
 }
+async function deleteDatasetFromOPFS(executionId, datasetId) {
+  try {
+    const opfsRoot = await navigator.storage.getDirectory();
+    const execDir = await opfsRoot.getDirectoryHandle("autopilot", { create: false }).then((a) => a.getDirectoryHandle("executions", { create: false })).then((e) => e.getDirectoryHandle(executionId, { create: false }));
+    await execDir.removeEntry(datasetId, { recursive: true });
+  } catch {
+  }
+}
 var ChunkedOPFSWriter = class {
   constructor(executionId, datasetId, chunkSize = 1e4) {
     this.executionId = executionId;
@@ -1952,6 +1960,7 @@ self.onmessage = async (event) => {
     }
     if (outBatch.length) await writer.write(outBatch);
     const { chunks, totalBytes, totalRows } = await writer.finish();
+    await deleteDatasetFromOPFS(executionId, runDatasetId);
     const now = (/* @__PURE__ */ new Date()).toISOString();
     const manifest = {
       version: DATASET_MANIFEST_VERSION,

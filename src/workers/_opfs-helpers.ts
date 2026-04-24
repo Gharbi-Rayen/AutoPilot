@@ -105,6 +105,22 @@ export type OPFSChunkMeta = {
   createdAt: string;
 };
 
+export async function deleteDatasetFromOPFS(
+  executionId: string,
+  datasetId: string,
+): Promise<void> {
+  try {
+    const opfsRoot = await navigator.storage.getDirectory();
+    const execDir = await opfsRoot
+      .getDirectoryHandle("autopilot", { create: false })
+      .then((a) => a.getDirectoryHandle("executions", { create: false }))
+      .then((e) => e.getDirectoryHandle(executionId, { create: false }));
+    await execDir.removeEntry(datasetId, { recursive: true });
+  } catch {
+    // already gone or never existed — ignore
+  }
+}
+
 export class ChunkedOPFSWriter {
   private dir!: FileSystemDirectoryHandle;
   private buffer: DatasetRow[] = [];

@@ -20,7 +20,7 @@
 import { createId } from "@paralleldrive/cuid2";
 import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manager";
 import { DATASET_MANIFEST_VERSION, type DatasetRef, type DatasetRow } from "@/types/dataset";
-import { ChunkedOPFSWriter, readChunkFromOPFS } from "./_opfs-helpers";
+import { ChunkedOPFSWriter, deleteDatasetFromOPFS, readChunkFromOPFS } from "./_opfs-helpers";
 
 const MERGE_FACTOR = 64; // input chunks merged per sorted run in Phase 1
 const MAX_ROWS_PER_SORT_RUN = 640_000; // keep Phase 1 memory roughly stable across chunk sizes
@@ -262,6 +262,8 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
     if (outBatch.length) await writer.write(outBatch);
 
     const { chunks, totalBytes, totalRows } = await writer.finish();
+
+    await deleteDatasetFromOPFS(executionId, runDatasetId);
 
     const now = new Date().toISOString();
     const manifest = {

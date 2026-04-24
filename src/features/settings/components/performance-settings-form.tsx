@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, Trash2Icon, ZapIcon } from "lucide-react";
+import { CheckIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, ScanIcon, Trash2Icon, ZapIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { useRemoveAllExecutions } from "@/features/executions/hooks/use-executions";
 import { db } from "@/lib/db";
+import { cleanupOrphanedOPFSData } from "@/lib/opfs";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_PERFORMANCE_SETTINGS,
@@ -270,6 +271,8 @@ export function PerformanceSettingsForm() {
 function StorageManagementSection() {
   const [quota, setQuota] = useState<{ usage: number; quota: number } | null>(null);
   const [execCount, setExecCount] = useState<number | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanedCount, setCleanedCount] = useState<number | null>(null);
   const removeAll = useRemoveAllExecutions();
 
   const loadStats = useCallback(() => {
@@ -320,20 +323,51 @@ function StorageManagementSection() {
           </div>
         </div>
 
-        <Button
-          variant="destructive"
-          size="sm"
-          className="w-fit gap-2"
-          disabled={removeAll.isPending || execCount === 0}
-          onClick={() => {
-            if (confirm("Delete all execution data? This cannot be undone.")) {
-              removeAll.mutate(undefined, { onSuccess: loadStats });
-            }
-          }}
-        >
-          <Trash2Icon className="size-3.5" />
-          {removeAll.isPending ? "Clearing..." : "Clear All Execution Data"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            className="w-fit gap-2"
+            disabled={removeAll.isPending || execCount === 0}
+            onClick={() => {
+              if (confirm("Delete all execution data? This cannot be undone.")) {
+                removeAll.mutate(undefined, { onSuccess: loadStats });
+              }
+            }}
+          >
+            <Trash2Icon className="size-3.5" />
+            {removeAll.isPending ? "Clearing..." : "Clear All Execution Data"}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-fit gap-2"
+            disabled={cleaning}
+            onClick={async () => {
+              setCleaning(true);
+              setCleanedCount(null);
+              try {
+                const { deletedDatasets } = await cleanupOrphanedOPFSData();
+                setCleanedCount(deletedDatasets);
+                loadStats();
+              } finally {
+                setCleaning(false);
+              }
+            }}
+          >
+            <ScanIcon className="size-3.5" />
+            {cleaning ? "Scanning..." : "Clean Up Orphaned Data"}
+          </Button>
+        </div>
+
+        {cleanedCount !== null && (
+          <p className="text-xs text-muted-foreground">
+            {cleanedCount === 0
+              ? "No orphaned data found."
+              : `Removed ${cleanedCount} orphaned dataset${cleanedCount !== 1 ? "s" : ""}.`}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

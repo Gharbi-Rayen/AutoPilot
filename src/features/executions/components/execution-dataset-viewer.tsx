@@ -134,7 +134,7 @@ interface ExportDatasetDialogProps {
   columns: string[];
 }
 
-const ExportDatasetDialog = ({
+export const ExportDatasetDialog = ({
   open,
   onOpenChange,
   executionId,

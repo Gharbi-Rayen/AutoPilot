@@ -2,7 +2,6 @@
 
 import {
   AlertTriangleIcon,
-  CheckCircle2Icon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleCheckIcon,
@@ -20,13 +19,6 @@ import { NodeStatusLine } from "@/components/node-status-line";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Table,
   TableBody,
   TableCell,
@@ -36,11 +28,10 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import {
-  useExecutionDatasetDownload,
   useExecutionDatasetMeta,
   useExecutionDatasetPage,
 } from "../hooks/use-executions";
-import { ExecutionDatasetViewer } from "./execution-dataset-viewer";
+import { ExportDatasetDialog, ExecutionDatasetViewer } from "./execution-dataset-viewer";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -352,24 +343,15 @@ const ExportLink = ({ label, varName, executionId, nodeId, icon }: ExportLinkPro
         <DownloadIcon className="size-3 text-muted-foreground group-hover:text-primary transition-colors ml-0.5" />
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Export — {label}</DialogTitle>
-            <DialogDescription>
-              {totalRows.toLocaleString()} rows · {columns.length} columns
-            </DialogDescription>
-          </DialogHeader>
-          <InlineExportPanel
-            executionId={executionId}
-            variable={varName ?? ""}
-            nodeId={nodeId}
-            totalRows={totalRows}
-            columns={columns}
-            onClose={() => setOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <ExportDatasetDialog
+        open={open}
+        onOpenChange={setOpen}
+        executionId={executionId}
+        variable={varName ?? ""}
+        nodeId={nodeId}
+        totalRows={totalRows}
+        columns={columns}
+      />
     </>
   );
 };
@@ -406,124 +388,6 @@ const ExportCard = ({ title, category, logic, description, fileName, varName, ex
     )}
   </div>
 );
-
-// ── InlineExportPanel ─────────────────────────────────────────────────────────
-
-type ExportFormat = "csv" | "xlsx" | "txt";
-
-const toCsvString = (rows: Record<string, unknown>[], cols: string[], delimiter: string) => {
-  const escapeCell = (v: unknown) => {
-    const s = v === null || v === undefined ? "" : String(v);
-    if (s.includes('"') || s.includes(delimiter) || s.includes("\n")) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  };
-  const header = cols.map(escapeCell).join(delimiter);
-  const body = rows.map((r) => cols.map((c) => escapeCell(r[c])).join(delimiter)).join("\n");
-  return `${header}\n${body}`;
-};
-
-const triggerDownload = (content: string | ArrayBuffer, mime: string, name: string) => {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
-};
-
-interface InlineExportPanelProps {
-  executionId: string;
-  variable: string;
-  nodeId: string;
-  totalRows: number;
-  columns: string[];
-  onClose: () => void;
-}
-
-const InlineExportPanel = ({ executionId, variable, nodeId, totalRows, columns, onClose }: InlineExportPanelProps) => {
-  const [format, setFormat] = useState<ExportFormat>("csv");
-  const [fileName, setFileName] = useState(variable);
-  const [exporting, setExporting] = useState(false);
-  const [done, setDone] = useState(false);
-
-  const dlQuery = useExecutionDatasetDownload(executionId, variable, "json", nodeId, false);
-
-  const handleExport = async () => {
-    setExporting(true);
-    setDone(false);
-    try {
-      const result = await dlQuery.refetch();
-      const rows = (result.data?.data ?? []) as Record<string, unknown>[];
-      const cols = columns.length > 0 ? columns : (rows[0] ? Object.keys(rows[0]) : []);
-      const safe = fileName.replace(/[^\w\-. ]/g, "_") || variable;
-
-      if (format === "csv" || format === "txt") {
-        const delim = format === "txt" ? "\t" : ",";
-        const content = toCsvString(rows, cols, delim);
-        const mime = format === "csv" ? "text/csv;charset=utf-8;" : "text/plain;charset=utf-8;";
-        triggerDownload(content, mime, `${safe}.${format}`);
-      } else {
-        const mod = await import("xlsx");
-        const ws = mod.utils.json_to_sheet(rows, { header: cols });
-        const wb = mod.utils.book_new();
-        mod.utils.book_append_sheet(wb, ws, "Sheet1");
-        const buf = mod.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
-        triggerDownload(buf, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `${safe}.xlsx`);
-      }
-      setDone(true);
-    } catch {
-      // ignore
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  return (
-    <div className="flex flex-col gap-4 pt-2">
-      <div className="grid grid-cols-3 gap-2">
-        {(["csv", "xlsx", "txt"] as ExportFormat[]).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFormat(f)}
-            className={cn(
-              "rounded-md border px-3 py-2 text-xs font-medium transition-all",
-              format === f ? "border-primary bg-primary/10 text-primary" : "border-border bg-muted/20 hover:bg-muted/40",
-            )}
-          >
-            {f.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <label htmlFor="export-filename" className="text-xs font-medium text-muted-foreground">File name</label>
-        <input
-          id="export-filename"
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary transition-colors"
-          value={fileName}
-          onChange={(e) => setFileName(e.target.value)}
-        />
-      </div>
-
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{totalRows.toLocaleString()} rows · {columns.length} columns</span>
-        {done && <span className="text-emerald-600 font-medium flex items-center gap-1"><CheckCircle2Icon className="size-3.5" /> Downloaded</span>}
-      </div>
-
-      <div className="flex gap-2">
-        <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
-        <Button type="button" className="flex-1" onClick={handleExport} disabled={exporting}>
-          {exporting && <Loader2Icon className="mr-2 size-4 animate-spin" />}
-          <DownloadIcon className="mr-2 size-4" /> Export
-        </Button>
-      </div>
-    </div>
-  );
-};
 
 // ── ExecutionCompareViewer ────────────────────────────────────────────────────
 

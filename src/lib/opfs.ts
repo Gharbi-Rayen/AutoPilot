@@ -15,6 +15,7 @@ import type {
   DatasetRow,
 } from "@/types/dataset";
 import { DATASET_MANIFEST_VERSION } from "@/types/dataset";
+import { db } from "@/lib/db";
 
 const ROOT_DIR = "autopilot";
 const CHUNK_SIZE_ROWS = 10_000;
@@ -186,4 +187,44 @@ export async function deleteExecutionDatasets(
   } catch {
     // ignore
   }
+}
+
+/**
+ * Remove OPFS dataset directories that have no corresponding IndexedDB record.
+ * Catches temp datasets from sort/join workers and data from deleted executions
+ * that were never cleaned up.
+ */
+type IterableDir = { entries(): AsyncIterableIterator<[string, FileSystemHandle]> };
+
+export async function cleanupOrphanedOPFSData(): Promise<{ deletedDatasets: number }> {
+  const records = await db.datasets.toArray();
+  const validPaths = new Set(records.map((r) => `${r.executionId}/${r.id}`));
+
+  let deletedDatasets = 0;
+
+  try {
+    const root = await getRoot();
+    const execs = await root.getDirectoryHandle("executions", { create: false });
+
+    for await (const [execId, execEntry] of (execs as unknown as IterableDir).entries()) {
+      if (execEntry.kind !== "directory") continue;
+      const execDir = execEntry as FileSystemDirectoryHandle;
+
+      for await (const [dsId, dsEntry] of (execDir as unknown as IterableDir).entries()) {
+        if (dsEntry.kind !== "directory") continue;
+        if (!validPaths.has(`${execId}/${dsId}`)) {
+          try {
+            await execDir.removeEntry(dsId, { recursive: true });
+            deletedDatasets++;
+          } catch {
+            // ignore — concurrent deletion or permission error
+          }
+        }
+      }
+    }
+  } catch {
+    // OPFS not accessible or executions directory doesn't exist yet
+  }
+
+  return { deletedDatasets };
 }

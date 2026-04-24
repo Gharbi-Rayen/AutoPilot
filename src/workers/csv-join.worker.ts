@@ -13,7 +13,7 @@
 import { createId } from "@paralleldrive/cuid2";
 import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manager";
 import { DATASET_MANIFEST_VERSION, type DatasetRef, type DatasetRow } from "@/types/dataset";
-import { ChunkedOPFSWriter, readChunkFromOPFS, readFromOPFS } from "./_opfs-helpers";
+import { ChunkedOPFSWriter, deleteDatasetFromOPFS, readChunkFromOPFS, readFromOPFS } from "./_opfs-helpers";
 
 type JoinType = "inner" | "left" | "right" | "full" | "cross";
 
@@ -183,6 +183,11 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
 
           post({ kind: "progress", jobId, progress: Math.round(30 + ((i + 1) / K) * 60), message: `Joining partition ${i + 1} / ${K}...` });
         }
+
+        await Promise.all([
+          ...rightPartIds.map((id) => deleteDatasetFromOPFS(executionId, id)),
+          ...leftPartIds.map((id) => deleteDatasetFromOPFS(executionId, id)),
+        ]);
       }
     }
 

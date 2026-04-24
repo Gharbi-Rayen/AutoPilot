@@ -1727,6 +1727,14 @@ async function readFromOPFS(executionId, datasetId, chunkCount) {
   }
   return rows;
 }
+async function deleteDatasetFromOPFS(executionId, datasetId) {
+  try {
+    const opfsRoot = await navigator.storage.getDirectory();
+    const execDir = await opfsRoot.getDirectoryHandle("autopilot", { create: false }).then((a) => a.getDirectoryHandle("executions", { create: false })).then((e) => e.getDirectoryHandle(executionId, { create: false }));
+    await execDir.removeEntry(datasetId, { recursive: true });
+  } catch {
+  }
+}
 var ChunkedOPFSWriter = class {
   constructor(executionId, datasetId, chunkSize = 1e4) {
     this.executionId = executionId;
@@ -1909,6 +1917,10 @@ self.onmessage = async (event) => {
           }
           post({ kind: "progress", jobId, progress: Math.round(30 + (i + 1) / K * 60), message: `Joining partition ${i + 1} / ${K}...` });
         }
+        await Promise.all([
+          ...rightPartIds.map((id) => deleteDatasetFromOPFS(executionId, id)),
+          ...leftPartIds.map((id) => deleteDatasetFromOPFS(executionId, id))
+        ]);
       }
     }
     post({ kind: "progress", jobId, progress: 93, message: "Finalizing..." });
