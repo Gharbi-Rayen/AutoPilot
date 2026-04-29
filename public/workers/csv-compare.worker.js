@@ -1748,6 +1748,9 @@ var ChunkedOPFSWriter = class {
       await this._flush(this.buffer.splice(0, this.chunkSize));
     }
   }
+  async forceFlush() {
+    if (this.buffer.length > 0) await this._flush(this.buffer.splice(0));
+  }
   async finish() {
     if (this.buffer.length > 0) await this._flush(this.buffer);
     this.buffer = [];

@@ -33,6 +33,8 @@ import {
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const operators = [
   "eq",
@@ -111,6 +113,7 @@ export const CsvFilterDialog = ({
   const watchSourceVariable = form.watch("sourceVariable");
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchSourceVariable, suffix: "filtered", open });
 
   const handleSubmit = (values: CsvFilterFormValues) => {
     onSubmit(values);
@@ -247,7 +250,7 @@ export const CsvFilterDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="filteredData" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store filtered rows as {`{{${watchVariableName}}}`}

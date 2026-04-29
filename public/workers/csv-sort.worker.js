@@ -1748,6 +1748,9 @@ var ChunkedOPFSWriter = class {
       await this._flush(this.buffer.splice(0, this.chunkSize));
     }
   }
+  async forceFlush() {
+    if (this.buffer.length > 0) await this._flush(this.buffer.splice(0));
+  }
   async finish() {
     if (this.buffer.length > 0) await this._flush(this.buffer);
     this.buffer = [];
@@ -1910,6 +1913,7 @@ self.onmessage = async (event) => {
       totalRunChunks += runChunks;
       totalRunRows += buf.length;
       await runWriter.write(buf);
+      await runWriter.forceFlush();
     }
     await runWriter.finish();
     post({ kind: "progress", jobId, progress: 52, message: `Merging ${numRuns} sorted run${numRuns > 1 ? "s" : ""}...` });

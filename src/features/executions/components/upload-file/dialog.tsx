@@ -25,8 +25,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ export const UploadFileDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
-  nodeId: _nodeId,
+  nodeId,
 }: UploadFileDialogProps) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -164,6 +165,8 @@ export const UploadFileDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "uploadedFile";
+  const fileStem = selectedFile?.name || defaultValues.fileName || "";
+  const suggestion = useVariableNameSuggestion({ nodeId, suffix: "data", fileStem, open });
 
   // Dot animation while active
   useEffect(() => {
@@ -408,7 +411,7 @@ export const UploadFileDialog = ({
                   <FormItem>
                     <FormLabel>Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="uploadedFile" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Access this file as {`{{${watchVariableName}}}`} in

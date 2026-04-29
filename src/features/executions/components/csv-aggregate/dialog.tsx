@@ -22,7 +22,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -33,6 +32,8 @@ import {
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const operations = ["count", "sum", "avg", "min", "max"] as const;
 
@@ -95,6 +96,7 @@ export const CsvAggregateDialog = ({
   const watchSourceVariable = form.watch("sourceVariable");
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchSourceVariable, suffix: "aggregated", open });
 
   const handleSubmit = (values: CsvAggregateFormValues) => {
     onSubmit(values);
@@ -223,7 +225,7 @@ export const CsvAggregateDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="aggregatedData" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store output rows as {`{{${watchVariableName}}}`}

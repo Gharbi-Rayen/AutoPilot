@@ -22,8 +22,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   pdfVariable: z
@@ -64,6 +65,8 @@ export const PdfExtractTablesDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "pdfTables";
+  const watchPdfVariable = form.watch("pdfVariable");
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchPdfVariable, suffix: "tables", open });
 
   const handleSubmit = (values: PdfExtractTablesFormValues) => {
     onSubmit(values);
@@ -116,7 +119,7 @@ export const PdfExtractTablesDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="pdfTables" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store extracted tables as {`{{${watchVariableName}}}`}

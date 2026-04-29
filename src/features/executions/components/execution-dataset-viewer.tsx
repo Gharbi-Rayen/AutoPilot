@@ -147,7 +147,9 @@ export const ExportDatasetDialog = ({
   const [delimiter, setDelimiter] = useState(",");
   const [fileName, setFileName] = useState(variable);
   const [segmented, setSegmented] = useState(false);
+  const [segmentMode, setSegmentMode] = useState<"count" | "rows">("count");
   const [chunkCount, setChunkCount] = useState(3);
+  const [rowsPerSegment, setRowsPerSegment] = useState(50_000);
   const [exporting, setExporting] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [done, setDone] = useState(false);
@@ -174,7 +176,9 @@ export const ExportDatasetDialog = ({
     setDelimiter(",");
     setFileName(variable);
     setSegmented(false);
+    setSegmentMode("count");
     setChunkCount(3);
+    setRowsPerSegment(50_000);
     setExporting(false);
     setFeedback("");
     setDone(false);
@@ -230,8 +234,10 @@ export const ExportDatasetDialog = ({
             ? Object.keys(allRows[0])
             : [];
 
-      if (segmented && chunkCount >= 2 && allRows.length > 0) {
-        const n = Math.min(chunkCount, allRows.length);
+      if (segmented && allRows.length > 0) {
+        const n = segmentMode === "count"
+          ? Math.min(Math.max(2, chunkCount), allRows.length)
+          : Math.max(1, Math.ceil(allRows.length / Math.max(1, rowsPerSegment)));
         const chunkSize = Math.ceil(allRows.length / n);
 
         setFeedback(`Segmenting into ${n} files…`);
@@ -395,39 +401,105 @@ export const ExportDatasetDialog = ({
             </div>
           </div>
 
-          {/* Chunk count — animated reveal */}
+          {/* Segment options — animated reveal */}
           <div
             className={cn(
               "overflow-hidden transition-all duration-200",
               segmented
-                ? "max-h-20 opacity-100"
+                ? "max-h-40 opacity-100"
                 : "max-h-0 opacity-0 pointer-events-none",
             )}
           >
-            <div className="space-y-1.5 pb-0.5">
-              <Label
-                htmlFor="export-chunk-count"
-                className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
-              >
-                Number of files
-              </Label>
-              <Input
-                id="export-chunk-count"
-                type="number"
-                min={2}
-                max={100}
-                value={chunkCount}
-                onChange={(e) =>
-                  setChunkCount(
-                    Math.max(
-                      2,
-                      Math.min(100, Number.parseInt(e.target.value, 10) || 2),
-                    ),
-                  )
-                }
-                disabled={exporting}
-                className="h-8 w-24 text-sm"
-              />
+            <div className="space-y-3 pb-0.5">
+              {/* Mode toggle */}
+              <div className="flex gap-1 rounded-md border p-0.5 w-fit">
+                <button
+                  type="button"
+                  disabled={exporting}
+                  onClick={() => setSegmentMode("count")}
+                  className={cn(
+                    "rounded px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed",
+                    segmentMode === "count"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  # files
+                </button>
+                <button
+                  type="button"
+                  disabled={exporting}
+                  onClick={() => setSegmentMode("rows")}
+                  className={cn(
+                    "rounded px-3 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed",
+                    segmentMode === "rows"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  rows / file
+                </button>
+              </div>
+
+              {/* Input + live preview */}
+              {segmentMode === "count" ? (
+                <div className="flex items-center gap-3">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="export-chunk-count"
+                      className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                    >
+                      Number of files
+                    </Label>
+                    <Input
+                      id="export-chunk-count"
+                      type="number"
+                      min={2}
+                      max={100}
+                      value={chunkCount}
+                      onChange={(e) =>
+                        setChunkCount(
+                          Math.max(2, Math.min(100, Number.parseInt(e.target.value, 10) || 2)),
+                        )
+                      }
+                      disabled={exporting}
+                      className="h-8 w-24 text-sm"
+                    />
+                  </div>
+                  {totalRows > 0 && (
+                    <span className="mt-5 text-xs text-muted-foreground">
+                      → ~{Math.ceil(totalRows / Math.min(chunkCount, totalRows)).toLocaleString()} rows each
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="export-rows-per-segment"
+                      className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                    >
+                      Rows per file
+                    </Label>
+                    <Input
+                      id="export-rows-per-segment"
+                      type="number"
+                      min={1}
+                      value={rowsPerSegment}
+                      onChange={(e) =>
+                        setRowsPerSegment(Math.max(1, Number.parseInt(e.target.value, 10) || 1))
+                      }
+                      disabled={exporting}
+                      className="h-8 w-28 text-sm"
+                    />
+                  </div>
+                  {totalRows > 0 && (
+                    <span className="mt-5 text-xs text-muted-foreground">
+                      → {Math.max(1, Math.ceil(totalRows / Math.max(1, rowsPerSegment))).toLocaleString()} files
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

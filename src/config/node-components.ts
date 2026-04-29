@@ -11,6 +11,8 @@ import { CsvGenerateNode } from "@/features/executions/components/csv-generate/n
 import { CsvJoinNode } from "@/features/executions/components/csv-join/node";
 import { CsvParseNode } from "@/features/executions/components/csv-parse/node";
 import { CsvSortNode } from "@/features/executions/components/csv-sort/node";
+import { CsvColumnTransformNode } from "@/features/executions/components/csv-column-transform/node";
+import { CsvRestructureNode } from "@/features/executions/components/csv-restructure/node";
 import { CsvTransformNode } from "@/features/executions/components/csv-transform/node";
 import { PdfExtractTablesNode } from "@/features/executions/components/pdf-extract-tables/node";
 import { PdfExtractTextNode } from "@/features/executions/components/pdf-extract-text/node";
@@ -35,6 +37,8 @@ export const nodeComponents: NodeTypes = {
   [NodeType.CSV_COMPARE]: CsvCompareNode,
   [NodeType.CSV_CONSECUTIVE_SEQUENCE_ANALYZER]: CsvConsecutiveSequenceNode,
   [NodeType.CSV_TRANSFORM]: CsvTransformNode,
+  [NodeType.CSV_COLUMN_TRANSFORM]: CsvColumnTransformNode,
+  [NodeType.CSV_RESTRUCTURE]: CsvRestructureNode,
   [NodeType.CSV_GENERATE]: CsvGenerateNode,
   [NodeType.PDF_EXTRACT_TEXT]: PdfExtractTextNode,
   [NodeType.PDF_EXTRACT_TABLES]: PdfExtractTablesNode,

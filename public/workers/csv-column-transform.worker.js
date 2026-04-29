@@ -1770,131 +1770,190 @@ var ChunkedOPFSWriter = class {
   }
 };
 
-// src/workers/csv-deduplicate.worker.ts
+// src/workers/csv-column-transform.worker.ts
+var SAFE_MATH = Object.freeze({
+  round: Math.round,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  trunc: Math.trunc,
+  abs: Math.abs,
+  sqrt: Math.sqrt,
+  cbrt: Math.cbrt,
+  pow: Math.pow,
+  min: Math.min,
+  max: Math.max,
+  log: Math.log,
+  log2: Math.log2,
+  log10: Math.log10,
+  exp: Math.exp,
+  sign: Math.sign,
+  hypot: Math.hypot,
+  PI: Math.PI,
+  E: Math.E
+});
+function applyFormula(expression, rawValue) {
+  const num = typeof rawValue === "number" ? rawValue : Number(rawValue);
+  if (!Number.isFinite(num)) return rawValue;
+  try {
+    const fn = new Function("v", "Math", `"use strict"; return (${expression});`);
+    const result = fn(num, SAFE_MATH);
+    return typeof result === "number" && Number.isFinite(result) ? result : rawValue;
+  } catch {
+    return rawValue;
+  }
+}
+function buildGlobalRegex(pattern, useRegex) {
+  if (!pattern) return null;
+  if (useRegex) {
+    try {
+      return new RegExp(pattern, "g");
+    } catch {
+      return null;
+    }
+  }
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(escaped, "g");
+}
+function toTitleCase(s) {
+  return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+function applyOp(val, op) {
+  switch (op.type) {
+    case "prepend":
+      return String(op.text ?? "") + String(val ?? "");
+    case "append":
+      return String(val ?? "") + String(op.text ?? "");
+    case "replace": {
+      const re = buildGlobalRegex(op.find ?? "", op.useRegex ?? false);
+      return re ? String(val ?? "").replace(re, op.replacement ?? "") : String(val ?? "");
+    }
+    case "remove": {
+      const re = buildGlobalRegex(op.pattern ?? "", op.useRegex ?? false);
+      return re ? String(val ?? "").replace(re, "") : String(val ?? "");
+    }
+    case "trim":
+      return String(val ?? "").trim();
+    case "case": {
+      const s = String(val ?? "");
+      if (op.caseMode === "upper") return s.toUpperCase();
+      if (op.caseMode === "lower") return s.toLowerCase();
+      if (op.caseMode === "title") return toTitleCase(s);
+      return s;
+    }
+    case "formula":
+      return applyFormula(op.expression ?? "v", val);
+    case "set":
+      return op.setValue ?? "";
+    default:
+      return val;
+  }
+}
+function applyTransforms(row, transforms) {
+  const result = { ...row };
+  for (const { column, ops } of transforms) {
+    if (!(column in result)) continue;
+    let val = result[column];
+    for (const op of ops) val = applyOp(val, op);
+    result[column] = val;
+  }
+  return result;
+}
 self.onmessage = async (event) => {
   const { jobId, input } = event.data;
   const {
     inputRef,
-    column = "",
-    // single column name; empty = full-row key
+    transforms,
     executionId,
     variableName,
     chunkSize = 1e4
   } = input;
   const post = (msg) => self.postMessage(msg);
-  const computeKey = (row) => column ? String(row[column] ?? "") : JSON.stringify(row);
   try {
-    post({ kind: "progress", jobId, progress: 5, message: "Scanning for duplicates..." });
-    const counts = /* @__PURE__ */ new Map();
-    let totalRows = 0;
-    for (let c = 0; c < inputRef.chunkCount; c++) {
-      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
-      totalRows += chunk.length;
-      for (const row of chunk) {
-        const key = computeKey(row);
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-      }
-      const pct = Math.round(5 + (c + 1) / inputRef.chunkCount * 40);
-      post({ kind: "progress", jobId, progress: pct, message: `Scanned ${totalRows.toLocaleString()} rows...` });
-    }
-    post({ kind: "progress", jobId, progress: 47, message: "Writing duplicate rows..." });
-    const uniqueId = createId();
-    const duplicatesId = createId();
-    const uniqueWriter = new ChunkedOPFSWriter(executionId, uniqueId, chunkSize);
-    const duplicatesWriter = new ChunkedOPFSWriter(executionId, duplicatesId, chunkSize);
-    await Promise.all([uniqueWriter.init(), duplicatesWriter.init()]);
-    const seen = /* @__PURE__ */ new Set();
-    for (let c = 0; c < inputRef.chunkCount; c++) {
-      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
-      for (const row of chunk) {
-        const key = computeKey(row);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        await uniqueWriter.write([row]);
-        const count = counts.get(key) ?? 1;
-        if (count >= 2) {
-          const duplicateRow = column ? { [column]: row[column] ?? "", count } : { ...row, count };
-          await duplicatesWriter.write([duplicateRow]);
+    const N = inputRef.chunkCount;
+    if (N === 0) {
+      const datasetId2 = createId();
+      const writer2 = new ChunkedOPFSWriter(executionId, datasetId2, chunkSize);
+      await writer2.init();
+      const { chunks: chunks2 } = await writer2.finish();
+      const now2 = (/* @__PURE__ */ new Date()).toISOString();
+      post({
+        kind: "result",
+        jobId,
+        output: {
+          manifest: {
+            version: DATASET_MANIFEST_VERSION,
+            datasetId: datasetId2,
+            executionId,
+            variableName,
+            createdAt: now2,
+            updatedAt: now2,
+            rowCount: 0,
+            chunkCount: 0,
+            byteSize: 0,
+            schema: inputRef.schema,
+            chunks: chunks2
+          },
+          datasetRef: {
+            kind: "dataset",
+            datasetId: datasetId2,
+            executionId,
+            variableName,
+            rowCount: 0,
+            chunkCount: 0,
+            byteSize: 0,
+            schema: inputRef.schema
+          }
         }
-      }
-      const pct = Math.round(47 + (c + 1) / inputRef.chunkCount * 43);
-      post({ kind: "progress", jobId, progress: pct, message: `Processed ${((c + 1) * chunkSize).toLocaleString()} rows...` });
+      });
+      return;
     }
-    post({ kind: "progress", jobId, progress: 93, message: "Writing..." });
-    const [uniqueResult, duplicatesResult] = await Promise.all([
-      uniqueWriter.finish(),
-      duplicatesWriter.finish()
-    ]);
+    const datasetId = createId();
+    const writer = new ChunkedOPFSWriter(executionId, datasetId, chunkSize);
+    await writer.init();
+    post({
+      kind: "progress",
+      jobId,
+      progress: 5,
+      message: `Applying ${transforms.length} column transform${transforms.length !== 1 ? "s" : ""}\u2026`
+    });
+    for (let c = 0; c < N; c++) {
+      const chunk = await readChunkFromOPFS(inputRef.executionId, inputRef.datasetId, c);
+      const transformed = chunk.map((row) => applyTransforms(row, transforms));
+      await writer.write(transformed);
+      const pct = Math.round(5 + (c + 1) / N * 90);
+      post({
+        kind: "progress",
+        jobId,
+        progress: pct,
+        message: `Chunk ${(c + 1).toLocaleString()} / ${N.toLocaleString()}`
+      });
+    }
+    const { chunks, totalBytes, totalRows } = await writer.finish();
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const uniqueVarName = `${variableName}_unique`;
-    const duplicateSchema = column ? {
-      [column]: inputRef.schema?.[column] ?? {
-        type: "string",
-        nullable: true
-      },
-      count: { type: "number", nullable: false }
-    } : {
-      ...inputRef.schema ?? {},
-      count: { type: "number", nullable: false }
-    };
-    const uniqueManifest = {
+    const manifest = {
       version: DATASET_MANIFEST_VERSION,
-      datasetId: uniqueId,
+      datasetId,
       executionId,
-      variableName: uniqueVarName,
+      variableName,
       createdAt: now,
       updatedAt: now,
-      rowCount: uniqueResult.totalRows,
-      chunkCount: uniqueResult.chunks.length,
-      byteSize: uniqueResult.totalBytes,
+      rowCount: totalRows,
+      chunkCount: chunks.length,
+      byteSize: totalBytes,
       schema: inputRef.schema,
-      chunks: uniqueResult.chunks
+      chunks
     };
-    const uniqueRef = {
+    const datasetRef = {
       kind: "dataset",
-      datasetId: uniqueId,
+      datasetId,
       executionId,
-      variableName: uniqueVarName,
-      rowCount: uniqueResult.totalRows,
-      chunkCount: uniqueResult.chunks.length,
-      byteSize: uniqueResult.totalBytes,
+      variableName,
+      rowCount: totalRows,
+      chunkCount: chunks.length,
+      byteSize: totalBytes,
       schema: inputRef.schema
     };
-    const duplicatesManifest = {
-      version: DATASET_MANIFEST_VERSION,
-      datasetId: duplicatesId,
-      executionId,
-      variableName,
-      createdAt: now,
-      updatedAt: now,
-      rowCount: duplicatesResult.totalRows,
-      chunkCount: duplicatesResult.chunks.length,
-      byteSize: duplicatesResult.totalBytes,
-      schema: duplicateSchema,
-      chunks: duplicatesResult.chunks
-    };
-    const duplicatesRef = {
-      kind: "dataset",
-      datasetId: duplicatesId,
-      executionId,
-      variableName,
-      rowCount: duplicatesResult.totalRows,
-      chunkCount: duplicatesResult.chunks.length,
-      byteSize: duplicatesResult.totalBytes,
-      schema: duplicateSchema
-    };
-    post({
-      kind: "result",
-      jobId,
-      output: {
-        duplicatesRef,
-        duplicatesManifest,
-        uniqueRef,
-        uniqueManifest,
-        duplicateCount: duplicatesResult.totalRows,
-        removedCount: totalRows - uniqueResult.totalRows
-      }
-    });
+    post({ kind: "result", jobId, output: { manifest, datasetRef } });
   } catch (err) {
     post({ kind: "error", jobId, error: String(err) });
   }

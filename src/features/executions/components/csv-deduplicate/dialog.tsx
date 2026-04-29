@@ -22,10 +22,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   sourceVariable: z.string().min(1, { message: "Source variable is required" }),
@@ -68,6 +69,7 @@ export const CsvDeduplicateDialog = ({
   const watchSourceVariable = form.watch("sourceVariable");
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchSourceVariable, suffix: "deduped", open });
 
   const handleSubmit = (values: CsvDeduplicateFormValues) => {
     onSubmit(values);
@@ -147,7 +149,7 @@ export const CsvDeduplicateDialog = ({
                 <FormItem>
                   <FormLabel>Output Variable Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="duplicateRows" {...field} />
+                    <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                   </FormControl>
                   <FormDescription>
                     Duplicate rows + count →{" "}

@@ -357,7 +357,11 @@ export const buildVariableMetadataCatalog = ({
       continue;
     }
 
-    if (nodeType === "CSV_FILTER" || nodeType === "CSV_SORT") {
+    if (
+      nodeType === "CSV_FILTER" ||
+      nodeType === "CSV_SORT" ||
+      nodeType === "CSV_COLUMN_TRANSFORM"
+    ) {
       const sourceVariable = readString(data, "sourceVariable");
       const variableName = readString(data, "variableName");
       if (!sourceVariable || !variableName) {
@@ -372,6 +376,31 @@ export const buildVariableMetadataCatalog = ({
       setVariableMetadata(metadataByVariable, {
         ...source,
         variableName,
+        sourceNodeId: node.id,
+        sourceNodeType: node.type,
+      });
+      continue;
+    }
+
+    if (nodeType === "CSV_RESTRUCTURE") {
+      const sourceVariable = readString(data, "sourceVariable");
+      const variableName = readString(data, "variableName");
+      const rawCols = data?.outputColumns as Array<{ name: string }> | undefined;
+      if (!sourceVariable || !variableName || !rawCols) {
+        continue;
+      }
+
+      const source = metadataByVariable.get(sourceVariable);
+      if (!source) {
+        continue;
+      }
+
+      const columns = rawCols.map((c) => c.name);
+      setVariableMetadata(metadataByVariable, {
+        ...source,
+        variableName,
+        columns,
+        columnCount: columns.length,
         sourceNodeId: node.id,
         sourceNodeType: node.type,
       });

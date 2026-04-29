@@ -33,6 +33,8 @@ import {
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const comparisonModes = [
   "integer-step",
@@ -127,6 +129,7 @@ export const CsvConsecutiveSequenceDialog = ({
   const isNumberStepMode = watchComparisonMode === "number-step";
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchSourceVariable, suffix: "sequences", open });
 
   const handleSubmit = (values: CsvConsecutiveSequenceFormValues) => {
     onSubmit(values);
@@ -403,7 +406,7 @@ export const CsvConsecutiveSequenceDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="sequenceMetadata" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store metadata as {`{{${watchVariableName}}}`}

@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   pdfVariables: z
@@ -66,6 +68,9 @@ export const PdfMergeDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "mergedPdf";
+  const watchPdfVariables = form.watch("pdfVariables");
+  const primaryPdfVariable = watchPdfVariables?.split(",")[0]?.trim();
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: primaryPdfVariable, suffix: "merged", open });
 
   const handleSubmit = (values: PdfMergeFormValues) => {
     onSubmit(values);
@@ -137,7 +142,7 @@ export const PdfMergeDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="mergedPdf" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store merged file as {`{{${watchVariableName}}}`}

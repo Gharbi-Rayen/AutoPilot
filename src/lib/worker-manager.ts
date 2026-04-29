@@ -18,6 +18,8 @@ export type WorkerJobType =
   | "csv-deduplicate"
   | "csv-compare"
   | "csv-transform"
+  | "csv-column-transform"
+  | "csv-restructure"
   | "csv-consecutive-sequence"
   | "pdf-extract-text"
   | "pdf-extract-tables";
@@ -74,6 +76,8 @@ function getWorkerUrl(type: WorkerJobType): string {
     "csv-deduplicate": "/workers/csv-deduplicate.worker.js",
     "csv-compare": "/workers/csv-compare.worker.js",
     "csv-transform": "/workers/csv-transform.worker.js",
+    "csv-column-transform": "/workers/csv-column-transform.worker.js",
+    "csv-restructure": "/workers/csv-restructure.worker.js",
     "csv-consecutive-sequence": "/workers/csv-consecutive-sequence.worker.js",
     "pdf-extract-text": "/workers/pdf-extract-text.worker.js",
     "pdf-extract-tables": "/workers/pdf-extract-tables.worker.js",

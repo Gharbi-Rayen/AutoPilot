@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   csvVariable: z
@@ -68,6 +70,8 @@ export const CsvParseDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "csvData";
+  const watchCsvVariable = form.watch("csvVariable");
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchCsvVariable, suffix: "parsed", open });
 
   const handleSubmit = (values: CsvParseFormValues) => {
     onSubmit(values);
@@ -163,7 +167,7 @@ export const CsvParseDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="csvData" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store parsed data as {`{{${watchVariableName}}}`}

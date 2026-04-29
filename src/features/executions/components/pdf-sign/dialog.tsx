@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   pdfVariable: z
@@ -77,6 +79,8 @@ export const PdfSignDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "signedPdf";
+  const watchPdfVariable = form.watch("pdfVariable");
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchPdfVariable, suffix: "signed", open });
 
   const handleSubmit = (values: PdfSignFormValues) => {
     onSubmit(values);
@@ -217,7 +221,7 @@ export const PdfSignDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="signedPdf" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store generated file as {`{{${watchVariableName}}}`}

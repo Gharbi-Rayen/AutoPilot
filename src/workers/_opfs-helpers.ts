@@ -148,6 +148,10 @@ export class ChunkedOPFSWriter {
     }
   }
 
+  async forceFlush(): Promise<void> {
+    if (this.buffer.length > 0) await this._flush(this.buffer.splice(0));
+  }
+
   async finish(): Promise<{ chunks: OPFSChunkMeta[]; totalBytes: number; totalRows: number }> {
     if (this.buffer.length > 0) await this._flush(this.buffer);
     this.buffer = [];

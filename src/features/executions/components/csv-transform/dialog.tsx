@@ -35,6 +35,8 @@ import {
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const OPERATORS = [
   { value: "eq", label: "equals" },
@@ -169,6 +171,7 @@ export const CsvTransformDialog = ({
   const watchRules = form.watch("rules");
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchSourceVariable, suffix: "transformed", open });
 
   useEffect(() => {
     if (open) {
@@ -225,7 +228,7 @@ export const CsvTransformDialog = ({
                     <FormItem>
                       <FormLabel>Output Variable Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="transformedData" {...field} />
+                        <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                       </FormControl>
                       <FormDescription>
                         <span className="font-mono">{`{{${watchVariableName}}}`}</span>

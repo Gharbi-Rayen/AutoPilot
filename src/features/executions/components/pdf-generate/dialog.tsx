@@ -23,6 +23,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   variableName: z.string().min(1, "Variable name is required"),
@@ -38,6 +40,7 @@ interface PdfGenerateDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: PdfGenerateFormValues) => void;
   defaultValues?: Partial<PdfGenerateFormValues>;
+  nodeId?: string;
 }
 
 export function PdfGenerateDialog({
@@ -45,6 +48,7 @@ export function PdfGenerateDialog({
   onOpenChange,
   onSubmit,
   defaultValues,
+  nodeId,
 }: PdfGenerateDialogProps) {
   const form = useForm<PdfGenerateFormValues>({
     resolver: zodResolver(formSchema),
@@ -56,6 +60,9 @@ export function PdfGenerateDialog({
       ...defaultValues,
     },
   });
+
+  const watchContentVariable = form.watch("contentVariable");
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchContentVariable, suffix: "pdf", open });
 
   const handleSubmit = (values: PdfGenerateFormValues) => {
     onSubmit(values);
@@ -83,7 +90,7 @@ export function PdfGenerateDialog({
                 <FormItem>
                   <FormLabel>Output Variable Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. pdfReport" {...field} />
+                    <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                   </FormControl>
                   <FormDescription>
                     The variable name where the generated PDF file will be

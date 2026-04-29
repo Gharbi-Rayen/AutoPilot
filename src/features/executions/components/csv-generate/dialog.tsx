@@ -24,6 +24,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   sourceVariable: z.string().min(1, { message: "Source variable is required" }),
@@ -45,6 +47,7 @@ interface CsvGenerateDialogProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CsvGenerateFormValues) => void;
   defaultValues?: Partial<CsvGenerateFormValues>;
+  nodeId?: string;
 }
 
 export const CsvGenerateDialog = ({
@@ -52,6 +55,7 @@ export const CsvGenerateDialog = ({
   onOpenChange,
   onSubmit,
   defaultValues = {},
+  nodeId,
 }: CsvGenerateDialogProps) => {
   const form = useForm<CsvGenerateFormValues>({
     resolver: zodResolver(formSchema),
@@ -64,6 +68,8 @@ export const CsvGenerateDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "generatedCsv";
+  const watchSourceVariable = form.watch("sourceVariable");
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchSourceVariable, suffix: "generated", open });
 
   const handleSubmit = (values: CsvGenerateFormValues) => {
     onSubmit(values);
@@ -158,7 +164,7 @@ export const CsvGenerateDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="generatedCsv" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store generated CSV as {`{{${watchVariableName}}}`}

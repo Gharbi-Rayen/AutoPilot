@@ -22,10 +22,11 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   leftVariable: z.string().min(1, { message: "Left variable is required" }),
@@ -76,6 +77,7 @@ export const CsvCompareDialog = ({
 
   const leftSuggestions = getColumns(watchLeftVariable);
   const rightSuggestions = getColumns(watchRightVariable);
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchLeftVariable, secondaryVariable: watchRightVariable, suffix: "compared", open });
   const compareFieldSuggestions = useMemo(() => {
     if (leftSuggestions.length === 0) {
       return rightSuggestions;
@@ -208,7 +210,7 @@ export const CsvCompareDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="comparisonResult" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store diff summary as {`{{${watchVariableName}}}`}

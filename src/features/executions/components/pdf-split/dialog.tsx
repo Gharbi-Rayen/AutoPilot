@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchema = z.object({
   pdfVariable: z
@@ -68,6 +70,8 @@ export const PdfSplitDialog = ({
   });
 
   const watchVariableName = form.watch("variableName") || "pdfSplitResult";
+  const watchPdfVariable = form.watch("pdfVariable");
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchPdfVariable, suffix: "split", open });
 
   const handleSubmit = (values: PdfSplitFormValues) => {
     onSubmit(values);
@@ -156,7 +160,7 @@ export const PdfSplitDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="pdfSplitResult" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store split files as {`{{${watchVariableName}}}`}

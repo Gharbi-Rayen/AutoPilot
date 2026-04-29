@@ -39,6 +39,8 @@ import {
 import { FieldSuggestionInput } from "../csv-shared/field-suggestion-input";
 import { SourceVariableInput } from "../csv-shared/source-variable-input";
 import { useUpstreamVariableMetadata } from "../csv-shared/use-upstream-variable-metadata";
+import { useVariableNameSuggestion } from "../csv-shared/use-variable-name-suggestion";
+import { VariableNameInput } from "../csv-shared/variable-name-input";
 
 const formSchemaBase = z.object({
   leftVariable: z.string().min(1, { message: "Left variable is required" }),
@@ -171,6 +173,7 @@ export const CsvJoinDialog = ({
   const { getColumns, getRowCount } = useUpstreamVariableMetadata(nodeId, open);
   const leftFieldSuggestions = getColumns(watchLeftVariable);
   const rightFieldSuggestions = getColumns(watchRightVariable);
+  const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchLeftVariable, secondaryVariable: watchRightVariable, suffix: "joined", open });
   const leftRowCount = getRowCount(watchLeftVariable);
   const rightRowCount = getRowCount(watchRightVariable);
 
@@ -444,7 +447,7 @@ export const CsvJoinDialog = ({
                   <FormItem>
                     <FormLabel>Output Variable Name</FormLabel>
                     <FormControl>
-                      <Input placeholder="joinedData" {...field} />
+                      <VariableNameInput value={field.value} onChange={field.onChange} suggestion={suggestion} open={open} />
                     </FormControl>
                     <FormDescription>
                       Store joined rows as {`{{${watchVariableName}}}`}

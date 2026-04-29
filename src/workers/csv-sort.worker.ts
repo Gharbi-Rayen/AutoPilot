@@ -195,6 +195,7 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
       totalRunRows += buf.length;
 
       await runWriter.write(buf);
+      await runWriter.forceFlush(); // ensure clean chunk boundary before the next run
     }
 
     await runWriter.finish();

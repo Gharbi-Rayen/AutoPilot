@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { Editor } from "@/features/editor/components/editor";
+import { Editor, EditorLoading } from "@/features/editor/components/editor";
 import { EditorHeader } from "@/features/editor/components/editor-header";
 
 function EditorContent() {
@@ -12,7 +12,7 @@ function EditorContent() {
     <div className="flex h-full flex-col">
       <EditorHeader workflowId={workflowId} />
       <div className="min-h-0 flex-1">
-        <Editor workflowId={workflowId} />
+        <Editor key={workflowId} workflowId={workflowId} />
       </div>
     </div>
   );
@@ -20,7 +20,7 @@ function EditorContent() {
 
 export default function WorkflowEditorPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<EditorLoading />}>
       <EditorContent />
     </Suspense>
   );
