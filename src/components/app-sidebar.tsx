@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BookOpenIcon,
   FolderOpenIcon,
   HistoryIcon,
   Loader2Icon,
@@ -106,8 +107,21 @@ export const AppSidebar = () => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="Documentation"
+              isActive={pathname.startsWith("/settings/documentation")}
+              asChild
+              className="gap-x-4 h-10 px-4"
+            >
+              <Link href="/settings/documentation">
+                <BookOpenIcon className="size-4" />
+                <span>Documentation</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
               tooltip="Settings"
-              isActive={pathname.startsWith("/settings")}
+              isActive={pathname === "/settings"}
               asChild
               className="gap-x-4 h-10 px-4"
             >
