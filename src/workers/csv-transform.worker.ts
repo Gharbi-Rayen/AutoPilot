@@ -1,7 +1,56 @@
 /**
- * CSV Transform — Browser Web Worker (streaming)
- * Applies conditional find-and-replace rules to each row.
- * Processes OPFS chunks one at a time — never loads the full dataset into memory.
+ * FILE: src/workers/csv-transform.worker.ts
+ *
+ * PURPOSE:
+ *   Applies conditional transformation rules to rows.  Each rule has a condition
+ *   (if this cell matches...) and an action (then do this to the row/cell).
+ *   Unlike csv-column-transform which applies operations unconditionally to columns,
+ *   csv-transform applies actions ONLY to rows that match the condition.
+ *   Processes OPFS chunks one at a time — never loads the full dataset into memory.
+ *
+ * WHAT IS A CONDITIONAL TRANSFORM?
+ *   Example rule: "IF the 'Status' column EQUALS 'pending' THEN replace it with 'active'"
+ *   Another: "IF 'Email' IS EMPTY THEN DELETE THE ROW"
+ *   Rules can be stacked:
+ *     matchMode "all" — ALL rules must match for the row to be transformed (AND logic)
+ *     matchMode "any" — the row is processed if ANY rule matches (OR logic)
+ *                       each matching rule's action is applied independently
+ *
+ * DIFFERENCE FROM csv-column-transform:
+ *   csv-transform   — row-level, conditional: only rows matching a condition are affected
+ *   csv-column-transform — column-level, unconditional: EVERY value in the column is changed
+ *
+ * SUPPORTED ACTIONS:
+ *   replace_value — replace the matching cell's value with a new string
+ *   clear_cell    — set the matching cell to "" (empty string)
+ *   delete_row    — remove the row entirely from the output
+ *   set_value     — set a different (target) column's value (cross-column update)
+ *
+ * SUPPORTED OPERATORS:
+ *   eq / ne                     — equals / not equals (exact string match)
+ *   contains / not_contains     — substring check
+ *   starts_with / ends_with     — prefix/suffix check
+ *   is_empty / is_not_empty     — check if cell is blank
+ *   regex                       — test a regular expression against the cell value
+ *   gt / gte / lt / lte         — numeric greater-than / less-than comparisons
+ *
+ * INPUT (from WorkerJobMessage.input):
+ *   inputRef      — DatasetRef of the dataset to transform
+ *   rules         — array of TransformRule objects
+ *   matchMode     — "all" | "any" (default "all")
+ *   caseSensitive — whether string operators are case-sensitive (default false)
+ *   executionId   — current execution's ID
+ *   variableName  — context key for the output dataset
+ *   chunkSize     — rows per output chunk
+ *
+ * OUTPUT:
+ *   manifest         — DatasetManifest for the transformed output
+ *   datasetRef       — DatasetRef for the transformed output
+ *   transformedCount — number of rows in the output (may be less if rows were deleted)
+ *   totalCount       — total input rows processed
+ *
+ * USED IN:
+ *   src/features/executions/components/csv-transform/executor.ts
  */
 
 import { createId } from "@paralleldrive/cuid2";
@@ -9,12 +58,44 @@ import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manag
 import { DATASET_MANIFEST_VERSION, type DatasetRef, type DatasetRow } from "@/types/dataset";
 import { ChunkedOPFSWriter, readChunkFromOPFS } from "./_opfs-helpers";
 
+/**
+ * TransformOperator
+ *
+ * WHY THIS EXISTS:
+ *   Union type of all valid operators for rule conditions.
+ *   Used as the type for TransformRule.operator.
+ */
 type TransformOperator =
   | "eq" | "ne" | "contains" | "not_contains" | "starts_with" | "ends_with"
   | "is_empty" | "is_not_empty" | "regex" | "gt" | "gte" | "lt" | "lte";
 
+/**
+ * TransformAction
+ *
+ * WHY THIS EXISTS:
+ *   Union type of all valid actions that can be applied when a rule matches.
+ */
 type TransformAction = "replace_value" | "clear_cell" | "delete_row" | "set_value";
 
+/**
+ * TransformRule
+ *
+ * WHY THIS EXISTS:
+ *   Describes one conditional transformation: check a cell, then act on the row.
+ *
+ * FIELD MEANINGS:
+ *   column       — which column to check the condition against
+ *   operator     — which comparison operator to use
+ *   searchValue  — value to compare against (the right-hand side)
+ *   action       — what to do if the condition matches
+ *   replacement  — new value for replace_value and set_value actions
+ *   targetColumn — for set_value: which column to write to (defaults to rule.column)
+ *
+ * USED IN:
+ *   testRule()   — checks the condition
+ *   applyAction() — applies the action
+ *   processRow()  — orchestrates condition check and action
+ */
 interface TransformRule {
   column: string;
   operator: TransformOperator;
@@ -24,6 +105,27 @@ interface TransformRule {
   targetColumn?: string;
 }
 
+/**
+ * testRule()
+ *
+ * WHY THIS EXISTS:
+ *   Tests whether a single row satisfies a single TransformRule's condition.
+ *   Returns true if the condition matches (and the action should be considered).
+ *
+ * WHAT IS CASE-SENSITIVE MATCHING?
+ *   If caseSensitive is false, both the cell value and search value are lowercased
+ *   before comparison — so "ALICE" matches "alice".
+ *   Exception: the "regex" operator ignores caseSensitive and uses the pattern as-is.
+ *   (Users can add the (?i) flag inside the regex if they want case-insensitive regex.)
+ *
+ * WHAT IS new RegExp()?
+ *   new RegExp(pattern) constructs a regular expression object from a string pattern.
+ *   .test(string) returns true if the string matches the pattern.
+ *   Wrapped in try/catch because an invalid pattern (e.g. unmatched bracket) throws.
+ *
+ * CALLED FROM:
+ *   processRow() — called once per rule per row
+ */
 function testRule(row: DatasetRow, rule: TransformRule, caseSensitive: boolean): boolean {
   const raw = row[rule.column];
   let cell = raw == null ? "" : String(raw);
@@ -50,6 +152,25 @@ function testRule(row: DatasetRow, rule: TransformRule, caseSensitive: boolean):
   }
 }
 
+/**
+ * applyAction()
+ *
+ * WHY THIS EXISTS:
+ *   Applies one rule's action to a row (AFTER the condition has been confirmed to match).
+ *   Returns a modified copy of the row (spread via `{ ...row }`).
+ *   The "delete_row" action is NOT handled here — it is handled in processRow()
+ *   by returning null (which signals the caller to discard the row).
+ *
+ * WHY `{ ...row }` SPREAD?
+ *   `{ ...row }` creates a shallow copy of the row object.
+ *   Without this, modifying `next[rule.column]` would mutate the original chunk array.
+ *   The original chunk data should stay unchanged so the same row can be processed
+ *   by multiple rules in sequence without each rule "seeing" the previous rule's changes
+ *   when using matchMode "any".
+ *
+ * CALLED FROM:
+ *   processRow() — called for each matching rule
+ */
 function applyAction(row: DatasetRow, rule: TransformRule): DatasetRow {
   const next = { ...row };
   switch (rule.action) {
@@ -60,6 +181,30 @@ function applyAction(row: DatasetRow, rule: TransformRule): DatasetRow {
   return next;
 }
 
+/**
+ * processRow()
+ *
+ * WHY THIS EXISTS:
+ *   Orchestrates condition testing and action application for one row against all rules.
+ *   Returns the (possibly modified) row, or null if the row should be deleted.
+ *
+ * "ALL" MODE:
+ *   All rules must match.  If they do, apply every rule's action in sequence.
+ *   If any rule is "delete_row", the whole row is deleted.
+ *
+ * "ANY" MODE:
+ *   Each rule is tested independently.  For each rule that matches:
+ *     - If action is "delete_row" → return null immediately.
+ *     - Otherwise → apply the action to the running result.
+ *   Rules that don't match are skipped.
+ *
+ * RETURNS:
+ *   DatasetRow — the transformed row to include in output
+ *   null       — means "delete this row" (not included in output)
+ *
+ * CALLED FROM:
+ *   self.onmessage — called for each row in each chunk
+ */
 function processRow(
   row: DatasetRow,
   rules: TransformRule[],

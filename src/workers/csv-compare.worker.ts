@@ -1,18 +1,62 @@
 /**
- * CSV Compare — Browser Web Worker (streaming compare side)
+ * FILE: src/workers/csv-compare.worker.ts
  *
- * Memory model:
- *   - Small base (≤ PARTITION_THRESHOLD rows): load base into a Map, stream compare.
- *   - Large base (> PARTITION_THRESHOLD rows): grace hash compare — partition both
- *     datasets into K OPFS temp files by hash(rowKey) % K, then process each
- *     partition pair independently (peak memory ≈ 1/K of full base).
+ * PURPOSE:
+ *   Compares two datasets (BASE and COMPARE) and produces a diff — similar to
+ *   running `git diff` on two CSV files but at the row level.
+ *   Produces FIVE output datasets, each stored in OPFS.
  *
- * Produces FIVE OPFS datasets:
- *   <variableName>_added       — rows in compareRef not present in baseRef
- *   <variableName>_removed     — rows in baseRef not present in compareRef
- *   <variableName>_changed     — side-by-side diff rows
- *   <variableName>_common      — rows identical in both datasets
- *   <variableName>_schema_diff — column-level schema comparison table
+ * WHAT IS A DATASET DIFF?
+ *   Given a base dataset (the "before" state) and a compare dataset (the "after" state),
+ *   a diff identifies:
+ *     Added   — rows in COMPARE that are not in BASE  (new rows)
+ *     Removed — rows in BASE that are not in COMPARE  (deleted rows)
+ *     Changed — rows that exist in both but have different values
+ *     Common  — rows that exist in both and are identical
+ *     Schema Diff — which columns exist in BASE vs COMPARE
+ *
+ * HOW ROW IDENTITY WORKS:
+ *   By default (no keyField): each row is serialised with JSON.stringify (sorted keys)
+ *   and that string is the row's identity.  Two rows are the same if all their values match.
+ *   With keyField(s): identity is determined by the value(s) in the specified column(s).
+ *   This is more reliable for real datasets where row ORDER may differ between files.
+ *
+ * WHAT IS SCHEMA NORMALISATION?
+ *   The compare dataset may have different column names or column order than the base.
+ *   For example, the base CSV had header row but the compare CSV was parsed without headers
+ *   (so columns are named "col_0", "col_1", …).
+ *   normalizeSchemas() detects this and builds a mapping: compareKey → baseKey.
+ *   All compare rows are then re-keyed to base column names before comparison.
+ *   The header mismatch is flagged in the output so the UI can show a warning.
+ *
+ * FIVE OUTPUT DATASETS:
+ *   _added       — rows in COMPARE not found in BASE (new rows)
+ *   _removed     — rows in BASE not found in COMPARE (deleted rows)
+ *   _changed     — side-by-side diff rows with _before_<field> and _after_<field> columns
+ *   _common      — rows identical in both
+ *   _schema_diff — one row per column: present in base? present in compare? mapped from?
+ *
+ * MEMORY MODEL:
+ *   Same adaptive strategy as csv-join.worker.ts:
+ *   - Small datasets (both ≤ PARTITION_THRESHOLD): base loaded as a single Map.
+ *   - Large datasets: grace hash — partition into K buckets, process one pair at a time.
+ *
+ * INPUT (from WorkerJobMessage.input):
+ *   baseRef       — DatasetRef for the BASE (before) dataset
+ *   compareRef    — DatasetRef for the COMPARE (after) dataset
+ *   keyField      — comma-separated column(s) used as row identity (empty = full-row)
+ *   compareFields — comma-separated columns to compare for changes (empty = all shared columns)
+ *   executionId   — current execution's ID
+ *   variableName  — base name for the five output variable names
+ *   chunkSize     — rows per output chunk
+ *
+ * OUTPUT:
+ *   compareResult — summary object with counts, flags, column stats
+ *   addedRef / removedRef / changedRef / commonRef / schemaDiffRef — DatasetRefs
+ *   addedManifest / … / schemaDiffManifest — DatasetManifests
+ *
+ * USED IN:
+ *   src/features/executions/components/csv-compare/executor.ts
  */
 
 import { createId } from "@paralleldrive/cuid2";
@@ -20,14 +64,50 @@ import type { WorkerJobMessage, WorkerOutboundMessage } from "@/lib/worker-manag
 import { DATASET_MANIFEST_VERSION, type DatasetRef, type DatasetRow } from "@/types/dataset";
 import { ChunkedOPFSWriter, readChunkFromOPFS, readFromOPFS } from "./_opfs-helpers";
 
+/**
+ * PARTITION_THRESHOLD
+ *
+ * WHY THIS EXISTS:
+ *   Same role as in csv-join.worker.ts — the row count above which we switch
+ *   from a single in-memory Map to a grace hash partitioned approach.
+ *   K = ceil(max(baseRowCount, compareRowCount) / PARTITION_THRESHOLD).
+ */
 const PARTITION_THRESHOLD = 500_000;
 
 // ─── schema normalization ─────────────────────────────────────────────────────
 
+/**
+ * isNumericKeys()
+ *
+ * WHY THIS EXISTS:
+ *   Detects whether all column names in an array are purely numeric (e.g. "0", "1", "2").
+ *   This is the pattern produced when a CSV is parsed WITHOUT a header row — columns
+ *   are auto-named col_0, col_1, etc. (or sometimes just "0", "1", …).
+ *   Used in normalizeSchemas() to detect header/no-header mismatches between datasets.
+ *
+ * CALLED FROM:
+ *   normalizeSchemas() — to detect the mismatch case
+ */
 function isNumericKeys(keys: string[]): boolean {
   return keys.length > 0 && keys.every((k) => /^\d+$/.test(k));
 }
 
+/**
+ * normalizeSchemas()
+ *
+ * WHY THIS EXISTS:
+ *   When the two datasets have different column names (e.g. one has headers, one doesn't),
+ *   we try to align them by position: compare column 0 maps to base column 0, etc.
+ *   Returns a mapping object so compare rows can be re-keyed to base column names.
+ *
+ * RETURNS:
+ *   mapping               — null if schemas already match; otherwise compareKey → baseKey
+ *   headerMismatchDetected — true if one set is numeric keys and the other is not
+ *   schemaAligned         — true if columns already match exactly
+ *
+ * CALLED FROM:
+ *   self.onmessage — called once after reading the first chunks of both datasets
+ */
 function normalizeSchemas(baseKeys: string[], compareFirstRow: DatasetRow): {
   mapping: Record<string, string> | null;
   headerMismatchDetected: boolean;
@@ -51,6 +131,17 @@ function normalizeSchemas(baseKeys: string[], compareFirstRow: DatasetRow): {
   };
 }
 
+/**
+ * applyMapping()
+ *
+ * WHY THIS EXISTS:
+ *   Re-keys a compare row using the column name mapping produced by normalizeSchemas().
+ *   If mapping is null (schemas already match), returns the row unchanged.
+ *   Otherwise, creates a new row object with keys translated to base column names.
+ *
+ * CALLED FROM:
+ *   self.onmessage — applied to every compare row before building its rowKey
+ */
 function applyMapping(row: DatasetRow, mapping: Record<string, string> | null): DatasetRow {
   if (!mapping) return row;
   const out: DatasetRow = {};
@@ -62,6 +153,14 @@ function applyMapping(row: DatasetRow, mapping: Record<string, string> | null): 
 
 // ─── hashing ──────────────────────────────────────────────────────────────────
 
+/**
+ * djb2() and partIdx()
+ *
+ * WHY THESE EXIST:
+ *   Same purpose as in csv-join.worker.ts — used to route rows to partitions
+ *   during the grace hash compare algorithm.
+ *   See csv-join.worker.ts for full explanation.
+ */
 function djb2(s: string): number {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
@@ -74,6 +173,18 @@ function partIdx(key: string, K: number): number {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * makeRef() and makeManifest()
+ *
+ * WHY THESE EXIST:
+ *   Factory helpers to build DatasetRef and DatasetManifest objects.
+ *   This worker produces FIVE datasets — without these helpers, the result-sending
+ *   code would repeat the same object construction five times.
+ *   DRY (Don't Repeat Yourself) principle: factor out the repeated pattern.
+ *
+ * CALLED FROM:
+ *   self.onmessage — when sending the result, to build all five refs and manifests
+ */
 function makeRef(datasetId: string, executionId: string, variableName: string,
   rowCount: number, chunkCount: number, byteSize: number): DatasetRef {
   return { kind: "dataset", datasetId, executionId, variableName, rowCount, chunkCount, byteSize };

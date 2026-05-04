@@ -1720,6 +1720,19 @@ async function readChunkFromOPFS(executionId, datasetId, chunkIndex) {
   return JSON.parse(await (await fh.getFile()).text());
 }
 var ChunkedOPFSWriter = class {
+  /**
+   * constructor()
+   *
+   * WHY THIS EXISTS:
+   *   Stores the configuration values needed for all subsequent operations.
+   *   Does NOT open OPFS yet — that happens in init() — because the constructor
+   *   cannot be async.  init() must be called before write() or finish().
+   *
+   * PARAMETERS:
+   *   executionId — execution the dataset belongs to
+   *   datasetId   — ID for the new dataset being written
+   *   chunkSize   — rows per chunk (default 10 000; usually overridden by performance settings)
+   */
   constructor(executionId, datasetId, chunkSize = 1e4) {
     this.executionId = executionId;
     this.datasetId = datasetId;
@@ -1731,23 +1744,101 @@ var ChunkedOPFSWriter = class {
     this.chunks = [];
     this.createdAt = (/* @__PURE__ */ new Date()).toISOString();
   }
+  /**
+   * init()
+   *
+   * WHY THIS EXISTS:
+   *   Opens (or creates) the OPFS directory for this dataset.
+   *   Must be called before write() or finish() — this is where `this.dir` is assigned.
+   *   Separated from the constructor because async constructors are not possible in JS.
+   *
+   * CALLED FROM:
+   *   Every worker that uses ChunkedOPFSWriter — always called immediately after new.
+   */
   async init() {
     this.dir = await getDatasetDir(this.executionId, this.datasetId, true);
   }
+  /**
+   * write()
+   *
+   * WHY THIS EXISTS:
+   *   Accepts a batch of rows and appends them to the internal buffer.
+   *   When the buffer reaches chunkSize, it flushes one chunk to OPFS and clears
+   *   the flushed rows from the buffer.  The buffer may hold up to 2×chunkSize-1
+   *   rows at peak (one chunk worth about to flush + one incoming batch).
+   *
+   * WHY FOR...OF INSTEAD OF push(...rows)?
+   *   `this.buffer.push(...rows)` uses the spread operator, which passes all rows
+   *   as individual arguments to push().  JavaScript engines have a limit on the
+   *   number of function arguments (~65 536 in V8).  With large batches, this can
+   *   throw "Maximum call stack size exceeded".  Iterating with for...of avoids this.
+   *
+   * CALLED FROM:
+   *   Workers in their per-chunk or per-row output loops.
+   */
   async write(rows) {
     for (const row of rows) this.buffer.push(row);
     while (this.buffer.length >= this.chunkSize) {
       await this._flush(this.buffer.splice(0, this.chunkSize));
     }
   }
+  /**
+   * forceFlush()
+   *
+   * WHY THIS EXISTS:
+   *   In some workers, after a phase completes, any remaining buffered rows need to
+   *   be written even if the buffer hasn't reached chunkSize yet.
+   *   forceFlush() writes whatever is in the buffer immediately.
+   *   finish() also does this automatically, but some workers call forceFlush()
+   *   mid-stream to release memory before starting the next phase.
+   *
+   * CALLED FROM:
+   *   src/workers/csv-sort.worker.ts — flushes each sorted run before starting the next
+   */
   async forceFlush() {
     if (this.buffer.length > 0) await this._flush(this.buffer.splice(0));
   }
+  /**
+   * finish()
+   *
+   * WHY THIS EXISTS:
+   *   Signals that all rows have been written.
+   *   Flushes any remaining rows in the buffer (the final partial chunk).
+   *   Returns the complete chunk metadata and totals needed to build a DatasetManifest.
+   *
+   * RETURNS:
+   *   chunks     — array of OPFSChunkMeta, one entry per chunk file written
+   *   totalBytes — total bytes across all chunk files
+   *   totalRows  — total rows written
+   *
+   * CALLED FROM:
+   *   Workers — called once after all write() calls complete, to get the manifest data.
+   */
   async finish() {
     if (this.buffer.length > 0) await this._flush(this.buffer);
     this.buffer = [];
     return { chunks: this.chunks, totalBytes: this.totalBytes, totalRows: this.totalRows };
   }
+  /**
+   * _flush() (private)
+   *
+   * WHY THIS EXISTS:
+   *   The internal implementation of writing one chunk to OPFS.
+   *   Serializes the rows to JSON, encodes to bytes, writes the file, and records metadata.
+   *
+   * WHY THE UNDERSCORE PREFIX?
+   *   By convention, _ prefix signals "this is an internal method, do not call directly".
+   *   TypeScript's `private` keyword enforces this — `_flush` cannot be called outside
+   *   the class — but the underscore is an additional visual cue for readers.
+   *
+   * PARAMETERS:
+   *   rows — the exact rows to write in this chunk (already sized to chunkSize or less)
+   *
+   * SIDE EFFECTS:
+   *   Writes a file to OPFS.
+   *   Pushes a new OPFSChunkMeta entry to this.chunks.
+   *   Increments this.totalBytes, this.totalRows, this.chunkIndex.
+   */
   async _flush(rows) {
     const fn = `chunk-${String(this.chunkIndex).padStart(6, "0")}.json`;
     const bytes = new TextEncoder().encode(JSON.stringify(rows));
