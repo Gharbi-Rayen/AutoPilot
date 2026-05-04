@@ -5,6 +5,7 @@ import { addEdge, useReactFlow } from "@xyflow/react";
 import {
   ArrowLeftRight,
   ArrowUpDown,
+  Columns,
   Copy,
   File,
   GitBranch,
@@ -13,6 +14,7 @@ import {
   SearchIcon,
   Table2,
   Upload,
+  WandSparkles,
 } from "lucide-react";
 import Image from "next/image";
 import type { ComponentType, ReactNode } from "react";
@@ -156,6 +158,18 @@ const executionNodes: NodeTypeOption[] = [
     label: "CSV Transform",
     description: "Search, replace, clear, or delete rows by rules",
     icon: ScanSearch,
+  },
+  {
+    type: NodeType.CSV_COLUMN_TRANSFORM,
+    label: "Column Transform",
+    description: "Mutate cell values: trim, case, formula, find & replace",
+    icon: WandSparkles,
+  },
+  {
+    type: NodeType.CSV_RESTRUCTURE,
+    label: "CSV Restructure",
+    description: "Reorder, remove, or add computed columns",
+    icon: Columns,
   },
 ];
 

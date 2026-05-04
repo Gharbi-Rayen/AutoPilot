@@ -132,19 +132,21 @@ function evalExpression(expression: string, row: DatasetRow): string {
   // Extract unique {{colName}} tokens and assign positional param names _c0, _c1, …
   const tokenRe = /\{\{([^}]+)\}\}/g;
   const seen = new Map<string, string>(); // colName → paramName
-  let match: RegExpExecArray | null;
-
-  while ((match = tokenRe.exec(expression)) !== null) {
+  let match = tokenRe.exec(expression);
+  while (match !== null) {
     const colName = match[1].trim();
     if (!seen.has(colName)) {
       seen.set(colName, `_c${seen.size}`);
     }
+    match = tokenRe.exec(expression);
   }
 
-  // Replace {{colName}} tokens with their param names in the expression
+  // Replace {{colName}} tokens with their param names in the expression.
+  // Uses a regex to tolerate optional whitespace inside {{ }} (e.g. {{ price }}).
   let fnBody = expression;
   for (const [colName, paramName] of seen.entries()) {
-    fnBody = fnBody.replaceAll(`{{${colName}}}`, paramName);
+    const escaped = colName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    fnBody = fnBody.replace(new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, "g"), paramName);
   }
 
   const paramNames = [...seen.values()];
@@ -155,7 +157,6 @@ function evalExpression(expression: string, row: DatasetRow): string {
   });
 
   try {
-    // biome-ignore lint/security/noFunctionConstructor: intentional sandboxed eval inside a Web Worker
     const fn = new Function(
       ...paramNames,
       "Math",

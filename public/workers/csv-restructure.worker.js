@@ -1885,16 +1885,18 @@ var SAFE_MATH = Object.freeze({
 function evalExpression(expression, row) {
   const tokenRe = /\{\{([^}]+)\}\}/g;
   const seen = /* @__PURE__ */ new Map();
-  let match;
-  while ((match = tokenRe.exec(expression)) !== null) {
+  let match = tokenRe.exec(expression);
+  while (match !== null) {
     const colName = match[1].trim();
     if (!seen.has(colName)) {
       seen.set(colName, `_c${seen.size}`);
     }
+    match = tokenRe.exec(expression);
   }
   let fnBody = expression;
   for (const [colName, paramName] of seen.entries()) {
-    fnBody = fnBody.replaceAll(`{{${colName}}}`, paramName);
+    const escaped = colName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    fnBody = fnBody.replace(new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, "g"), paramName);
   }
   const paramNames = [...seen.values()];
   const paramValues = [...seen.keys()].map((colName) => {
