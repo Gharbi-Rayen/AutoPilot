@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckIcon, CpuIcon, HardDriveIcon, MemoryStickIcon, ScanIcon, Trash2Icon, ZapIcon } from "lucide-react";
+import { CheckIcon, CpuIcon, HardDriveIcon, InfoIcon, MemoryStickIcon, ScanIcon, Trash2Icon, ZapIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,6 @@ import { Slider } from "@/components/ui/slider";
 import { useRemoveAllExecutions } from "@/features/executions/hooks/use-executions";
 import { db } from "@/lib/db";
 import { cleanupOrphanedOPFSData } from "@/lib/opfs";
-import { cn } from "@/lib/utils";
 import {
   DEFAULT_PERFORMANCE_SETTINGS,
   PERFORMANCE_PRESETS,
@@ -18,6 +17,7 @@ import {
   savePerformanceSettings,
   type PerformanceSettings,
 } from "@/lib/performance-settings";
+import { cn } from "@/lib/utils";
 
 type PresetKey = keyof typeof PERFORMANCE_PRESETS;
 
@@ -39,6 +39,12 @@ const PRESET_BADGE_COLORS: Record<PresetKey, string> = {
   maximum: "bg-purple-100 text-purple-700 border-purple-200",
 };
 
+const PRESET_MAX_CSV: Record<PresetKey, string> = {
+  balanced: "~200 MB",
+  performance: "~500 MB",
+  maximum: "~1 GB",
+};
+
 function detectActivePreset(settings: PerformanceSettings): PresetKey | null {
   for (const [key, preset] of Object.entries(PERFORMANCE_PRESETS) as [PresetKey, typeof PERFORMANCE_PRESETS[PresetKey]][]) {
     if (settings.chunkSize === preset.chunkSize && settings.maxUnionRows === preset.maxUnionRows) {
@@ -48,15 +54,23 @@ function detectActivePreset(settings: PerformanceSettings): PresetKey | null {
   return null;
 }
 
+function settingsEqual(a: PerformanceSettings, b: PerformanceSettings) {
+  return a.chunkSize === b.chunkSize && a.maxUnionRows === b.maxUnionRows;
+}
+
 export function PerformanceSettingsForm() {
   const [settings, setSettings] = useState<PerformanceSettings>(DEFAULT_PERFORMANCE_SETTINGS);
+  const [persistedSettings, setPersistedSettings] = useState<PerformanceSettings>(DEFAULT_PERFORMANCE_SETTINGS);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setSettings(getPerformanceSettings());
+    const s = getPerformanceSettings();
+    setSettings(s);
+    setPersistedSettings(s);
   }, []);
 
   const activePreset = detectActivePreset(settings);
+  const isDirty = !settingsEqual(settings, persistedSettings);
 
   const applyPreset = (key: PresetKey) => {
     const preset = PERFORMANCE_PRESETS[key];
@@ -66,6 +80,7 @@ export function PerformanceSettingsForm() {
 
   const handleSave = () => {
     savePerformanceSettings(settings);
+    setPersistedSettings(settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -106,6 +121,7 @@ export function PerformanceSettingsForm() {
                 <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                   <span>Chunk size: {formatRows(preset.chunkSize)} rows</span>
                   <span>Max union: {formatRows(preset.maxUnionRows)} rows</span>
+                  <span>Max CSV: {PRESET_MAX_CSV[key]}</span>
                 </div>
                 <Badge
                   variant="outline"
@@ -185,10 +201,10 @@ export function PerformanceSettingsForm() {
               <span>10M — needs 16GB+ RAM</span>
             </div>
             <p className="text-xs text-muted-foreground bg-muted rounded p-2">
-              <strong>What this does:</strong> Sets the maximum number of rows the CSV Join (Union) node will
-              deduplicate in a single operation. The entire combined dataset is held in memory during
-              deduplication. Increase this only if your computer has enough RAM — roughly 1GB of free RAM
-              per 2 million rows.
+              <strong>What this does:</strong> Sets the in-memory row threshold used by the CSV Join and
+              Compare nodes. Below this limit both nodes use a fast in-memory Map; above it they switch
+              to a disk-based grace hash join via OPFS to avoid running out of RAM.
+              Roughly 1 GB of free RAM per 2 million rows.
             </p>
           </div>
 
@@ -239,7 +255,7 @@ export function PerformanceSettingsForm() {
 
       {/* ── Save button ───────────────────────────────────────────── */}
       <div className="flex items-center gap-3">
-        <Button onClick={handleSave} disabled={saved}>
+        <Button onClick={handleSave} disabled={saved || !isDirty}>
           {saved ? (
             <>
               <CheckIcon className="size-4 mr-2" />
@@ -258,7 +274,7 @@ export function PerformanceSettingsForm() {
         >
           Reset to Defaults
         </Button>
-        {!saved && activePreset === null && (
+        {isDirty && (
           <span className="text-xs text-muted-foreground">Unsaved changes</span>
         )}
       </div>
@@ -271,6 +287,8 @@ export function PerformanceSettingsForm() {
 function StorageManagementSection() {
   const [quota, setQuota] = useState<{ usage: number; quota: number } | null>(null);
   const [execCount, setExecCount] = useState<number | null>(null);
+  const [workflowCount, setWorkflowCount] = useState<number | null>(null);
+  const [datasetCount, setDatasetCount] = useState<number | null>(null);
   const [cleaning, setCleaning] = useState(false);
   const [cleanedCount, setCleanedCount] = useState<number | null>(null);
   const removeAll = useRemoveAllExecutions();
@@ -280,6 +298,8 @@ function StorageManagementSection() {
       setQuota({ usage: est.usage ?? 0, quota: est.quota ?? 0 });
     });
     db.executions.count().then(setExecCount);
+    db.workflows.count().then(setWorkflowCount);
+    db.datasets.count().then(setDatasetCount);
   }, []);
 
   useEffect(() => {
@@ -292,6 +312,11 @@ function StorageManagementSection() {
     return `${(bytes / 1024).toFixed(0)} KB`;
   };
 
+  const fmtPct = (usage: number, quota: number) => {
+    if (quota === 0) return null;
+    return `${((usage / quota) * 100).toFixed(1)}%`;
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -300,7 +325,7 @@ function StorageManagementSection() {
           Storage Management
         </CardTitle>
         <CardDescription className="text-xs">
-          Execution data (CSV chunks) is stored in your browser's private file system (OPFS).
+          Execution data (CSV chunks) is stored in your browser&apos;s private file system (OPFS).
           It is never uploaded anywhere but accumulates over time.
         </CardDescription>
       </CardHeader>
@@ -316,10 +341,24 @@ function StorageManagementSection() {
                 </span>
               )}
             </span>
+            {quota && quota.quota > 0 && (
+              <span className="text-xs text-muted-foreground">{fmtPct(quota.usage, quota.quota)} used</span>
+            )}
           </div>
           <div className="rounded-lg border bg-muted/40 p-3 flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">Saved executions</span>
             <span className="font-semibold">{execCount ?? "—"}</span>
+            <span className="text-xs text-muted-foreground">run records in IndexedDB</span>
+          </div>
+          <div className="rounded-lg border bg-muted/40 p-3 flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Saved workflows</span>
+            <span className="font-semibold">{workflowCount ?? "—"}</span>
+            <span className="text-xs text-muted-foreground">workflow definitions</span>
+          </div>
+          <div className="rounded-lg border bg-muted/40 p-3 flex flex-col gap-1">
+            <span className="text-xs text-muted-foreground">Stored datasets</span>
+            <span className="font-semibold">{datasetCount ?? "—"}</span>
+            <span className="text-xs text-muted-foreground">CSV chunk manifests</span>
           </div>
         </div>
 
@@ -370,5 +409,14 @@ function StorageManagementSection() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+export function AppInfoFooter() {
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-2 border-t border-border">
+      <InfoIcon className="size-3 shrink-0" />
+      <span>AutoPilot v0.1.0 — offline-first, all data stays in your browser</span>
+    </div>
   );
 }

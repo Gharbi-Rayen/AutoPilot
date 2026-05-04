@@ -1,5 +1,5 @@
 import { SettingsIcon } from "lucide-react";
-import { PerformanceSettingsForm } from "@/features/settings/components/performance-settings-form";
+import { AppInfoFooter, PerformanceSettingsForm } from "@/features/settings/components/performance-settings-form";
 
 export default function SettingsPage() {
   return (
@@ -24,6 +24,7 @@ export default function SettingsPage() {
         </section>
 
         <PerformanceSettingsForm />
+        <AppInfoFooter />
       </div>
     </div>
   );
