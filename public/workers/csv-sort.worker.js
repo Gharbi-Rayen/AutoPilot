@@ -1949,7 +1949,14 @@ self.onmessage = async (event) => {
     chunkSize = 1e4
   } = input;
   const post = (msg) => self.postMessage(msg);
-  const cmp = makeComparator(sortColumns, compareAs, nulls);
+  const resolvedCompareAs = compareAs ?? (() => {
+    const field = sortColumns[0]?.field;
+    const schemaType = field ? inputRef.schema?.[field] : void 0;
+    if (schemaType === "number") return "number";
+    if (schemaType === "date") return "date";
+    return "string";
+  })();
+  const cmp = makeComparator(sortColumns, resolvedCompareAs, nulls);
   const N = inputRef.chunkCount;
   const estimatedInputChunkRows = Math.max(1, Math.ceil(inputRef.rowCount / Math.max(1, N)));
   const mergeFactor = Math.max(

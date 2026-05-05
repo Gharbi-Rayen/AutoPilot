@@ -311,7 +311,21 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
   };
 
   const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
-  const cmp = makeComparator(sortColumns, compareAs, nulls);
+
+  // If compareAs wasn't explicitly configured, infer it from the field's schema type
+  // so that numeric columns sort numerically even when the node UI left compareAs unset.
+  // String comparison of mixed-length numbers produces wrong order (e.g. "117870" < "1179").
+  const resolvedCompareAs = compareAs ?? (() => {
+    const field = sortColumns[0]?.field;
+    const schemaType = field
+      ? (inputRef.schema as Record<string, string> | undefined)?.[field]
+      : undefined;
+    if (schemaType === "number") return "number";
+    if (schemaType === "date") return "date";
+    return "string";
+  })();
+
+  const cmp = makeComparator(sortColumns, resolvedCompareAs, nulls);
   const N = inputRef.chunkCount;
   const estimatedInputChunkRows = Math.max(1, Math.ceil(inputRef.rowCount / Math.max(1, N)));
   const mergeFactor = Math.max(

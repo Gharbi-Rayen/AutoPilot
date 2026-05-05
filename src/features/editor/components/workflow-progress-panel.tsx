@@ -10,7 +10,6 @@ import {
   Clock3Icon,
   CopyIcon,
   DownloadIcon,
-  Loader2Icon,
   Maximize2Icon,
   PlayIcon,
   XCircleIcon,
@@ -267,7 +266,12 @@ const TraceStatusIcon = ({
   if (status === "error")
     return <XCircleIcon className={cn("block shrink-0", colorMap.error)} size={size} />;
   if (status === "loading")
-    return <Loader2Icon className={cn("block shrink-0 animate-spin", colorMap.loading)} size={size} />;
+    return (
+      <span
+        className={cn("block shrink-0 rounded-full border-2 animate-spin border-muted border-t-current", colorMap.loading)}
+        style={{ width: size, height: size }}
+      />
+    );
   return <Clock3Icon className={cn("block shrink-0", colorMap.initial)} size={size} />;
 };
 
