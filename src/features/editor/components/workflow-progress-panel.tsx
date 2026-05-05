@@ -268,7 +268,7 @@ const TraceStatusIcon = ({
   if (status === "loading")
     return (
       <span
-        className={cn("block shrink-0 rounded-full border-2 animate-spin border-muted border-t-current", colorMap.loading)}
+        className="block shrink-0 translate-y-[2px] rounded-full border-2 animate-spin border-amber-200 border-t-amber-500 dark:border-amber-900 dark:border-t-amber-400"
         style={{ width: size, height: size }}
       />
     );

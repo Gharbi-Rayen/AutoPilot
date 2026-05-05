@@ -1949,11 +1949,12 @@ self.onmessage = async (event) => {
     chunkSize = 1e4
   } = input;
   const post = (msg) => self.postMessage(msg);
-  const resolvedCompareAs = compareAs ?? (() => {
+  const resolvedCompareAs = (() => {
+    if (compareAs === "number" || compareAs === "date") return compareAs;
     const field = sortColumns[0]?.field;
-    const schemaType = field ? inputRef.schema?.[field] : void 0;
-    if (schemaType === "number") return "number";
-    if (schemaType === "date") return "date";
+    const fieldType = field ? inputRef.schema?.[field]?.type : void 0;
+    if (fieldType === "number") return "number";
+    if (fieldType === "date") return "date";
     return "string";
   })();
   const cmp = makeComparator(sortColumns, resolvedCompareAs, nulls);

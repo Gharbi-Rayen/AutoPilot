@@ -312,16 +312,19 @@ self.onmessage = async (event: MessageEvent<WorkerJobMessage>) => {
 
   const post = (msg: WorkerOutboundMessage) => self.postMessage(msg);
 
-  // If compareAs wasn't explicitly configured, infer it from the field's schema type
-  // so that numeric columns sort numerically even when the node UI left compareAs unset.
-  // String comparison of mixed-length numbers produces wrong order (e.g. "117870" < "1179").
-  const resolvedCompareAs = compareAs ?? (() => {
+  // The dialog always persists compareAs="string" as its default regardless of the
+  // field's actual data type, so an explicit "string" may just be the unset default —
+  // not a deliberate user choice. Only "number" and "date" are always intentional.
+  // When "string" is present, check the field's schema type and upgrade if needed.
+  // Wrong type = wrong sort: "100027" < "1001" as strings, correct numerically.
+  const resolvedCompareAs = (() => {
+    if (compareAs === "number" || compareAs === "date") return compareAs;
     const field = sortColumns[0]?.field;
-    const schemaType = field
-      ? (inputRef.schema as Record<string, string> | undefined)?.[field]
+    const fieldType = field
+      ? (inputRef.schema as Record<string, { type: string }> | undefined)?.[field]?.type
       : undefined;
-    if (schemaType === "number") return "number";
-    if (schemaType === "date") return "date";
+    if (fieldType === "number") return "number";
+    if (fieldType === "date") return "date";
     return "string";
   })();
 
