@@ -1,250 +1,340 @@
 "use client";
 
-import {
-  ArrowRightIcon,
-  BrainCircuitIcon,
-  FileSpreadsheetIcon,
-  FlameIcon,
-  LockKeyholeIcon,
-  ShieldCheckIcon,
-  SlidersHorizontalIcon,
-  ZapIcon,
-} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef } from "react";
+import { LogoOrb } from "@/components/logo-orb";
+import styles from "./page.module.css";
 
-const features = [
+/* ─── CONFIG ─────────────────────────────────────────────────────────────── */
+const NODES = [
   {
-    icon: LockKeyholeIcon,
-    title: "100% Private",
-    description:
-      "Every byte stays in your browser. No uploads, no servers, no accounts — your data never leaves your machine.",
+    name: "Manual Trigger",
+    meta: "entry point",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <polygon points="4,2.5 15.5,9 4,15.5" fill="currentColor" />
+      </svg>
+    ),
   },
   {
-    icon: FlameIcon,
-    title: "Built for Scale",
-    description:
-      "Stream millions of rows without breaking a sweat. OPFS-backed chunked processing means no memory crashes.",
+    name: "Upload File",
+    meta: "csv / pdf",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M9 11.5V4.5" /><path d="M6 7.5l3-3 3 3" /><path d="M3.5 14.5h11" />
+      </svg>
+    ),
   },
   {
-    icon: BrainCircuitIcon,
-    title: "Visual Pipelines",
-    description:
-      "Drag, drop, and connect processing nodes. Filter → Sort → Deduplicate → Transform in minutes.",
+    name: "CSV Parse",
+    meta: "2.1M rows",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="2.5" y="3" width="13" height="12" rx="2" /><path d="M2.5 7h13" /><path d="M7 7v8" />
+      </svg>
+    ),
   },
   {
-    icon: ZapIcon,
-    title: "Instant Execution",
-    description:
-      "Real-time progress tracking. Watch your pipeline run live with per-node status and timing.",
+    name: "Restructure",
+    meta: "7 columns",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M3 5h5" /><path d="M3 9h12" /><path d="M3 13h8" /><path d="M11 3l2.5 2L11 7" />
+      </svg>
+    ),
   },
   {
-    icon: SlidersHorizontalIcon,
-    title: "Powerful Operations",
-    description:
-      "Filter with 12+ operators, multi-key sort, smart deduplication, conditional transforms, joins, and aggregations.",
+    name: "Transform",
+    meta: "x → f(x)",
+    accent: true,
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        <path d="M2.5 14.5C5 14.5 5.5 3.5 9 3.5" /><path d="M9 3.5C12.5 3.5 13 14.5 15.5 14.5" />
+        <circle cx="9" cy="3.5" r="1.5" fill="currentColor" stroke="none" />
+      </svg>
+    ),
   },
   {
-    icon: ShieldCheckIcon,
-    title: "Works Offline",
-    description:
-      "Install as a PWA and run entirely offline. No internet required after the first load.",
+    name: "Restructure",
+    meta: "5 columns",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M3 5h5" /><path d="M3 9h12" /><path d="M3 13h8" /><path d="M11 3l2.5 2L11 7" />
+      </svg>
+    ),
   },
 ];
 
-const steps = [
+const TRACE_DATA = [
+  { label: "Manual Trigger", time: "0.02s", pct: 3 },
+  { label: "Upload File",    time: "0.18s", pct: 12 },
+  { label: "CSV Parse",      time: "1.40s", pct: 80 },
+  { label: "Restructure",    time: "0.61s", pct: 54 },
+  { label: "Transform",      time: "1.20s", pct: 68 },
+  { label: "Restructure",    time: "0.19s", pct: 15 },
+];
+
+const VALUE_PROPS = [
   {
-    number: "01",
-    title: "Import your CSV",
-    description:
-      "Drag and drop any CSV file — local or from your filesystem. The parser handles headers, delimiters, and large files automatically.",
-    icon: FileSpreadsheetIcon,
+    title: "Private by design",
+    desc: "Your files never leave the device. No uploads, no accounts, no telemetry — your data stays entirely on your machine.",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <rect x="3" y="11" width="16" height="9" rx="2" /><path d="M7 11V7a4 4 0 0 1 8 0v4" />
+        <circle cx="11" cy="15.5" r="1.2" fill="currentColor" stroke="none" />
+      </svg>
+    ),
   },
   {
-    number: "02",
-    title: "Build your pipeline",
-    description:
-      "Add processing nodes and connect them visually. Filter rows, sort by any column, remove duplicates, join datasets, and more.",
-    icon: BrainCircuitIcon,
+    title: "Built for big files",
+    desc: "Streaming workers and on-disk storage handle millions of rows without exhausting memory or locking the tab.",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+      </svg>
+    ),
   },
   {
-    number: "03",
-    title: "Run and export",
-    description:
-      "Execute with one click. Monitor progress live, inspect results inline, then download your clean data — segmented or as one file.",
-    icon: ZapIcon,
+    title: "Works offline, forever",
+    desc: "Install once as a PWA and it runs indefinitely — no internet required, no subscription, no expiry date.",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M1 6s4-4 10-4 10 4 10 4" /><path d="M3.5 9.5s3-3 7.5-3 7.5 3 7.5 3" />
+        <circle cx="11" cy="13" r="2.5" fill="currentColor" stroke="none" /><path d="M11 15.5v3.5" />
+      </svg>
+    ),
   },
 ];
 
-export default function IntroPage() {
+/* ─── COMPONENT ──────────────────────────────────────────────────────────── */
+export default function LandingPage() {
+  const nodesRowRef = useRef<HTMLDivElement>(null);
+  const traceRowsRef = useRef<HTMLDivElement>(null);
+  const vpCardsRef = useRef<HTMLDivElement>(null);
+  const showcaseRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    /* ── Animate nodes pop-in ── */
+    const cards = nodesRowRef.current?.querySelectorAll<HTMLElement>("[data-node-card]");
+    cards?.forEach((card, i) => {
+      setTimeout(() => card.classList.add(styles.pop), 1100 + i * 170);
+    });
+
+    /* ── Animate connector draw + sparks ── */
+    const totalDelay = 1100 + (NODES.length * 170) + 220;
+    setTimeout(() => {
+      const lines  = nodesRowRef.current?.querySelectorAll<SVGLineElement>("[data-conn-line]");
+      const sparks = nodesRowRef.current?.querySelectorAll<HTMLElement>("[data-conn-spark]");
+      lines?.forEach((line, i) => {
+        setTimeout(() => {
+          line.style.transition = "stroke-dashoffset 0.5s cubic-bezier(.2,.7,.2,1)";
+          line.style.strokeDashoffset = "0";
+          setTimeout(() => {
+            const spark = sparks?.[i];
+            if (!spark) return;
+            spark.style.animationDelay = `${i * 0.28}s`;
+            spark.classList.add(styles.live);
+          }, 520);
+        }, i * 155);
+      });
+    }, totalDelay);
+
+    /* ── Animate trace bars ── */
+    const fills = traceRowsRef.current?.querySelectorAll<HTMLElement>("[data-trace-fill]");
+    fills?.forEach((fill, i) => {
+      const pct = fill.dataset.pct ?? "0";
+      setTimeout(() => { fill.style.width = `${pct}%`; }, 1700 + i * 110);
+    });
+
+    /* ── Value props scroll reveal ── */
+    const vpCards = vpCardsRef.current?.querySelectorAll<HTMLElement>("[data-vp-card]");
+    if (!vpCards?.length) return;
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) (e.target as HTMLElement).classList.add(styles.visible);
+      });
+    }, { threshold: 0.12 });
+    vpCards.forEach((c) => io.observe(c));
+    return () => io.disconnect();
+  }, []);
+
+  function scrollToShowcase() {
+    showcaseRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* ── Nav ─────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-2.5 select-none">
-            <Image
-              src="/logos/logoTT.png"
-              alt="AutoPilot"
-              width={28}
-              height={20}
-              className="object-contain"
-              priority
-            />
-            <span className="font-semibold text-sm tracking-tight">AutoPilot</span>
+    <div className={styles.page}>
+      <div className={styles.glowBg} aria-hidden="true" />
+
+      {/* ── NAV ─────────────────────────────────────────────────────────── */}
+      <header>
+        <nav className={styles.nav} aria-label="Site navigation">
+          <Link href="/" className={styles.navBrand} aria-label="AutoPilot home">
+            <LogoOrb size={36} spin />
+            <span className={styles.navWordmark}>AutoPilot</span>
           </Link>
-          <Button asChild size="sm">
-            <Link href="/workflows">
-              Open App
-              <ArrowRightIcon className="ml-1.5 size-3.5" />
-            </Link>
-          </Button>
-        </div>
+
+          <div className={styles.navLinks}>
+            <a href="#how">How it works</a>
+            <a href="#why">Why offline</a>
+            <a href="#docs">Docs</a>
+          </div>
+
+          <Link href="/workflows" className={styles.btnDark} aria-label="Open AutoPilot">
+            Open app
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2.5 6.5h8M7 3l3.5 3.5L7 10" />
+            </svg>
+          </Link>
+        </nav>
       </header>
 
-      <main className="flex-1">
-        {/* ── Hero ────────────────────────────────────────────────── */}
-        <section className="mx-auto flex max-w-4xl flex-col items-center px-6 pt-24 pb-20 text-center">
-          <Badge
-            variant="outline"
-            className="mb-6 gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground"
-          >
-            <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
-            Fully offline · No account needed · Free forever
-          </Badge>
+      {/* ── HERO ─────────────────────────────────────────────────────────── */}
+      <section className={styles.hero} id="how" aria-labelledby="hero-h1">
+        <div className={styles.eyebrow} role="status">
+          <span className={styles.statusDot} aria-hidden="true" />
+          <span className={styles.eyebrowText}>100% in your browser · no server, no upload</span>
+        </div>
 
-          <h1 className="text-5xl font-bold tracking-tight leading-[1.1] sm:text-6xl md:text-7xl">
-            Automate your
-            <br />
-            <span className="text-muted-foreground">CSV workflows</span>
-          </h1>
+        <h1 className={styles.heroHeadline} id="hero-h1">
+          <span className={styles.hl1}>Automate your data,</span>
+          <span className={styles.hl2}>without leaving the page.</span>
+        </h1>
 
-          <p className="mt-6 max-w-xl text-lg text-muted-foreground leading-relaxed">
-            Build powerful data pipelines entirely in your browser — no code, no servers, no
-            limits. Filter, sort, deduplicate, and transform millions of rows in seconds.
-          </p>
+        <p className={styles.heroSub}>
+          Drag nodes onto a canvas, wire them together, and hit Run. AutoPilot streams your CSV
+          and PDF files through every step entirely on your machine — private, instant, and
+          offline forever.
+        </p>
 
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Button asChild size="lg" className="h-12 px-8 text-base">
-              <Link href="/workflows">
-                Get Started
-                <ArrowRightIcon className="ml-2 size-4" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" size="lg" className="h-12 px-8 text-base">
-              <a href="#how-it-works">See how it works</a>
-            </Button>
-          </div>
+        <div className={styles.heroCtas}>
+          <Link href="/workflows" className={styles.btnPrimary} aria-label="Launch AutoPilot workflow editor">
+            Launch AutoPilot
+            <span className={styles.btnArrow} aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 8h10M9 4l4 4-4 4" />
+              </svg>
+            </span>
+          </Link>
+          <button className={styles.btnGhost} onClick={scrollToShowcase} aria-label="See the workflow demo">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+              <polygon points="3,1.5 13,7 3,12.5" />
+            </svg>
+            See it run
+          </button>
+        </div>
+      </section>
 
-          {/* Stat row */}
-          <div className="mt-16 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-sm text-muted-foreground">
-            {[
-              ["10M+", "rows processed per run"],
-              ["100%", "browser-native, zero upload"],
-              ["8", "node types built-in"],
-            ].map(([value, label]) => (
-              <div key={label} className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-bold text-foreground">{value}</span>
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ── Features ────────────────────────────────────────────── */}
-        <section className="border-t border-border/60 bg-accent/20">
-          <div className="mx-auto max-w-6xl px-6 py-20">
-            <div className="mb-12 text-center">
-              <h2 className="text-3xl font-bold tracking-tight">Everything you need</h2>
-              <p className="mt-3 text-muted-foreground">
-                Professional-grade data processing, running entirely in your browser.
-              </p>
+      {/* ── SHOWCASE CARD ─────────────────────────────────────────────────── */}
+      <section className={styles.showcaseWrap} id="showcase" ref={showcaseRef} aria-label="Workflow editor preview">
+        <div className={styles.showcaseCard}>
+          {/* Chrome */}
+          <div className={styles.cardChrome} aria-hidden="true">
+            <div className={styles.chromeDots}>
+              <div className={`${styles.chromeDot} ${styles.dotR}`} />
+              <div className={`${styles.chromeDot} ${styles.dotY}`} />
+              <div className={`${styles.chromeDot} ${styles.dotG}`} />
             </div>
+            <span className={styles.chromeFilename}>wf_20260505_001</span>
+            <div className={styles.chromeStatus}>
+              <div className={styles.chromeStatusDot} />
+              <span className={styles.chromeStatusText}>completed · 7 nodes</span>
+            </div>
+          </div>
 
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {features.map((f) => (
-                <div
-                  key={f.title}
-                  className="rounded-xl border border-border/60 bg-background p-6 transition-shadow hover:shadow-sm"
-                >
-                  <div className="mb-4 flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                    <f.icon className="size-5 text-primary" />
+          {/* Canvas */}
+          <div className={styles.canvasArea}>
+            <div className={styles.nodesRow} ref={nodesRowRef} role="list" aria-label="Workflow nodes">
+              {NODES.map((node, i) => (
+                <div key={`${node.name}-${i}`} className={styles.nodeUnit}>
+                  <div
+                    className={`${styles.nodeCard} ${node.accent ? styles.accentNode : ""}`}
+                    data-node-card="true"
+                    role="listitem"
+                    aria-label={node.name}
+                  >
+                    <div className={styles.nodeIconWrap}>{node.icon}</div>
+                    <span className={styles.nodeName}>{node.name}</span>
+                    <span className={styles.nodeMeta}>{node.meta}</span>
                   </div>
-                  <h3 className="mb-2 font-semibold">{f.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">
-                    {f.description}
-                  </p>
+
+                  {i < NODES.length - 1 && (
+                    <div className={styles.connWrap} aria-hidden="true">
+                      <svg className={styles.connSvg} viewBox="0 0 44 88" xmlns="http://www.w3.org/2000/svg">
+                        <line
+                          className={styles.connLine}
+                          x1="0" y1="44" x2="44" y2="44"
+                          strokeDasharray="44"
+                          strokeDashoffset="44"
+                          data-conn-line="true"
+                        />
+                      </svg>
+                      <div className={styles.connSpark} data-conn-spark="true" />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
           </div>
-        </section>
 
-        {/* ── How it works ────────────────────────────────────────── */}
-        <section id="how-it-works" className="border-t border-border/60">
-          <div className="mx-auto max-w-5xl px-6 py-20">
-            <div className="mb-14 text-center">
-              <h2 className="text-3xl font-bold tracking-tight">How it works</h2>
-              <p className="mt-3 text-muted-foreground">
-                From raw CSV to clean, processed data in three steps.
-              </p>
+          {/* Trace */}
+          <div className={styles.tracePanel} aria-label="Execution trace timeline">
+            <div className={styles.traceHeader}>
+              <span className={styles.traceTitle}>Trace</span>
+              <span className={styles.traceBadge}>3.6s total</span>
             </div>
-
-            <div className="relative grid grid-cols-1 gap-10 md:grid-cols-3">
-              {/* Connector line (desktop only) */}
-              <div className="absolute top-8 left-[calc(16.67%+2rem)] right-[calc(16.67%+2rem)] hidden h-px bg-border md:block" />
-
-              {steps.map((step, i) => (
-                <div
-                  key={step.number}
-                  className="relative flex flex-col items-center text-center"
-                >
-                  <div className="relative mb-6 flex size-16 items-center justify-center rounded-full border-2 border-border bg-background">
-                    <step.icon className="size-6 text-foreground" />
-                    <span className="absolute -top-2 -right-2 flex size-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                      {i + 1}
-                    </span>
+            <div className={styles.traceRows} ref={traceRowsRef} role="list">
+              {TRACE_DATA.map((item, i) => (
+                <div key={i} className={styles.traceRow} role="listitem">
+                  <span className={styles.traceLabel}>{item.label}</span>
+                  <div className={styles.traceTrack} role="progressbar" aria-valuenow={item.pct} aria-valuemin={0} aria-valuemax={100}>
+                    <div className={styles.traceFill} data-trace-fill="true" data-pct={item.pct} />
                   </div>
-                  <div className="mb-1 font-mono text-xs text-muted-foreground">
-                    {step.number}
-                  </div>
-                  <h3 className="mb-2 text-base font-semibold">{step.title}</h3>
-                  <p className="max-w-xs text-sm text-muted-foreground leading-relaxed">
-                    {step.description}
-                  </p>
+                  <span className={styles.traceTime}>{item.time}</span>
                 </div>
               ))}
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        {/* ── Bottom CTA ──────────────────────────────────────────── */}
-        <section className="border-t border-border/60 bg-accent/20">
-          <div className="mx-auto flex max-w-3xl flex-col items-center px-6 py-20 text-center">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Ready to clean your data?
-            </h2>
-            <p className="mt-4 max-w-md text-muted-foreground">
-              No sign-up. No installation. Open AutoPilot and start building your first workflow
-              right now.
-            </p>
-            <Button asChild size="lg" className="mt-8 h-12 px-10 text-base">
-              <Link href="/workflows">
-                Open AutoPilot
-                <ArrowRightIcon className="ml-2 size-4" />
-              </Link>
-            </Button>
-          </div>
-        </section>
-      </main>
+      {/* ── VALUE PROPS ───────────────────────────────────────────────────── */}
+      <section className={styles.valueSection} id="why" aria-labelledby="vp-title">
+        <h2 id="vp-title" className="sr-only">Why AutoPilot</h2>
+        <div className={styles.vpGrid} ref={vpCardsRef}>
+          {VALUE_PROPS.map((vp, i) => (
+            <div
+              key={vp.title}
+              className={styles.vpCard}
+              data-vp-card="true"
+              style={{ transitionDelay: `${i * 0.13}s` }}
+            >
+              <div className={styles.vpChip} aria-hidden="true">{vp.icon}</div>
+              <h3 className={styles.vpTitle}>{vp.title}</h3>
+              <p className={styles.vpDesc}>{vp.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      {/* ── Footer ──────────────────────────────────────────────── */}
-      <footer className="border-t border-border/60">
-        <div className="mx-auto flex h-12 max-w-6xl items-center justify-between px-6 text-xs text-muted-foreground">
-          <span>© {new Date().getFullYear()} AutoPilot</span>
-          <span>All processing happens in your browser</span>
+      {/* ── FOOTER ────────────────────────────────────────────────────────── */}
+      <footer className={styles.footer}>
+        <Link href="/" className={styles.footerBrand} aria-label="AutoPilot home">
+          <LogoOrb size={22} />
+          <span className={styles.footerWordmark}>AutoPilot</span>
+        </Link>
+        <p className={styles.footerTagline}>Automate your data, entirely in your browser.</p>
+        <div className={styles.footerPowered}>
+          <span>Powered by</span>
+          <Image
+            src="/logos/logoTT.png"
+            alt="Tunisie Telecom"
+            width={48}
+            height={14}
+            className="object-contain"
+          />
+          <span>Tunisie Telecom</span>
         </div>
       </footer>
     </div>

@@ -11,6 +11,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useState } from "react";
+import { LogoOrb } from "@/components/logo-orb";
 import {
   Sidebar,
   SidebarContent,
@@ -31,7 +32,7 @@ const menuItems = [
 
 export const AppSidebar = () => {
   const pathname = usePathname();
-  const { setOpenMobile } = useSidebar();
+  const { setOpenMobile, open } = useSidebar();
   const [navigatingTo, setNavigatingTo] = useState<string | null>(null);
 
   React.useEffect(() => {
@@ -49,18 +50,11 @@ export const AppSidebar = () => {
             asChild
             tooltip="AutoPilot"
             isActive={false}
-            className="gap-x-4 h-10 px-4"
+            className="gap-x-3 h-10 px-3"
           >
             <Link href="/workflows" prefetch>
-              <Image
-                src="/logos/logoTT.png"
-                alt="AutoPilot"
-                width={32}
-                height={22}
-                className="object-contain"
-                priority
-              />
-              <span className="font-semibold text-sm">AutoPilot</span>
+              <LogoOrb size={26} spin />
+              <span className="font-semibold text-sm tracking-tight">AutoPilot</span>
             </Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -132,6 +126,25 @@ export const AppSidebar = () => {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+
+        {/* Tunisie Telecom attribution — only shown when sidebar is expanded */}
+        {open && (
+          <div className="flex items-center gap-2 px-3 pb-2 pt-1">
+            <Image
+              src="/logos/logoTT.png"
+              alt="Tunisie Telecom"
+              width={28}
+              height={19}
+              className="object-contain opacity-50"
+            />
+            <span
+              className="text-[10px] leading-tight text-muted-foreground opacity-60"
+              style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}
+            >
+              Powered by<br />Tunisie Telecom
+            </span>
+          </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );
