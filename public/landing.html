@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="AutoPilot — drag-and-drop workflow automation for CSV and PDF files. Runs 100% in your browser. Private, fast, offline-ready.">
+  <title>AutoPilot — Automate your data, entirely in your browser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ─── RESET ──────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    button { cursor: pointer; font-family: inherit; border: none; background: none; }
+    a { text-decoration: none; color: inherit; }
+    svg { display: block; flex-shrink: 0; }
+
+    /* ─── TOKENS ─────────────────────────────────────────────────────────────── */
+    :root {
+      --bg:           #fafafa;
+      --surface:      #ffffff;
+      --ink:          #18181b;
+      --muted:        #71717a;
+      --faint:        #a1a1aa;
+      --border:       #ececef;
+      --border-strong:#e0e0e4;
+      --accent:       #f2542d;
+      --accent-deep:  #de441e;
+      --accent-soft:  #fff1ec;
+      --grid:         rgba(24,24,27,0.05);
+
+      --font-display: 'Bricolage Grotesque', sans-serif;
+      --font-body:    'Hanken Grotesk', sans-serif;
+      --font-mono:    'JetBrains Mono', monospace;
+
+      --ease-out: cubic-bezier(.2,.7,.2,1);
+      --ease-in-out: cubic-bezier(.4,0,.2,1);
+    }
+
+    /* ─── BASE ───────────────────────────────────────────────────────────────── */
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--font-body);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Dotted grid, masked to edges */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: radial-gradient(circle, var(--grid) 1.5px, transparent 1.5px);
+      background-size: 26px 26px;
+      -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 40%, #000 0%, transparent 100%);
+      mask-image: radial-gradient(ellipse 85% 75% at 50% 40%, #000 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    /* ─── RAINBOW GLOW ───────────────────────────────────────────────────────── */
+    .glow-bg {
+      position: fixed;
+      top: -25vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(1000px, 130vw);
+      height: min(1000px, 130vw);
+      background: conic-gradient(from 210deg,
+        #ff3b30 0deg, #ff9500 50deg, #ffd60a 95deg,
+        #34c759 150deg, #00c7be 195deg, #0a84ff 245deg,
+        #5e5ce6 300deg, #bf5af2 340deg, #ff3b30 360deg);
+      border-radius: 50%;
+      filter: blur(160px);
+      opacity: 0.13;
+      pointer-events: none;
+      z-index: 0;
+      animation: glowDrift 22s var(--ease-in-out) infinite alternate;
+    }
+
+    @keyframes glowDrift {
+      0%   { transform: translateX(-50%) translateY(0)    scale(1);    opacity: 0.13; }
+      50%  { transform: translateX(-53%) translateY(50px) scale(1.06); opacity: 0.11; }
+      100% { transform: translateX(-47%) translateY(-30px) scale(0.97); opacity: 0.14; }
+    }
+
+    /* ─── LAYOUT ─────────────────────────────────────────────────────────────── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    /* ─── NAV ────────────────────────────────────────────────────────────────── */
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 40px;
+      background: rgba(250,250,250,0.88);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-bottom: 1px solid var(--border);
+      animation: fadeDown 0.6s var(--ease-out) both;
+    }
+
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+
+    /* Rainbow orb */
+    .orb-wrap {
+      width: 36px;
+      height: 36px;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .orb-ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(from 210deg,
+        #ff3b30 0deg, #ff9500 50deg, #ffd60a 95deg,
+        #34c759 150deg, #00c7be 195deg, #0a84ff 245deg,
+        #5e5ce6 300deg, #bf5af2 340deg, #ff3b30 360deg);
+      animation: orbSpin 12s linear infinite;
+    }
+    .orb-inner {
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: var(--surface);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: orbCounterSpin 12s linear infinite;
+    }
+    .orb-monogram {
+      font-family: var(--font-mono);
+      font-weight: 500;
+      font-size: 9px;
+      letter-spacing: -0.3px;
+      color: var(--ink);
+      line-height: 1;
+      user-select: none;
+    }
+    @keyframes orbSpin        { to { transform: rotate(360deg);  } }
+    @keyframes orbCounterSpin { to { transform: rotate(-360deg); } }
+
+    .nav-wordmark {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 17px;
+      letter-spacing: -0.5px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+    }
+    .nav-links a {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--muted);
+      transition: color 0.18s;
+    }
+    .nav-links a:hover { color: var(--ink); }
+
+    .btn-dark {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--ink);
+      color: #fff;
+      border-radius: 9px;
+      padding: 8px 17px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.18s, transform 0.18s var(--ease-out);
+    }
+    .btn-dark:hover { background: #000; transform: translateY(-1px); }
+
+    /* ─── HERO ───────────────────────────────────────────────────────────────── */
+    .hero {
+      position: relative;
+      z-index: 1;
+      padding: 156px 24px 72px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Eyebrow */
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 100px;
+      padding: 6px 15px;
+      margin-bottom: 38px;
+      animation: riseUp 0.7s var(--ease-out) 0.2s both;
+      box-shadow: 0 2px 8px rgba(24,24,27,0.05);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #34c759;
+      animation: statusPulse 2.4s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    @keyframes statusPulse {
+      0%, 100% { box-shadow: 0 0 0 0   rgba(52,199,89,0.45); }
+      50%       { box-shadow: 0 0 0 5px rgba(52,199,89,0); }
+    }
+
+    .eyebrow-text {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0.2px;
+    }
+
+    /* Headline */
+    .hero-headline {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(40px, 6.4vw, 76px);
+      letter-spacing: -2px;
+      line-height: 1.02;
+      margin-bottom: 26px;
+    }
+
+    .hl-1 {
+      display: block;
+      color: var(--ink);
+      animation: riseUp 0.75s var(--ease-out) 0.35s both;
+    }
+
+    .hl-2 {
+      display: block;
+      background: conic-gradient(from 210deg,
+        #ff3b30 0deg, #ff9500 50deg, #ffd60a 95deg,
+        #34c759 150deg, #00c7be 195deg, #0a84ff 245deg,
+        #5e5ce6 300deg, #bf5af2 340deg, #ff3b30 360deg);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: riseUp 0.75s var(--ease-out) 0.48s both,
+                 hueShift 9s ease-in-out infinite alternate;
+    }
+    @keyframes hueShift {
+      from { background-position: 0% 50%; }
+      to   { background-position: 100% 50%; }
+    }
+
+    @keyframes riseUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .hero-sub {
+      max-width: 510px;
+      font-size: 17px;
+      line-height: 1.65;
+      color: var(--muted);
+      margin-bottom: 42px;
+      animation: riseUp 0.75s var(--ease-out) 0.6s both;
+    }
+
+    /* CTAs */
+    .hero-ctas {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: riseUp 0.75s var(--ease-out) 0.72s both;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 11px;
+      padding: 13px 24px;
+      font-size: 15px;
+      font-weight: 600;
+      transition: background 0.2s, transform 0.2s var(--ease-out), box-shadow 0.2s;
+      box-shadow: 0 4px 18px rgba(242,84,45,0.3);
+    }
+    .btn-primary:hover {
+      background: var(--accent-deep);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(242,84,45,0.38);
+    }
+    .btn-primary:hover .btn-arrow { transform: translateX(4px); }
+    .btn-arrow { transition: transform 0.2s var(--ease-out); display: inline-flex; }
+
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: transparent;
+      color: var(--ink);
+      border: 1.5px solid var(--border-strong);
+      border-radius: 11px;
+      padding: 12px 22px;
+      font-size: 15px;
+      font-weight: 600;
+      transition: border-color 0.18s, background 0.18s, transform 0.18s var(--ease-out);
+    }
+    .btn-ghost:hover {
+      border-color: var(--ink);
+      background: rgba(24,24,27,0.04);
+      transform: translateY(-2px);
+    }
+
+    /* ─── SHOWCASE CARD ──────────────────────────────────────────────────────── */
+    .showcase-wrap {
+      position: relative;
+      z-index: 1;
+      padding: 0 24px 80px;
+      animation: riseUp 0.8s var(--ease-out) 0.9s both;
+    }
+
+    .showcase-card {
+      max-width: 920px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 22px;
+      box-shadow:
+        0 2px 6px rgba(24,24,27,0.05),
+        0 12px 40px rgba(24,24,27,0.08),
+        0 40px 100px rgba(24,24,27,0.06);
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Inner dotted grid */
+    .showcase-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(circle, rgba(24,24,27,0.035) 1px, transparent 1px);
+      background-size: 22px 22px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Chrome bar */
+    .card-chrome {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 13px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(250,250,250,0.7);
+    }
+    .chrome-dots { display: flex; gap: 6px; }
+    .chrome-dot { width: 11px; height: 11px; border-radius: 50%; }
+    .dot-r { background: #ff5f57; }
+    .dot-y { background: #febc2e; }
+    .dot-g { background: #28c840; }
+
+    .chrome-filename {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+
+    .chrome-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(52,199,89,0.09);
+      border: 1px solid rgba(52,199,89,0.22);
+      border-radius: 100px;
+      padding: 3px 10px;
+    }
+    .chrome-status-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: #34c759;
+    }
+    .chrome-status-text {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #2eb350;
+    }
+
+    /* Canvas */
+    .canvas-area {
+      position: relative;
+      z-index: 1;
+      padding: 40px 28px 28px;
+      overflow: hidden;
+    }
+
+    .nodes-row {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scrollbar-width: none;
+    }
+    .nodes-row::-webkit-scrollbar { display: none; }
+
+    /* Node unit = card + optional connector */
+    .node-unit {
+      display: flex;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* Node card */
+    .node-card {
+      width: 88px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 15px;
+      padding: 14px 4px 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 7px;
+      box-shadow: 0 2px 8px rgba(24,24,27,0.06);
+      opacity: 0;
+      transform: scale(0.86);
+      transition: box-shadow 0.2s, transform 0.2s var(--ease-out);
+    }
+    .node-card.pop {
+      animation: nodePopIn 0.42s var(--ease-out) forwards;
+    }
+    .node-card:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 10px 28px rgba(24,24,27,0.12);
+    }
+    .node-card.accent-node {
+      background: var(--accent-soft);
+      border-color: rgba(242,84,45,0.22);
+    }
+    .node-card.accent-node .node-icon-wrap {
+      background: rgba(242,84,45,0.11);
+      color: var(--accent);
+    }
+    @keyframes nodePopIn {
+      from { opacity: 0; transform: scale(0.86); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    .node-icon-wrap {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      background: rgba(24,24,27,0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+    }
+
+    .node-name {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--ink);
+      text-align: center;
+      line-height: 1.25;
+      padding: 0 4px;
+    }
+
+    .node-meta {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--faint);
+      text-align: center;
+    }
+
+    /* Connector wrapper */
+    .conn-wrap {
+      position: relative;
+      width: 44px;
+      height: 88px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* SVG connector */
+    .conn-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .conn-line {
+      stroke: var(--border-strong);
+      stroke-width: 2;
+      stroke-linecap: round;
+      fill: none;
+    }
+
+    /* Spark dot */
+    .conn-spark {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 8px rgba(242,84,45,0.7);
+      margin-top: -4px;
+      margin-left: -4px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .conn-spark.live {
+      animation: sparkMove 1.4s var(--ease-in-out) infinite;
+    }
+    @keyframes sparkMove {
+      0%   { left: 0px;   opacity: 0; }
+      8%   { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { left: 44px;  opacity: 0; }
+    }
+
+    /* Trace panel */
+    .trace-panel {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 20px 28px;
+      background: rgba(250,250,250,0.5);
+    }
+
+    .trace-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .trace-label-head {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--faint);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .trace-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid rgba(242,84,45,0.2);
+      border-radius: 5px;
+      padding: 2px 9px;
+    }
+
+    .trace-rows { display: flex; flex-direction: column; gap: 7px; }
+
+    .trace-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .t-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--muted);
+      width: 112px;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .t-track {
+      flex: 1;
+      height: 5px;
+      background: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .t-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent) 0%, var(--accent-deep) 100%);
+      border-radius: 3px;
+      transition: width 0.85s var(--ease-out);
+    }
+
+    .t-time {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--faint);
+      width: 38px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ─── VALUE PROPS ────────────────────────────────────────────────────────── */
+    .value-section {
+      position: relative;
+      z-index: 1;
+      padding: 20px 24px 100px;
+    }
+
+    .vp-grid {
+      max-width: 920px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .vp-card {
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 20px;
+      padding: 28px 24px 26px;
+      opacity: 0;
+      transform: translateY(22px);
+      transition:
+        opacity  0.65s var(--ease-out),
+        transform 0.65s var(--ease-out),
+        box-shadow 0.2s;
+    }
+    .vp-card.in { opacity: 1; transform: translateY(0); }
+    .vp-card:hover { box-shadow: 0 10px 36px rgba(24,24,27,0.1); transform: translateY(-4px); }
+
+    .vp-chip {
+      width: 46px;
+      height: 46px;
+      background: var(--accent-soft);
+      border-radius: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      margin-bottom: 18px;
+    }
+
+    .vp-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: -0.4px;
+      line-height: 1.2;
+      color: var(--ink);
+      margin-bottom: 8px;
+    }
+
+    .vp-desc {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────────────────────────────── */
+    .footer {
+      position: relative;
+      z-index: 1;
+      border-top: 1px solid var(--border);
+      padding: 40px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      text-align: center;
+    }
+
+    .footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 4px;
+    }
+
+    .footer-orb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: conic-gradient(from 210deg,
+        #ff3b30 0deg, #ff9500 50deg, #ffd60a 95deg,
+        #34c759 150deg, #00c7be 195deg, #0a84ff 245deg,
+        #5e5ce6 300deg, #bf5af2 340deg, #ff3b30 360deg);
+      flex-shrink: 0;
+    }
+
+    .footer-wordmark {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.4px;
+    }
+
+    .footer-tagline {
+      font-size: 13px;
+      color: var(--faint);
+    }
+
+    .footer-powered {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--faint);
+      opacity: 0.7;
+      letter-spacing: 0.4px;
+      margin-top: 4px;
+    }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .nav { padding: 14px 20px; }
+      .nav-links { display: none; }
+      .hero { padding: 116px 20px 60px; }
+      .hero-headline { letter-spacing: -1.4px; }
+      .vp-grid { grid-template-columns: 1fr; gap: 14px; }
+      .canvas-area { padding: 28px 16px 20px; }
+      .trace-panel { padding: 16px 20px; }
+      .t-label { width: 80px; }
+    }
+
+    @media (max-width: 480px) {
+      .hero-ctas { flex-direction: column; align-items: stretch; }
+      .btn-primary, .btn-ghost { justify-content: center; }
+    }
+
+    /* ─── REDUCED MOTION ─────────────────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
+        transition-duration: 0.01ms !important;
+      }
+      .node-card { opacity: 1 !important; transform: scale(1) !important; }
+      .conn-line  { stroke-dashoffset: 0 !important; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="glow-bg" aria-hidden="true"></div>
+
+<!-- ─── NAV ─────────────────────────────────────────────────────────────────── -->
+<header>
+  <nav class="nav" aria-label="Site navigation">
+    <a href="#" class="nav-brand" aria-label="AutoPilot — home">
+      <div class="orb-wrap" aria-hidden="true">
+        <div class="orb-ring"></div>
+        <div class="orb-inner">
+          <span class="orb-monogram">AP</span>
+        </div>
+      </div>
+      <span class="nav-wordmark">AutoPilot</span>
+    </a>
+
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#why">Why offline</a>
+      <a href="#docs">Docs</a>
+    </div>
+
+    <button class="btn-dark" onclick="launch()" aria-label="Open AutoPilot application">
+      Open app
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.5 6.5h8M7 3l3.5 3.5L7 10"/>
+      </svg>
+    </button>
+  </nav>
+</header>
+
+<!-- ─── HERO ─────────────────────────────────────────────────────────────────── -->
+<section class="hero" id="how" aria-labelledby="hero-h1">
+  <div class="eyebrow" role="status" aria-live="polite">
+    <span class="status-dot" aria-hidden="true"></span>
+    <span class="eyebrow-text">100% in your browser · no server, no upload</span>
+  </div>
+
+  <h1 class="hero-headline" id="hero-h1">
+    <span class="hl-1">Automate your data,</span>
+    <span class="hl-2">without leaving the page.</span>
+  </h1>
+
+  <p class="hero-sub">
+    Drag nodes onto a canvas, wire them together, and hit Run. AutoPilot streams your CSV and PDF files through every step entirely on your machine — private, instant, and offline forever.
+  </p>
+
+  <div class="hero-ctas">
+    <button class="btn-primary" onclick="launch()" aria-label="Launch the AutoPilot workflow editor">
+      Launch AutoPilot
+      <span class="btn-arrow" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 8h10M9 4l4 4-4 4"/>
+        </svg>
+      </span>
+    </button>
+    <button class="btn-ghost" onclick="scrollToShowcase()" aria-label="See the workflow demo">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
+        <polygon points="3,1.5 13,7 3,12.5"/>
+      </svg>
+      See it run
+    </button>
+  </div>
+</section>
+
+<!-- ─── SHOWCASE CARD ─────────────────────────────────────────────────────────── -->
+<section class="showcase-wrap" id="showcase" aria-label="Workflow editor preview">
+  <div class="showcase-card">
+    <!-- Window chrome -->
+    <div class="card-chrome" aria-hidden="true">
+      <div class="chrome-dots">
+        <div class="chrome-dot dot-r"></div>
+        <div class="chrome-dot dot-y"></div>
+        <div class="chrome-dot dot-g"></div>
+      </div>
+      <span class="chrome-filename">wf_20260505_001</span>
+      <div class="chrome-status">
+        <div class="chrome-status-dot"></div>
+        <span class="chrome-status-text">completed · 7 nodes</span>
+      </div>
+    </div>
+
+    <!-- Canvas: nodes injected by JS -->
+    <div class="canvas-area" id="how">
+      <div class="nodes-row" id="nodes-row" role="list" aria-label="Workflow nodes"></div>
+    </div>
+
+    <!-- Trace -->
+    <div class="trace-panel" aria-label="Execution trace timeline">
+      <div class="trace-header">
+        <span class="trace-label-head">Trace</span>
+        <span class="trace-badge">3.6s total</span>
+      </div>
+      <div class="trace-rows" id="trace-rows" role="list" aria-label="Node execution times"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─── VALUE PROPS ───────────────────────────────────────────────────────────── -->
+<section class="value-section" id="why" aria-labelledby="vp-section-title">
+  <h2 id="vp-section-title" class="sr-only">Why AutoPilot</h2>
+  <div class="vp-grid" id="vp-grid"></div>
+</section>
+
+<!-- ─── FOOTER ───────────────────────────────────────────────────────────────── -->
+<footer class="footer">
+  <a href="#" class="footer-brand" aria-label="AutoPilot home">
+    <div class="footer-orb" aria-hidden="true"></div>
+    <span class="footer-wordmark">AutoPilot</span>
+  </a>
+  <p class="footer-tagline">Automate your data, entirely in your browser.</p>
+  <p class="footer-powered">Powered by Tunisie Telecom</p>
+</footer>
+
+<script>
+  // ─── LAUNCH STUB ─────────────────────────────────────────────────────────────
+  // TODO: point to /workflows/ when app is deployed
+  function launch() {
+    window.location.href = '/workflows/';
+  }
+
+  function scrollToShowcase() {
+    document.getElementById('showcase').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ─── NODE CONFIG ──────────────────────────────────────────────────────────────
+  const NODES = [
+    {
+      name: 'Manual Trigger',
+      meta: 'entry point',
+      icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+        <polygon points="4,2.5 15.5,9 4,15.5" fill="currentColor"/>
+      </svg>`,
+    },
+    {
+      name: 'Upload File',
+      meta: 'csv / pdf',
+      icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M9 11.5V4.5"/>
+        <path d="M6 7.5l3-3 3 3"/>
+        <path d="M3.5 14.5h11"/>
+      </svg>`,
+    },
+    {
+      name: 'CSV Parse',
+      meta: '2.1M rows',
+      icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="2.5" y="3" width="13" height="12" rx="2"/>
+        <path d="M2.5 7h13"/>
+        <path d="M7 7v8"/>
+      </svg>`,
+    },
+    {
+      name: 'Restructure',
+      meta: '7 columns',
+      icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 5h5"/>
+        <path d="M3 9h12"/>
+        <path d="M3 13h8"/>
+        <path d="M11 3l2.5 2L11 7"/>
+      </svg>`,
+    },
+    {
+      name: 'Transform',
+      meta: 'x → f(x)',
+      accent: true,
+      icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M2.5 14.5C5 14.5 5.5 3.5 9 3.5"/>
+        <path d="M9 3.5C12.5 3.5 13 14.5 15.5 14.5"/>
+        <circle cx="9" cy="3.5" r="1.5" fill="currentColor" stroke="none"/>
+      </svg>`,
+    },
+    {
+      name: 'Restructure',
+      meta: '5 columns',
+      icon: `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 5h5"/>
+        <path d="M3 9h12"/>
+        <path d="M3 13h8"/>
+        <path d="M11 3l2.5 2L11 7"/>
+      </svg>`,
+    },
+  ];
+
+  // ─── TRACE CONFIG ─────────────────────────────────────────────────────────────
+  const TRACE_DATA = [
+    { label: 'Manual Trigger', time: '0.02s', pct: 3  },
+    { label: 'Upload File',    time: '0.18s', pct: 12 },
+    { label: 'CSV Parse',      time: '1.40s', pct: 80 },
+    { label: 'Restructure',    time: '0.61s', pct: 54 },
+    { label: 'Transform',      time: '1.20s', pct: 68 },
+    { label: 'Restructure',    time: '0.19s', pct: 15 },
+  ];
+
+  // ─── VALUE PROPS CONFIG ───────────────────────────────────────────────────────
+  const VALUE_PROPS = [
+    {
+      title: 'Private by design',
+      desc: 'Your files never leave the device. No uploads, no accounts, no telemetry — your data stays entirely on your machine.',
+      icon: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="11" width="16" height="9" rx="2"/>
+        <path d="M7 11V7a4 4 0 0 1 8 0v4"/>
+        <circle cx="11" cy="15.5" r="1.2" fill="currentColor" stroke="none"/>
+      </svg>`,
+    },
+    {
+      title: 'Built for big files',
+      desc: 'Streaming workers and on-disk storage handle millions of rows without exhausting memory or locking the tab.',
+      icon: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>`,
+    },
+    {
+      title: 'Works offline, forever',
+      desc: 'Install once as a PWA and it runs indefinitely — no internet required, no subscription, no expiry date.',
+      icon: `<svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M1 6s4-4 10-4 10 4 10 4"/>
+        <path d="M3.5 9.5s3-3 7.5-3 7.5 3 7.5 3"/>
+        <circle cx="11" cy="13" r="2.5" fill="currentColor" stroke="none"/>
+        <path d="M11 15.5v3.5"/>
+      </svg>`,
+    },
+  ];
+
+  // ─── BUILD NODES ──────────────────────────────────────────────────────────────
+  function buildNodes() {
+    const row = document.getElementById('nodes-row');
+    if (!row) return;
+
+    NODES.forEach((node, i) => {
+      const unit = document.createElement('div');
+      unit.className = 'node-unit';
+
+      // Card
+      const card = document.createElement('div');
+      card.className = 'node-card' + (node.accent ? ' accent-node' : '');
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('aria-label', node.name);
+      card.innerHTML = `
+        <div class="node-icon-wrap">${node.icon}</div>
+        <span class="node-name">${node.name}</span>
+        <span class="node-meta">${node.meta}</span>
+      `;
+      unit.appendChild(card);
+
+      // Connector (not after last node)
+      if (i < NODES.length - 1) {
+        const connWrap = document.createElement('div');
+        connWrap.className = 'conn-wrap';
+        connWrap.setAttribute('aria-hidden', 'true');
+        connWrap.innerHTML = `
+          <svg class="conn-svg" viewBox="0 0 44 88" xmlns="http://www.w3.org/2000/svg">
+            <line class="conn-line" x1="0" y1="44" x2="44" y2="44"
+              stroke-dasharray="44" stroke-dashoffset="44"/>
+          </svg>
+          <div class="conn-spark"></div>
+        `;
+        unit.appendChild(connWrap);
+      }
+
+      row.appendChild(unit);
+
+      // Staggered pop-in
+      setTimeout(() => card.classList.add('pop'), 1100 + i * 170);
+    });
+
+    // Start connector animations after all nodes appear
+    const totalDelay = 1100 + NODES.length * 170 + 220;
+    setTimeout(animateConnectors, totalDelay);
+  }
+
+  // ─── CONNECTOR DRAW + SPARK ───────────────────────────────────────────────────
+  function animateConnectors() {
+    const lines  = document.querySelectorAll('.conn-line');
+    const sparks = document.querySelectorAll('.conn-spark');
+
+    lines.forEach((line, i) => {
+      setTimeout(() => {
+        // Draw line
+        line.style.transition = 'stroke-dashoffset 0.5s cubic-bezier(.2,.7,.2,1)';
+        line.style.strokeDashoffset = '0';
+
+        // Launch spark after line is drawn
+        setTimeout(() => {
+          const spark = sparks[i];
+          if (!spark) return;
+          spark.style.animationDelay = (i * 0.28) + 's';
+          spark.classList.add('live');
+        }, 520);
+      }, i * 155);
+    });
+  }
+
+  // ─── BUILD TRACE ──────────────────────────────────────────────────────────────
+  function buildTrace() {
+    const container = document.getElementById('trace-rows');
+    if (!container) return;
+
+    TRACE_DATA.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'trace-row';
+      row.setAttribute('role', 'listitem');
+      row.innerHTML = `
+        <span class="t-label">${item.label}</span>
+        <div class="t-track" role="progressbar"
+             aria-valuenow="${item.pct}" aria-valuemin="0" aria-valuemax="100"
+             aria-label="${item.label} took ${item.time}">
+          <div class="t-fill" data-pct="${item.pct}"></div>
+        </div>
+        <span class="t-time">${item.time}</span>
+      `;
+      container.appendChild(row);
+    });
+
+    // Animate bars
+    setTimeout(() => {
+      document.querySelectorAll('.t-fill').forEach((bar, i) => {
+        setTimeout(() => {
+          bar.style.width = bar.dataset.pct + '%';
+        }, 1700 + i * 110);
+      });
+    }, 0);
+  }
+
+  // ─── BUILD VALUE PROPS ────────────────────────────────────────────────────────
+  function buildValueProps() {
+    const grid = document.getElementById('vp-grid');
+    if (!grid) return;
+
+    VALUE_PROPS.forEach((vp, i) => {
+      const card = document.createElement('div');
+      card.className = 'vp-card';
+      card.style.transitionDelay = (i * 0.13) + 's';
+      card.innerHTML = `
+        <div class="vp-chip" aria-hidden="true">${vp.icon}</div>
+        <h3 class="vp-title">${vp.title}</h3>
+        <p class="vp-desc">${vp.desc}</p>
+      `;
+      grid.appendChild(card);
+    });
+
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('in'); });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.vp-card').forEach(c => io.observe(c));
+  }
+
+  // ─── INIT ─────────────────────────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    buildNodes();
+    buildTrace();
+    buildValueProps();
+  });
+</script>
+</body>
+</html>
