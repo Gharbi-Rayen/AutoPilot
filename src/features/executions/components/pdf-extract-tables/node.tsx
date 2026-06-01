@@ -15,6 +15,9 @@ import {
 interface PdfExtractTablesNodeData extends Record<string, unknown> {
   pdfVariable?: string;
   variableName?: string;
+  fromPage?: number;
+  toPage?: number;
+  hasHeaderRow?: boolean;
 }
 
 export const PdfExtractTablesNode = memo((props: NodeProps) => {
@@ -42,9 +45,12 @@ export const PdfExtractTablesNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as PdfExtractTablesNodeData;
+  const pageRange = data.fromPage || data.toPage
+    ? ` (p${data.fromPage ?? 1}–${data.toPage ?? "end"})`
+    : "";
   const description = data.pdfVariable
-    ? `Extract tables: ${data.pdfVariable}`
-    : "Extract tables from PDF";
+    ? `${data.pdfVariable}${pageRange} → dataset`
+    : "Extract tables → dataset";
 
   const nodeStatus = useNodeStatus(props.id);
 

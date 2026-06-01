@@ -6,6 +6,7 @@
     "dev": "cross-env DATASET_STORAGE_ROOT=C:/autopilotdata next dev --turbopack",
     "prebuild": "node scripts/build-workers.mjs",
     "build": "next build --turbopack",
+    "postbuild": "node scripts/generate-sw-manifest.mjs",
     "start": "next start",
     "lint": "biome check",
     "format": "biome format --write",

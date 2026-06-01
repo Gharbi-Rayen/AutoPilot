@@ -1,13 +1,50 @@
 import type { NodeExecutor } from "@/lib/execution-engine";
 import { dispatchWorkerJob } from "@/lib/worker-manager";
+import type { DatasetRef } from "@/types/dataset";
 
-export const executor: NodeExecutor = async (_nodeId, nodeData, context, _executionId, onProgress) => {
-  const { inputVariable, pdfVariable, variableName = "pdfTables" } = nodeData as { inputVariable?: string; pdfVariable?: string; variableName?: string; };
+export const executor: NodeExecutor = async (_nodeId, nodeData, context, executionId, onProgress) => {
+  const {
+    pdfVariable,
+    inputVariable,
+    variableName = "pdfTables",
+    fromPage,
+    toPage,
+    hasHeaderRow = true,
+    colTolerance,
+    chunkSize,
+  } = nodeData as {
+    pdfVariable?: string;
+    inputVariable?: string;
+    variableName?: string;
+    fromPage?: number;
+    toPage?: number;
+    hasHeaderRow?: boolean;
+    colTolerance?: number;
+    chunkSize?: number;
+  };
+
   const resolvedVar = pdfVariable ?? inputVariable;
-  const fileVar = resolvedVar ? context[resolvedVar] : Object.values(context).find((v) => typeof v === "object" && v !== null && (v as { kind?: string }).kind === "file");
-  if (!fileVar || typeof fileVar !== "object") throw new Error("PDF Extract Tables: no file in context.");
+  const fileVar = resolvedVar
+    ? context[resolvedVar]
+    : Object.values(context).find(
+        (v) => typeof v === "object" && v !== null && (v as { kind?: string }).kind === "file",
+      );
+  if (!fileVar || typeof fileVar !== "object")
+    throw new Error("PDF Extract Tables: no file found in context.");
+
   const { buffer, fileName } = fileVar as { buffer: ArrayBuffer; fileName: string };
-  // Use pdf-extract-text worker — table extraction uses same text pipeline
-  const result = await dispatchWorkerJob<unknown, { fullText: string; pages: unknown[]; numPages: number }>("pdf-extract-text", { fileBuffer: buffer, fileName }, onProgress);
-  return { [variableName]: { pages: result.pages, numPages: result.numPages, fileName } };
+
+  const result = await dispatchWorkerJob<
+    unknown,
+    { datasetRef: DatasetRef; manifest: unknown; columnNames: string[]; rowCount: number }
+  >(
+    "pdf-extract-tables",
+    { fileBuffer: buffer, fileName, executionId, variableName, fromPage, toPage, hasHeaderRow, colTolerance, chunkSize },
+    onProgress,
+  );
+
+  return {
+    [variableName]: result.datasetRef,
+    [`${variableName}_manifest`]: result.manifest,
+  };
 };

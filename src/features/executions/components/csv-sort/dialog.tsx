@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,21 +39,33 @@ import { VariableNameInput } from "../csv-shared/variable-name-input";
 const sortDirections = ["asc", "desc"] as const;
 const compareModes = ["string", "number", "date"] as const;
 const nullModes = ["first", "last"] as const;
+const sortModes = ["single-field", "full-row"] as const;
 
-const formSchema = z.object({
-  sourceVariable: z.string().min(1, { message: "Source variable is required" }),
-  variableName: z
-    .string()
-    .min(1, { message: "Variable name is required" })
-    .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, {
-      message:
-        "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
-    }),
-  sortField: z.string().min(1, { message: "Sort field is required" }),
-  direction: z.enum(sortDirections),
-  compareAs: z.enum(compareModes),
-  nulls: z.enum(nullModes),
-});
+const formSchema = z
+  .object({
+    sourceVariable: z.string().min(1, { message: "Source variable is required" }),
+    variableName: z
+      .string()
+      .min(1, { message: "Variable name is required" })
+      .regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/, {
+        message:
+          "Must start with a letter, underscore, or dollar sign and contain only alphanumeric characters",
+      }),
+    sortMode: z.enum(sortModes),
+    sortField: z.string().optional(),
+    direction: z.enum(sortDirections),
+    compareAs: z.enum(compareModes),
+    nulls: z.enum(nullModes),
+  })
+  .superRefine((data, ctx) => {
+    if (data.sortMode === "single-field" && !data.sortField?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Sort field is required",
+        path: ["sortField"],
+      });
+    }
+  });
 
 export type CsvSortFormValues = z.infer<typeof formSchema>;
 
@@ -76,6 +89,7 @@ export const CsvSortDialog = ({
     defaultValues: {
       sourceVariable: defaultValues.sourceVariable || "",
       variableName: defaultValues.variableName || "",
+      sortMode: defaultValues.sortMode || "single-field",
       sortField: defaultValues.sortField || "",
       direction: defaultValues.direction || "asc",
       compareAs: defaultValues.compareAs || "string",
@@ -85,6 +99,7 @@ export const CsvSortDialog = ({
 
   const watchVariableName = form.watch("variableName") || "sortedData";
   const watchSourceVariable = form.watch("sourceVariable");
+  const watchSortMode = form.watch("sortMode");
   const { getColumns } = useUpstreamVariableMetadata(nodeId, open);
   const fieldSuggestions = getColumns(watchSourceVariable);
   const suggestion = useVariableNameSuggestion({ nodeId, sourceVariable: watchSourceVariable, suffix: "sorted", open });
@@ -99,6 +114,7 @@ export const CsvSortDialog = ({
       form.reset({
         sourceVariable: defaultValues.sourceVariable || "",
         variableName: defaultValues.variableName || "",
+        sortMode: defaultValues.sortMode || "single-field",
         sortField: defaultValues.sortField || "",
         direction: defaultValues.direction || "asc",
         compareAs: defaultValues.compareAs || "string",
@@ -135,28 +151,72 @@ export const CsvSortDialog = ({
                 )}
               />
 
+              {/* Sort mode toggle */}
               <FormField
                 control={form.control}
-                name="sortField"
+                name="sortMode"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Sort Field</FormLabel>
+                    <FormLabel>Sort Mode</FormLabel>
                     <FormControl>
-                      <FieldSuggestionInput
-                        placeholder="createdAt"
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        suggestions={fieldSuggestions}
-                        mode="single"
-                      />
+                      <div className="flex gap-1 rounded-md border p-0.5 w-fit">
+                        {(["single-field", "full-row"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => field.onChange(mode)}
+                            className={cn(
+                              "rounded px-3 py-1 text-xs font-medium transition-colors",
+                              field.value === mode
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "text-muted-foreground hover:text-foreground",
+                            )}
+                          >
+                            {mode === "single-field" ? "By column" : "By full row"}
+                          </button>
+                        ))}
+                      </div>
                     </FormControl>
                     <FormDescription>
-                      Column used to order the rows
+                      {watchSortMode === "full-row"
+                        ? "Compares all columns in order (lexicographic)"
+                        : "Sort by a single chosen column"}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+
+              {/* Sort field — only shown for single-field mode */}
+              <div
+                className={cn(
+                  "overflow-hidden transition-all duration-200",
+                  watchSortMode === "single-field"
+                    ? "max-h-40 opacity-100"
+                    : "max-h-0 opacity-0 pointer-events-none",
+                )}
+              >
+                <FormField
+                  control={form.control}
+                  name="sortField"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Sort Field</FormLabel>
+                      <FormControl>
+                        <FieldSuggestionInput
+                          placeholder="createdAt"
+                          value={field.value ?? ""}
+                          onValueChange={field.onChange}
+                          suggestions={fieldSuggestions}
+                          mode="single"
+                        />
+                      </FormControl>
+                      <FormDescription>Column used to order the rows</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <FormField
                 control={form.control}
@@ -180,28 +240,38 @@ export const CsvSortDialog = ({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="compareAs"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Compare As</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select compare mode" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="string">String</SelectItem>
-                        <SelectItem value="number">Number</SelectItem>
-                        <SelectItem value="date">Date</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+              {/* Compare As — only relevant for single-field mode */}
+              <div
+                className={cn(
+                  "overflow-hidden transition-all duration-200",
+                  watchSortMode === "single-field"
+                    ? "max-h-28 opacity-100"
+                    : "max-h-0 opacity-0 pointer-events-none",
                 )}
-              />
+              >
+                <FormField
+                  control={form.control}
+                  name="compareAs"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Compare As</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select compare mode" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="string">String</SelectItem>
+                          <SelectItem value="number">Number</SelectItem>
+                          <SelectItem value="date">Date</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <FormField
                 control={form.control}

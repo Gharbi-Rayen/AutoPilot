@@ -11,6 +11,9 @@ import { PdfExtractTextDialog, type PdfExtractTextFormValues } from "./dialog";
 interface PdfExtractTextNodeData extends Record<string, unknown> {
   pdfVariable?: string;
   variableName?: string;
+  fromPage?: number;
+  toPage?: number;
+  cleanText?: boolean;
   includeMetadata?: boolean;
 }
 
@@ -38,8 +41,11 @@ export const PdfExtractTextNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as PdfExtractTextNodeData;
+  const pageRange = data.fromPage || data.toPage
+    ? ` (p${data.fromPage ?? 1}–${data.toPage ?? "end"})`
+    : "";
   const description = data?.pdfVariable
-    ? `Extract: ${data.pdfVariable}`
+    ? `${data.pdfVariable}${pageRange}`
     : "Extract text from PDF";
 
   const nodeStatus = useNodeStatus(props.id);

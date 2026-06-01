@@ -258,6 +258,10 @@ const executorRegistry: Partial<Record<NodeType, () => Promise<NodeExecutor>>> =
     import("@/features/executions/components/pdf-extract-text/executor").then((m) => m.executor),
   [NodeType.PDF_EXTRACT_TABLES]: () =>
     import("@/features/executions/components/pdf-extract-tables/executor").then((m) => m.executor),
+  [NodeType.PDF_MERGE]: () =>
+    import("@/features/executions/components/pdf-merge/executor").then((m) => m.executor),
+  [NodeType.PDF_SPLIT]: () =>
+    import("@/features/executions/components/pdf-split/executor").then((m) => m.executor),
   [NodeType.FILE_EXPORT]: () =>
     import("@/features/executions/components/file-export/executor").then((m) => m.executor),
 };

@@ -100,7 +100,9 @@ export type WorkerJobType =
   | "csv-restructure"
   | "csv-consecutive-sequence"
   | "pdf-extract-text"
-  | "pdf-extract-tables";
+  | "pdf-extract-tables"
+  | "pdf-merge"
+  | "pdf-split";
 
 /**
  * WorkerJobMessage<TInput>
@@ -346,6 +348,8 @@ function getWorkerUrl(type: WorkerJobType): string {
     "csv-consecutive-sequence": "/workers/csv-consecutive-sequence.worker.js",
     "pdf-extract-text": "/workers/pdf-extract-text.worker.js",
     "pdf-extract-tables": "/workers/pdf-extract-tables.worker.js",
+    "pdf-merge": "/workers/pdf-merge.worker.js",
+    "pdf-split": "/workers/pdf-split.worker.js",
   };
   return map[type];
 }

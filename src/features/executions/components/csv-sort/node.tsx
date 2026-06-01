@@ -12,6 +12,7 @@ import { CsvSortDialog, type CsvSortFormValues } from "./dialog";
 interface CsvSortNodeData extends Record<string, unknown> {
   sourceVariable?: string;
   variableName?: string;
+  sortMode?: "single-field" | "full-row";
   sortField?: string;
   direction?: "asc" | "desc";
   compareAs?: "string" | "number" | "date";
@@ -43,9 +44,12 @@ export const CsvSortNode = memo((props: NodeProps) => {
   const handleOpenSettings = () => setDialogOpen(true);
 
   const data = props.data as CsvSortNodeData;
-  const description = data.sortField
-    ? `Sort by ${data.sortField}`
-    : "Sort CSV records";
+  const description =
+    data.sortMode === "full-row"
+      ? "Sort by full row"
+      : data.sortField
+        ? `Sort by ${data.sortField}`
+        : "Sort CSV records";
 
   const nodeStatus = useNodeStatus(props.id);
 

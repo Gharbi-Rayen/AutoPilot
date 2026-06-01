@@ -54,7 +54,7 @@ const stringifyCell = (value: unknown) => {
 
 // ── export helpers ────────────────────────────────────────────────────────────
 
-type ExportFormat = "csv" | "xlsx" | "txt";
+type ExportFormat = "csv" | "xlsx" | "txt" | "pdf";
 
 /** Convert the raw delimiter string the user typed into the actual character(s). */
 const parseDelimiter = (raw: string, fallback: string): string => {
@@ -102,6 +102,90 @@ const toTxtString = (
     ...rows.map((row) => cols.map((c) => clean(row[c])).join(delimiter)),
   ];
   return lines.join("\n");
+};
+
+const toPdfBuffer = async (
+  rows: Record<string, unknown>[],
+  cols: string[],
+): Promise<ArrayBuffer> => {
+  const { PDFDocument, rgb, StandardFonts } = await import("pdf-lib");
+
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+  // A4 landscape
+  const pageW = 842;
+  const pageH = 595;
+  const margin = 30;
+  const headerH = 22;
+  const rowH = 16;
+  const fontSize = 8;
+
+  const usableW = pageW - 2 * margin;
+  const colW = cols.length > 0 ? Math.min(120, usableW / cols.length) : usableW;
+  const rowsPerPage = Math.floor((pageH - 2 * margin - headerH) / rowH);
+
+  const truncate = (s: string, max: number) =>
+    s.length > max ? s.slice(0, max - 1) + "…" : s;
+
+  let page = pdfDoc.addPage([pageW, pageH]);
+  let y = pageH - margin;
+
+  const drawHeader = () => {
+    page.drawRectangle({
+      x: margin,
+      y: y - headerH,
+      width: usableW,
+      height: headerH,
+      color: rgb(0.18, 0.38, 0.76),
+    });
+    cols.forEach((col, i) => {
+      const x = margin + i * colW;
+      page.drawText(truncate(col, 16), {
+        x: x + 3,
+        y: y - headerH + 6,
+        size: fontSize,
+        font: boldFont,
+        color: rgb(1, 1, 1),
+      });
+    });
+    y -= headerH;
+  };
+
+  drawHeader();
+
+  for (let ri = 0; ri < rows.length; ri++) {
+    if (ri > 0 && ri % rowsPerPage === 0) {
+      page = pdfDoc.addPage([pageW, pageH]);
+      y = pageH - margin;
+      drawHeader();
+    }
+
+    const row = rows[ri];
+    const bg = ri % 2 === 0 ? rgb(0.97, 0.97, 0.97) : rgb(1, 1, 1);
+    page.drawRectangle({
+      x: margin,
+      y: y - rowH,
+      width: usableW,
+      height: rowH,
+      color: bg,
+    });
+    cols.forEach((col, i) => {
+      const x = margin + i * colW;
+      const val = row[col] === null || row[col] === undefined ? "" : String(row[col]);
+      page.drawText(truncate(val, 16), {
+        x: x + 3,
+        y: y - rowH + 4,
+        size: fontSize,
+        font,
+        color: rgb(0.1, 0.1, 0.1),
+      });
+    });
+    y -= rowH;
+  }
+
+  return (await pdfDoc.save()).buffer as ArrayBuffer;
 };
 
 const triggerDownload = (
@@ -157,7 +241,6 @@ export const ExportDatasetDialog = ({
 
   const handleFormatChange = (fmt: ExportFormat) => {
     setFormat(fmt);
-    // Reset delimiter to the sensible default for each format
     if (fmt === "csv") setDelimiter(",");
     else if (fmt === "txt") setDelimiter("\\t");
   };
@@ -196,6 +279,7 @@ export const ExportDatasetDialog = ({
     );
     if (fmt === "csv") return toCsvString(rows, cols, resolvedDelimiter);
     if (fmt === "txt") return toTxtString(rows, cols, resolvedDelimiter);
+    if (fmt === "pdf") return toPdfBuffer(rows, cols);
     const mod = await import("xlsx");
     const ws = mod.utils.json_to_sheet(rows, { header: cols });
     const wb = mod.utils.book_new();
@@ -207,6 +291,7 @@ export const ExportDatasetDialog = ({
     if (fmt === "csv") return "text/csv;charset=utf-8;";
     if (fmt === "xlsx")
       return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (fmt === "pdf") return "application/pdf";
     return "text/plain;charset=utf-8;";
   };
 
@@ -283,6 +368,7 @@ export const ExportDatasetDialog = ({
     { key: "csv", label: "CSV", ext: ".csv" },
     { key: "xlsx", label: "Excel", ext: ".xlsx" },
     { key: "txt", label: "TXT", ext: ".txt" },
+    { key: "pdf", label: "PDF", ext: ".pdf" },
   ];
 
   return (
@@ -303,7 +389,7 @@ export const ExportDatasetDialog = ({
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Format
             </p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {formatOptions.map(({ key, label, ext }) => (
                 <button
                   key={key}
@@ -328,7 +414,7 @@ export const ExportDatasetDialog = ({
           <div
             className={cn(
               "overflow-hidden transition-all duration-200",
-              format !== "xlsx"
+              format !== "xlsx" && format !== "pdf"
                 ? "max-h-20 opacity-100"
                 : "max-h-0 opacity-0 pointer-events-none",
             )}
