@@ -838,7 +838,7 @@ export const ExecutionDatasetViewer = ({
 
             <div ref={tableScrollRef} className="overflow-auto max-h-[40vh]">
               <Table className="min-w-max">
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-background">
                   <TableRow>
                     <TableHead className="w-[70px]">#</TableHead>
                     {columns.map((column) => (

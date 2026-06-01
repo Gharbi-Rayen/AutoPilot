@@ -240,7 +240,7 @@ export const EmptyView = ({ message, onNew }: EmptyViewProps) => {
     setIsLoading(true);
     try {
       await onNew();
-    } catch {
+    } finally {
       setIsLoading(false);
     }
   };

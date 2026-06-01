@@ -12,6 +12,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { db } from "@/lib/db";
 import { deleteExecutionDatasets } from "@/lib/opfs";
 import { NodeType } from "@/types/node-type";
+import type { WorkflowTemplate } from "../templates";
 import { useWorkflowsParams } from "./use-workflows-params";
 
 // ─── Query keys ───────────────────────────────────────────────────────────────
@@ -103,17 +104,44 @@ export const useWorkflow = (id: string) =>
 export const useCreateWorkflow = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (name: string) => {
+    mutationFn: async ({ name, template }: { name: string; template?: WorkflowTemplate }) => {
       const id = createId();
       const now = new Date().toISOString();
       await db.workflows.add({ id, name, createdAt: now, updatedAt: now });
-      await db.workflowNodes.add({
-        id: createId(),
-        workflowId: id,
-        type: NodeType.INITIAL,
-        position: { x: 0, y: 0 },
-        data: {},
-      });
+
+      if (template) {
+        const nodeIds = template.nodes.map(() => createId());
+        await db.workflowNodes.bulkAdd(
+          template.nodes.map((n, i) => ({
+            id: nodeIds[i],
+            workflowId: id,
+            type: n.type,
+            position: n.position,
+            data: n.data,
+          })),
+        );
+        if (template.edges.length > 0) {
+          await db.workflowConnections.bulkAdd(
+            template.edges.map((e) => ({
+              id: createId(),
+              workflowId: id,
+              fromNodeId: nodeIds[e.sourceIdx],
+              toNodeId: nodeIds[e.targetIdx],
+              fromOutput: e.fromOutput,
+              toInput: e.toInput,
+            })),
+          );
+        }
+      } else {
+        await db.workflowNodes.add({
+          id: createId(),
+          workflowId: id,
+          type: NodeType.INITIAL,
+          position: { x: 0, y: 0 },
+          data: {},
+        });
+      }
+
       return db.workflows.get(id);
     },
     onSuccess: (data) => {

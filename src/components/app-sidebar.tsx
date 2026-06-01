@@ -127,22 +127,37 @@ export const AppSidebar = () => {
           </SidebarMenuItem>
         </SidebarMenu>
 
-        {/* Tunisie Telecom attribution — only shown when sidebar is expanded */}
-        {open && (
-          <div className="flex items-center gap-2 px-3 pb-2 pt-1">
+        {/* Tunisie Telecom attribution */}
+        {open ? (
+          <div className="mx-2 mb-1 flex items-center gap-2.5 rounded-lg border border-border bg-muted/50 px-3 py-2">
+            <Image
+              src="/logos/logoTT.png"
+              alt="Tunisie Telecom logo"
+              width={36}
+              height={24}
+              className="object-contain shrink-0"
+            />
+            <div className="flex flex-col min-w-0">
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Powered by
+              </span>
+              <span
+                className="text-xs font-semibold text-foreground truncate"
+                style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}
+              >
+                Tunisie Telecom
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-center pb-1">
             <Image
               src="/logos/logoTT.png"
               alt="Tunisie Telecom"
               width={28}
               height={19}
-              className="object-contain opacity-50"
+              className="object-contain"
             />
-            <span
-              className="text-[10px] leading-tight text-muted-foreground opacity-60"
-              style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)" }}
-            >
-              Powered by<br />Tunisie Telecom
-            </span>
           </div>
         )}
       </SidebarFooter>
