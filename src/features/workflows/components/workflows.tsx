@@ -17,7 +17,6 @@ import {
 } from "@/components/entity-components";
 import type { WorkflowRecord } from "@/lib/db";
 import { useEntitySearch } from "@/hooks/use-entity-search";
-import type { WorkflowTemplate } from "../templates";
 import {
   useCreateWorkflow,
   useRemoveWorkflow,
@@ -58,8 +57,8 @@ export const WorkflowsHeader = ({ disabled }: { disabled?: boolean }) => {
   const createWorkflow = useCreateWorkflow();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const handleCreate = (name: string, template?: WorkflowTemplate) => {
-    createWorkflow.mutate({ name, template }, {
+  const handleCreate = (name: string, copyFromId?: string) => {
+    createWorkflow.mutate({ name, copyFromId }, {
       onSuccess: (data) => {
         setDialogOpen(false);
         if (data) router.push(`/workflows/editor?id=${data.id}`);
@@ -131,8 +130,8 @@ export const WorkflowsEmpty = () => {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const handleCreate = (name: string, template?: WorkflowTemplate) => {
-    createWorkflow.mutate({ name, template }, {
+  const handleCreate = (name: string, copyFromId?: string) => {
+    createWorkflow.mutate({ name, copyFromId }, {
       onError: (error) => { console.error(error); },
       onSuccess: (data) => {
         setDialogOpen(false);
@@ -162,8 +161,8 @@ export const WorkflowsSearchEmpty = () => {
   const router = useRouter();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const handleCreate = (name: string, template?: WorkflowTemplate) => {
-    createWorkflow.mutate({ name, template }, {
+  const handleCreate = (name: string, copyFromId?: string) => {
+    createWorkflow.mutate({ name, copyFromId }, {
       onError: (error) => { console.error(error); },
       onSuccess: (data) => {
         setDialogOpen(false);

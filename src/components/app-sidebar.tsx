@@ -101,14 +101,14 @@ export const AppSidebar = () => {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              tooltip="Documentation"
-              isActive={pathname.startsWith("/settings/documentation")}
+              tooltip="How It Works"
+              isActive={pathname.startsWith("/settings/how-it-works")}
               asChild
               className="gap-x-4 h-10 px-4"
             >
-              <Link href="/settings/documentation">
+              <Link href="/settings/how-it-works">
                 <BookOpenIcon className="size-4" />
-                <span>Documentation</span>
+                <span>How It Works</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

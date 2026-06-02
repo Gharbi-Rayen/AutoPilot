@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowLeftIcon, CheckIcon, Loader2, PlusIcon, SparklesIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import { ArrowLeftIcon, CheckIcon, CopyIcon, Loader2, PlusIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,20 +17,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/db";
-import {
-  NODE_TYPE_LABELS,
-  workflowTemplates,
-  type WorkflowTemplate,
-} from "../templates";
+import type { WorkflowRecord } from "@/lib/db";
 
 interface CreateWorkflowDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreate: (name: string, template?: WorkflowTemplate) => void;
+  onCreate: (name: string, copyFromId?: string) => void;
   isPending?: boolean;
 }
 
-type Step = "name" | "template";
+type Step = "name" | "copy";
 
 export const CreateWorkflowDialog = ({
   open,
@@ -40,7 +38,13 @@ export const CreateWorkflowDialog = ({
   const [isTaken, setIsTaken] = useState(false);
   const [checking, setChecking] = useState(false);
   const [step, setStep] = useState<Step>("name");
-  const [selectedTemplate, setSelectedTemplate] = useState<WorkflowTemplate | null>(null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+
+  const { data: existingWorkflows = [] } = useQuery<WorkflowRecord[]>({
+    queryKey: ["workflows", "all-for-copy"],
+    queryFn: () => db.workflows.orderBy("createdAt").reverse().toArray(),
+    enabled: open,
+  });
 
   useEffect(() => {
     if (!open) {
@@ -48,7 +52,7 @@ export const CreateWorkflowDialog = ({
       setIsTaken(false);
       setChecking(false);
       setStep("name");
-      setSelectedTemplate(null);
+      setSelectedWorkflowId(null);
     }
   }, [open]);
 
@@ -70,6 +74,7 @@ export const CreateWorkflowDialog = ({
   }, [name]);
 
   const canSubmit = name.trim().length > 0 && !isTaken && !checking && !isPending;
+  const hasExisting = existingWorkflows.length > 0;
 
   const handleStartBlank = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,14 +82,14 @@ export const CreateWorkflowDialog = ({
     onCreate(name.trim());
   };
 
-  const handleGoToTemplates = () => {
+  const handleGoToCopy = () => {
     if (!canSubmit) return;
-    setStep("template");
+    setStep("copy");
   };
 
-  const handleCreateFromTemplate = () => {
-    if (!selectedTemplate || isPending) return;
-    onCreate(name.trim(), selectedTemplate);
+  const handleCopyWorkflow = () => {
+    if (!selectedWorkflowId || isPending) return;
+    onCreate(name.trim(), selectedWorkflowId);
   };
 
   return (
@@ -98,7 +103,7 @@ export const CreateWorkflowDialog = ({
             <DialogHeader>
               <DialogTitle>Create workflow</DialogTitle>
               <DialogDescription>
-                Give your workflow a unique name, then start blank or pick a template.
+                Give your workflow a unique name, then start blank or copy an existing one.
               </DialogDescription>
             </DialogHeader>
 
@@ -131,15 +136,17 @@ export const CreateWorkflowDialog = ({
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!canSubmit}
-                  onClick={handleGoToTemplates}
-                >
-                  <SparklesIcon className="size-4" />
-                  Use a template
-                </Button>
+                {hasExisting && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!canSubmit}
+                    onClick={handleGoToCopy}
+                  >
+                    <CopyIcon className="size-4" />
+                    Copy existing
+                  </Button>
+                )}
                 <Button type="submit" disabled={!canSubmit}>
                   {isPending ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -153,7 +160,7 @@ export const CreateWorkflowDialog = ({
           </div>
         ) : (
           <div
-            key="step-template"
+            key="step-copy"
             className="animate-in fade-in-0 slide-in-from-right-4 duration-150 motion-reduce:animate-none"
           >
             <DialogHeader>
@@ -168,53 +175,41 @@ export const CreateWorkflowDialog = ({
                 >
                   <ArrowLeftIcon className="size-4" />
                 </Button>
-                <DialogTitle>Choose a template</DialogTitle>
+                <DialogTitle>Copy a workflow</DialogTitle>
               </div>
               <DialogDescription className="pl-8">
-                Select a starting point for <span className="font-medium text-foreground">"{name}"</span>.
+                Select a workflow to copy as a starting point for{" "}
+                <span className="font-medium text-foreground">"{name}"</span>.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 my-4 max-h-64 overflow-y-auto pr-1">
-              {workflowTemplates.map((template) => {
-                const isSelected = selectedTemplate?.id === template.id;
+            <div className="flex flex-col gap-2 my-4 max-h-64 overflow-y-auto pr-1">
+              {existingWorkflows.map((workflow) => {
+                const isSelected = selectedWorkflowId === workflow.id;
                 return (
                   <button
-                    key={template.id}
+                    key={workflow.id}
                     type="button"
-                    onClick={() => setSelectedTemplate(template)}
+                    onClick={() => setSelectedWorkflowId(workflow.id)}
                     className={cn(
-                      "w-full text-left p-3.5 rounded-xl border-2 transition-all duration-150 cursor-pointer",
+                      "w-full text-left px-3.5 py-3 rounded-xl border-2 transition-all duration-150 cursor-pointer",
                       "hover:shadow-sm",
                       isSelected
                         ? "border-primary bg-primary/5 shadow-none"
                         : "border-border bg-card hover:border-zinc-300",
                     )}
                   >
-                    <div className="flex items-start gap-3">
-                      <span className="text-xl leading-none mt-0.5 shrink-0" aria-hidden>
-                        {template.icon}
-                      </span>
+                    <div className="flex items-center gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-foreground leading-snug">
-                          {template.name}
+                        <p className="font-semibold text-sm text-foreground leading-snug truncate">
+                          {workflow.name}
                         </p>
-                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug line-clamp-2">
-                          {template.description}
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Created {formatDistanceToNow(new Date(workflow.createdAt), { addSuffix: true })}
                         </p>
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {template.nodeTypes.map((nt) => (
-                            <span
-                              key={nt}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground"
-                            >
-                              {NODE_TYPE_LABELS[nt] ?? nt}
-                            </span>
-                          ))}
-                        </div>
                       </div>
                       {isSelected && (
-                        <CheckIcon className="size-4 text-primary shrink-0 mt-0.5" />
+                        <CheckIcon className="size-4 text-primary shrink-0" />
                       )}
                     </div>
                   </button>
@@ -233,15 +228,15 @@ export const CreateWorkflowDialog = ({
               </Button>
               <Button
                 type="button"
-                disabled={!selectedTemplate || isPending}
-                onClick={handleCreateFromTemplate}
+                disabled={!selectedWorkflowId || isPending}
+                onClick={handleCopyWorkflow}
               >
                 {isPending ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <SparklesIcon className="size-4" />
+                  <CopyIcon className="size-4" />
                 )}
-                Create from template
+                Copy workflow
               </Button>
             </DialogFooter>
           </div>

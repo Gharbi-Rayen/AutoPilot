@@ -104,12 +104,39 @@ export const useWorkflow = (id: string) =>
 export const useCreateWorkflow = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ name, template }: { name: string; template?: WorkflowTemplate }) => {
+    mutationFn: async ({ name, template, copyFromId }: { name: string; template?: WorkflowTemplate; copyFromId?: string }) => {
       const id = createId();
       const now = new Date().toISOString();
       await db.workflows.add({ id, name, createdAt: now, updatedAt: now });
 
-      if (template) {
+      if (copyFromId) {
+        const sourceNodes = await db.workflowNodes.where("workflowId").equals(copyFromId).toArray();
+        const sourceConnections = await db.workflowConnections.where("workflowId").equals(copyFromId).toArray();
+        const nodeIdMap = new Map<string, string>(sourceNodes.map((n) => [n.id, createId()]));
+        if (sourceNodes.length > 0) {
+          await db.workflowNodes.bulkAdd(
+            sourceNodes.map((n) => ({
+              id: nodeIdMap.get(n.id)!,
+              workflowId: id,
+              type: n.type,
+              position: n.position,
+              data: n.data,
+            })),
+          );
+        }
+        if (sourceConnections.length > 0) {
+          await db.workflowConnections.bulkAdd(
+            sourceConnections.map((c) => ({
+              id: createId(),
+              workflowId: id,
+              fromNodeId: nodeIdMap.get(c.fromNodeId) ?? c.fromNodeId,
+              toNodeId: nodeIdMap.get(c.toNodeId) ?? c.toNodeId,
+              fromOutput: c.fromOutput,
+              toInput: c.toInput,
+            })),
+          );
+        }
+      } else if (template) {
         const nodeIds = template.nodes.map(() => createId());
         await db.workflowNodes.bulkAdd(
           template.nodes.map((n, i) => ({
